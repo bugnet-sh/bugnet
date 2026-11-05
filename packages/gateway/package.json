@@ -1,0 +1,30 @@
+{
+    "name": "@bugnet/gateway",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": "./src/index.ts"
+    },
+    "scripts": {
+        "proto": "buf generate --template buf.gen.yaml",
+        "typecheck": "pnpm proto && tsc -p .",
+        "dev": "pnpm proto && tsx src/main.ts -config ../../config/dev.toml",
+        "build": "pnpm proto && esbuild src/main.ts --bundle --platform=node --format=esm --target=node26 --packages=external --outfile=dist/main.js"
+    },
+    "dependencies": {
+        "@bufbuild/protobuf": "2.16.0",
+        "@bugnet/intent": "workspace:*",
+        "@connectrpc/connect": "2.3.0",
+        "@connectrpc/connect-node": "2.3.0",
+        "@modelcontextprotocol/node": "2.1.2",
+        "@modelcontextprotocol/server": "2.4.0",
+        "smol-toml": "1.9.1",
+        "undici": "8.12.4",
+        "zod": "4.6.7"
+    },
+    "devDependencies": {
+        "@modelcontextprotocol/client": "2.4.0",
+        "@bufbuild/protoc-gen-es": "2.16.0"
+    }
+}

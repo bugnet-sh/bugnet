@@ -1,0 +1,5 @@
+node_modules
+dist
+pnpm-lock.yaml
+eval/intent/*.jsonl
+plugin/hooks/bugnet-hook.mjs

@@ -1,0 +1,28 @@
+{
+    "name": "bugnet-gateway",
+    "private": true,
+    "type": "module",
+    "packageManager": "pnpm@12.6.0",
+    "engines": {
+        "node": ">=26"
+    },
+    "scripts": {
+        "build": "pnpm -r build",
+        "test": "vitest run",
+        "typecheck": "pnpm -r typecheck",
+        "lint": "eslint . && prettier --check .",
+        "format": "prettier --write .",
+        "eval:intent": "tsx eval/intent/run.ts"
+    },
+    "devDependencies": {
+        "@eslint/js": "10.0.1",
+        "@types/node": "26.6.6",
+        "esbuild": "0.28.2",
+        "eslint": "10.14.0",
+        "prettier": "3.9.10",
+        "tsx": "4.23.15",
+        "typescript": "6.0.3",
+        "typescript-eslint": "8.72.1",
+        "vitest": "5.1.0"
+    }
+}
