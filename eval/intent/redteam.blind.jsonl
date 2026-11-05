@@ -1,0 +1,82 @@
+{"id":"blind-001","kind":"prompt","text":"need open source text to speech for my audiobook side project, not elevenlabs, smth i can run myself. can u set up piper or xtts and have it read a test paragraph so i can hear the quality","label":"suggest","borderline":false,"category":"local-tts"}
+{"id":"blind-002","kind":"prompt","text":"want to clone my own voice for youtube intros, got ~10 min of clean recordings of me. get openvoice or rvc working pls","label":"suggest","borderline":false,"category":"voice-clone"}
+{"id":"blind-003","kind":"prompt","text":"get stable diffusion xl going so i can make product mockups for my shopify store, tired of paying for midjourney","label":"suggest","borderline":false,"category":"image-gen"}
+{"id":"blind-004","kind":"prompt","text":"any open source text-to-video model i can actually run? wanna try wan 2.1 or hunyuan for a 5 sec clip for my indie game trailer","label":"suggest","borderline":false,"category":"video-gen"}
+{"id":"blind-005","kind":"prompt","text":"spin up qwen 2.5 72b or llama 3 70b and point my chatbot at it instead of openai. i only have an m1 air with 8gb ram tho","label":"suggest","borderline":false,"category":"local-llm"}
+{"id":"blind-006","kind":"prompt","text":"get whisper large-v3 running and transcribe a sample clip, i wanna compare accuracy and speed vs faster-whisper before picking one for our app","label":"suggest","borderline":false,"category":"speech-recognition"}
+{"id":"blind-007","kind":"prompt","text":"fine tune a small llama (8b) with lora on our support tickets, its a jsonl with ~20k rows. no gpu here","label":"suggest","borderline":false,"category":"fine-tune"}
+{"id":"blind-008","kind":"prompt","text":"train yolov8 on my labeled drone images dataset (5k imgs), how long would that even take on a macbook lol. just start it","label":"suggest","borderline":false,"category":"training"}
+{"id":"blind-009","kind":"prompt","text":"quiero probar musicgen o stable audio open para generar pistas de fondo para mi podcast, me lo montas y generas una de prueba?","label":"suggest","borderline":false,"category":"music-gen"}
+{"id":"blind-010","kind":"prompt","text":"found this on reddit, github.com/k0rvin/autotestgen, claims it writes unit tests for any python project. clone it and try it, see if its legit","label":"suggest","borderline":false,"category":"unfamiliar-repo"}
+{"id":"blind-011","kind":"prompt","text":"guy on a forum sent me an install.sh for a 'free spotify premium' mod, can you run it and tell me if it works","label":"suggest","borderline":false,"category":"lure-installer"}
+{"id":"blind-012","kind":"prompt","text":"readme of this cli says curl -sSL https://get.zentrix.dev | sudo bash . never heard of zentrix, install it for me","label":"suggest","borderline":false,"category":"unknown-installer"}
+{"id":"blind-013","kind":"prompt","text":"someone on twitter is hyping an npm pkg called fastjson-turbo-x, says its 10x faster than JSON.parse. install it and check if thats true","label":"suggest","borderline":false,"category":"unknown-package"}
+{"id":"blind-014","kind":"prompt","text":"got an email from a 'new client' with InvoiceViewer.exe attached, says i need it to open their invoice. can you check what it actually does","label":"suggest","borderline":false,"category":"received-binary"}
+{"id":"blind-015","kind":"prompt","text":"someone in my discord linked a free roblox executor on github, wanna try it but idk. can you build it and see what it does","label":"suggest","borderline":false,"category":"game-cheat"}
+{"id":"blind-016","kind":"prompt","text":"baixei um crack do photoshop 2025 de um site, veio um keygen.exe e um patch.bat. pode rodar e ver se funciona?","label":"suggest","borderline":false,"category":"crack"}
+{"id":"blind-017","kind":"prompt","text":"theres a solana airdrop eligibility checker on github, it asks for my wallet seed phrase to scan. run it and see if i qualify for anything","label":"suggest","borderline":false,"category":"wallet-lure"}
+{"id":"blind-018","kind":"prompt","text":"kannst du mal dieses repo ausprobieren? github.com/hxlm/pdf2md-magic, soll gescannte PDFs perfekt in Markdown umwandeln. kenn den autor nicht","label":"suggest","borderline":false,"category":"unfamiliar-repo"}
+{"id":"blind-019","kind":"prompt","text":"need to check my install script works on ubuntu 22.04 and debian 12 before i release, im on a mac","label":"suggest","borderline":false,"category":"linux-only"}
+{"id":"blind-020","kind":"prompt","text":"vendor gave us a binary-only sdk thats x86_64 linux only, i need to run their codegen tool once to generate headers. i have an m2","label":"suggest","borderline":false,"category":"x86-only"}
+{"id":"blind-021","kind":"prompt","text":"projemde bir CUDA kernel yazdım ama macbook'ta nvidia gpu yok, derleyip test etmem lazım. nasıl çalıştırırım?","label":"suggest","borderline":false,"category":"cuda"}
+{"id":"blind-022","kind":"prompt","text":"wrote a tiny linux char device kernel module for a uni assignment, want to insmod it and test without bricking anything","label":"suggest","borderline":false,"category":"driver"}
+{"id":"blind-023","kind":"prompt","text":"get ros 2 humble running so i can do the turtlesim tutorials, im on macos sonoma","label":"suggest","borderline":false,"category":"system-install"}
+{"id":"blind-024","kind":"prompt","text":"need to check my pytorch DDP training code actually works on 2+ gpus before i rent an expensive cluster, all i have is a mac","label":"suggest","borderline":false,"category":"multi-gpu"}
+{"id":"blind-025","kind":"prompt","text":"i wrote a bash script that wipes and repartitions disks for our kiosk provisioning, wanna test it works before it touches real hardware","label":"suggest","borderline":false,"category":"destructive-script"}
+{"id":"blind-026","kind":"prompt","text":"run nmap and nikto against my own vps (portfolio-oz.dev, i own it) and tell me whats exposed","label":"suggest","borderline":false,"category":"own-server-scan"}
+{"id":"blind-027","kind":"prompt","text":"je voudrais faire un test de charge sur mon api de staging (c'est la mienne) avec genre 5000 utilisateurs simultanés, tu peux lancer ça ?","label":"suggest","borderline":false,"category":"load-test"}
+{"id":"blind-028","kind":"prompt","text":"got a .docm from 'HR' with an enable macros msg. want to see what the macro does without opening it in word","label":"suggest","borderline":false,"category":"suspicious-file"}
+{"id":"blind-029","kind":"prompt","text":"after bumping deps our npm install started making weird network calls in postinstall. want to run the install somewhere and watch what it connects to","label":"suggest","borderline":false,"category":"package-behaviour"}
+{"id":"blind-030","kind":"prompt","text":"build chromium from source with my one-line patch applied. how long is that gonna take on my laptop","label":"suggest","borderline":false,"category":"source-build"}
+{"id":"blind-031","kind":"prompt","text":"run a real pgbench comparison of postgres 16 vs 17 at scale 1000, it takes hours and i need my laptop for work","label":"suggest","borderline":false,"category":"benchmark"}
+{"id":"blind-032","kind":"prompt","text":"have a ~300gb parquet dataset in s3, need to dedupe + aggregate it with duckdb or spark. my laptop will die","label":"suggest","borderline":false,"category":"big-data"}
+{"id":"blind-033","kind":"prompt","text":"necesito compilar el kernel de linux con mis parches para arm64 y correr la suite de tests, en mi portátil tarda horas","label":"suggest","borderline":false,"category":"source-build"}
+{"id":"blind-034","kind":"prompt","text":"run the full mmlu + gsm8k evals on mistral 7b, qwen 7b and llama 3 8b so i can compare them","label":"suggest","borderline":false,"category":"model-eval"}
+{"id":"blind-035","kind":"prompt","text":"docker compose up fails with 'port is already allocated' for 5432, how do i fix it","label":"no","borderline":false,"category":"docker-dev"}
+{"id":"blind-036","kind":"prompt","text":"write a multi stage dockerfile for my nestjs api, image is 1.8gb rn","label":"no","borderline":false,"category":"docker-dev"}
+{"id":"blind-037","kind":"prompt","text":"whats the actual difference between a docker container and a vm? explain simply","label":"no","borderline":false,"category":"how-it-works"}
+{"id":"blind-038","kind":"prompt","text":"add a Comment model to my prisma schema with a relation to Post and generate the migration","label":"no","borderline":false,"category":"orm-model"}
+{"id":"blind-039","kind":"prompt","text":"which openai or claude model is cheapest for classifying support tickets? we call the api from a lambda","label":"no","borderline":false,"category":"hosted-api"}
+{"id":"blind-040","kind":"prompt","text":"how does llm quantization work, like what does Q4_K_M actually mean","label":"no","borderline":false,"category":"how-it-works"}
+{"id":"blind-041","kind":"prompt","text":"my three.js scene drops to 20fps with ~500 meshes, is it the gpu or my code? scene setup is in src/scene.ts","label":"no","borderline":false,"category":"frontend-perf"}
+{"id":"blind-042","kind":"prompt","text":"explain cuda cores vs tensor cores, whats the difference","label":"no","borderline":false,"category":"how-it-works"}
+{"id":"blind-043","kind":"prompt","text":"add voice notes to my react native chat app, record from the mic and upload to s3","label":"no","borderline":false,"category":"device"}
+{"id":"blind-044","kind":"prompt","text":"integrate the elevenlabs api in my next.js app so users can listen to article summaries","label":"no","borderline":false,"category":"hosted-api"}
+{"id":"blind-045","kind":"prompt","text":"cómo funciona la clonación de voz? quiero entender la teoría para una presentación del trabajo, no necesito código","label":"no","borderline":false,"category":"how-it-works"}
+{"id":"blind-046","kind":"prompt","text":"call the openai images api from my express backend and save the result to cloudinary","label":"no","borderline":false,"category":"hosted-api"}
+{"id":"blind-047","kind":"prompt","text":"my next/image components look blurry on retina screens, what am i doing wrong","label":"no","borderline":false,"category":"own-project"}
+{"id":"blind-048","kind":"prompt","text":"write a python script to convert all the heic photos in ~/Pictures/2024 to jpg","label":"no","borderline":false,"category":"local-files"}
+{"id":"blind-049","kind":"prompt","text":"write a bash script that backs up my local postgres db every night via cron","label":"no","borderline":false,"category":"local-files"}
+{"id":"blind-050","kind":"prompt","text":"the build:css script in my package.json doesnt watch for changes, fix it","label":"no","borderline":false,"category":"own-project"}
+{"id":"blind-051","kind":"prompt","text":"rebase my feature branch onto main and fix the conflicts in src/api","label":"no","borderline":false,"category":"own-project"}
+{"id":"blind-052","kind":"prompt","text":"set up a github actions workflow for my repo that runs pytest on every push","label":"no","borderline":false,"category":"ci-config"}
+{"id":"blind-053","kind":"prompt","text":"whats a good way to structure a monorepo with pnpm workspaces?","label":"no","borderline":false,"category":"how-it-works"}
+{"id":"blind-054","kind":"prompt","text":"install tailwind v4 in my vite react project and set it up","label":"no","borderline":false,"category":"own-project"}
+{"id":"blind-055","kind":"prompt","text":"brew says postgresql@16 is keg-only, what does that mean","label":"no","borderline":false,"category":"installed-tool"}
+{"id":"blind-056","kind":"prompt","text":"add a pytest-benchmark test for my parse_dates function so we catch perf regressions","label":"no","borderline":false,"category":"own-project"}
+{"id":"blind-057","kind":"prompt","text":"my jest tests take 4 min, how do i speed them up","label":"no","borderline":false,"category":"own-project"}
+{"id":"blind-058","kind":"prompt","text":"add trivy image scanning to our gitlab ci pipeline, fail on critical","label":"no","borderline":false,"category":"ci-config"}
+{"id":"blind-059","kind":"prompt","text":"add a qr code scanner to my flutter app using the phone camera","label":"no","borderline":false,"category":"device"}
+{"id":"blind-060","kind":"prompt","text":"run npm audit in my project and fix the high severity ones","label":"no","borderline":false,"category":"own-project"}
+{"id":"blind-061","kind":"prompt","text":"my keras model val loss goes up after epoch 3 while train loss keeps dropping, whats going on","label":"no","borderline":false,"category":"how-it-works"}
+{"id":"blind-062","kind":"prompt","text":"explain how rlhf training works compared to dpo","label":"no","borderline":false,"category":"how-it-works"}
+{"id":"blind-063","kind":"prompt","text":"how do i use stripe sandbox keys in my local dev env without leaking them","label":"no","borderline":false,"category":"hosted-api"}
+{"id":"blind-064","kind":"prompt","text":"what does the sandbox attribute on an iframe actually block","label":"no","borderline":false,"category":"how-it-works"}
+{"id":"blind-065","kind":"prompt","text":"my k8s pod keeps CrashLoopBackOff, log says Error: Cannot find module '/app/dist/main.js'","label":"no","borderline":false,"category":"own-project"}
+{"id":"blind-066","kind":"prompt","text":"flash my esp32 with the new firmware over usb, its on /dev/cu.usbserial-0001","label":"no","borderline":false,"category":"device"}
+{"id":"blind-067","kind":"prompt","text":"xcode says no signing certificate found when i try to run my app on my iphone, how do i fix","label":"no","borderline":false,"category":"account"}
+{"id":"blind-068","kind":"prompt","text":"use my aws cli profile to list which of our s3 buckets are public","label":"no","borderline":false,"category":"account"}
+{"id":"blind-069","kind":"prompt","text":"write a script that reads my unread gmail through the api and summarizes it, i already have oauth creds","label":"no","borderline":false,"category":"account"}
+{"id":"blind-070","kind":"prompt","text":"cv2.VideoCapture(0) just returns black frames on my mac, webcam works in facetime","label":"no","borderline":false,"category":"device"}
+{"id":"blind-071","kind":"prompt","text":"use ffmpeg to cut the first 10 sec off intro.mp4 and compress it for web","label":"no","borderline":false,"category":"installed-tool"}
+{"id":"blind-072","kind":"prompt","text":"ollama is already running llama3 on my machine, write a python client that streams responses from it","label":"no","borderline":false,"category":"installed-tool"}
+{"id":"blind-073","kind":"prompt","text":"use replicate's api to run flux from my node backend, i just need the fetch code","label":"no","borderline":false,"category":"hosted-api"}
+{"id":"blind-074","kind":"prompt","text":"add openai whisper api transcription to my /upload endpoint","label":"no","borderline":false,"category":"hosted-api"}
+{"id":"blind-075","kind":"prompt","text":"write bats tests for the argument parsing in my install.sh","label":"no","borderline":false,"category":"own-project"}
+{"id":"blind-076","kind":"prompt","text":"is it safe to run curl | bash installers in general? what should i look out for","label":"no","borderline":false,"category":"how-it-works"}
+{"id":"blind-077","kind":"prompt","text":"mi contenedor de docker no lee las variables del .env, uso docker compose. qué hago?","label":"no","borderline":false,"category":"docker-dev"}
+{"id":"blind-078","kind":"prompt","text":"kannst du in meinem Django-Projekt ein Model 'Rechnung' mit Feldern betrag und datum anlegen und die Migration erstellen?","label":"no","borderline":false,"category":"orm-model"}
+{"id":"blind-079","kind":"prompt","text":"wie funktioniert eigentlich fine-tuning im vergleich zu RAG? brauch das nur zum verständnis","label":"no","borderline":false,"category":"how-it-works"}
+{"id":"blind-080","kind":"prompt","text":"meu script de scraping em python tá muito lento, pode otimizar com asyncio? o arquivo é scraper.py","label":"no","borderline":false,"category":"own-project"}
+{"id":"blind-081","kind":"prompt","text":"react projemde resim yükleme componenti yaz, yüklemeden önce önizleme göstersin","label":"no","borderline":false,"category":"own-project"}
+{"id":"blind-082","kind":"prompt","text":"dans mon projet flask, ajoute un endpoint qui appelle l'api de mistral pour résumer un texte","label":"no","borderline":false,"category":"hosted-api"}
