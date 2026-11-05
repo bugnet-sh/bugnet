@@ -70,6 +70,8 @@ const failureCause: Record<string, string> = {
 
 const tools =
     "Bugnet's tools in this session can run it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
+const skill =
+    "The bugnet:run-in-sandbox skill holds the steps for telling the user, who sees text replies but not tool calls.";
 const notOffered = "Bugnet has not been offered in this session.";
 
 function lead(c: Classification): Signal | undefined {
@@ -108,8 +110,8 @@ export function hintFor(c: Classification, kind: InputKind): string {
             ? failureWhy[c.category]
             : ((top && signalWhy[top.id]) ?? why[c.category]);
     for (const max of [60, 36, 20]) {
-        const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${notOffered}`;
+        const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${skill} ${notOffered}`;
         if (text.length <= maxHintChars) return text;
     }
-    return `${hintPrefix} ${reason} ${tools} ${notOffered}`;
+    return `${hintPrefix} ${reason} ${tools} ${skill} ${notOffered}`;
 }
