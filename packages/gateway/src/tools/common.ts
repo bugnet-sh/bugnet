@@ -41,14 +41,15 @@ export function usd(micros: number | bigint): string {
     return `$${n.toFixed(n < 1 ? 3 : 2).replace(/0$/, "")}`;
 }
 
+// Claude Code shows the model only structuredContent, so the text leads it as message
 export function ok(
     text: string,
-    structuredContent: Record<string, unknown>,
+    structuredContent: Record<string, unknown> & { message?: never },
     meta?: Record<string, unknown>,
 ): CallToolResult {
     return {
         content: [{ type: "text", text }],
-        structuredContent,
+        structuredContent: { message: text, ...structuredContent },
         ...(meta ? { _meta: meta } : {}),
     };
 }
@@ -99,6 +100,13 @@ export async function sandboxFailure(
 export function toolUseId(ctx: ServerContext): string | undefined {
     const v = ctx.mcpReq._meta?.["claudecode/toolUseId"];
     return typeof v === "string" && v.length <= 200 ? v : undefined;
+}
+
+// Stable across a client's retries of one call, and never starting with _, which the router keeps
+export function idempotencyKey(ctx: ServerContext, parts: readonly string[]): string {
+    const id = toolUseId(ctx);
+    if (id && !id.startsWith("_")) return id;
+    return "k1" + createHash("sha256").update(parts.join("\0")).digest("hex").slice(0, 32);
 }
 
 // Sends progress every few seconds while work runs, so clients keep the call alive
