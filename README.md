@@ -71,6 +71,10 @@ Secrets come only from the environment ([`.env.example`](.env.example)):
 | `BUGNET_PAYMENTS_TOKEN`    | `payments.mode = "http"` only                                      |
 | `GITHUB_TOKEN`, `HF_TOKEN` | Optional, raise `bugnet_assess`'s API limits and read gated models |
 
+Give `GITHUB_TOKEN` and `HF_TOKEN` read access to public data only. `bugnet_assess` answers any
+caller for free and reports private repos and models as missing, and a token without private access
+keeps them hidden even if that check is ever missed.
+
 ## The plugin
 
 `plugin/` is a Claude Code plugin named `bugnet` whose MCP server is `sandbox`, so tools appear as

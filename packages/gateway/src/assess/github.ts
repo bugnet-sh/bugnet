@@ -93,6 +93,12 @@ export function repoInfoFrom(json: unknown): RepoInfo | null {
     };
 }
 
+// The gateway's token may see private repos, whose names and files must never reach a caller
+export function isPrivateRepo(json: unknown): boolean {
+    const d = (json ?? {}) as { private?: unknown; visibility?: unknown };
+    return d.private === true || (typeof d.visibility === "string" && d.visibility !== "public");
+}
+
 export function treeFrom(json: unknown): { tree: TreeEntry[]; truncated: boolean } {
     const d = (json ?? {}) as { tree?: unknown; truncated?: unknown };
     const raw = Array.isArray(d.tree) ? d.tree : [];
@@ -211,7 +217,12 @@ export async function readGithub(
         snap.complete = false;
         return snap;
     }
-    const info = repoInfoFrom(bodyJson(repoRes));
+    const repoJson = bodyJson(repoRes);
+    if (isPrivateRepo(repoJson)) {
+        snap.notes.push(note("github_not_found", "Repo not found on GitHub, or it is private"));
+        return snap;
+    }
+    const info = repoInfoFrom(repoJson);
     if (!info) {
         snap.notes.push(note("github_error", "GitHub returned repo details in an unknown shape"));
         snap.complete = false;

@@ -242,6 +242,29 @@ describe("assessor over GitHub", () => {
         expect(calls.length).toBe(before * 2);
     });
 
+    it("treats a private repo the gateway's token can see as not found", async () => {
+        const snap = malicious();
+        const routes = githubRoutes(snap);
+        const api = `https://api.github.com/repos/${snap.info?.owner}/${snap.info?.repo}`;
+        const repo = routes[api] as Route;
+        for (const extra of [{ private: true }, { private: false, visibility: "internal" }]) {
+            routes[api] = { json: { ...(repo.json as object), ...extra } };
+            const { fetch, calls } = fakeFetch(routes);
+            const a = createAssessor(config({ githubToken: "test-token" }), {
+                fetch,
+                now: () => now,
+            });
+            const r = await a.assess(
+                { source: `github.com/${snap.info?.owner}/${snap.info?.repo}` },
+                signal(),
+            );
+            expect(r.risk.findings).toMatchObject([{ id: "github_not_found" }]);
+            expect(r.source.facts).toEqual({});
+            expect(JSON.stringify(r)).not.toMatch(/Setup\.exe|loader\.dll/);
+            expect(calls).toHaveLength(1);
+        }
+    });
+
     it("notes a missing repo and keeps going", async () => {
         const { fetch } = fakeFetch({});
         const a = createAssessor(config(), { fetch, now: () => now });
@@ -306,6 +329,18 @@ describe("assessor over Hugging Face", () => {
             workload: "inference",
         });
         expect(r.source.facts).toMatchObject({ parameters: "82M", pipelineTag: "text-to-speech" });
+    });
+
+    it("treats a private model the gateway's token can see as not found", async () => {
+        const { fetch } = fakeFetch({
+            "https://huggingface.co/api/models/hexgrad/Kokoro-82M": {
+                json: { ...kokoro, private: true },
+            },
+        });
+        const a = createAssessor(config(), { fetch, now: () => now });
+        const r = await a.assess({ source: "hexgrad/Kokoro-82M" }, signal());
+        expect(r.risk.findings).toMatchObject([{ id: "hf_not_found" }]);
+        expect(r.source.facts).toEqual({});
     });
 
     it("strongly recommends a sandbox for image generation that does not fit a 16 GiB Mac", async () => {

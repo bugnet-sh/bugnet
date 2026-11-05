@@ -39,6 +39,7 @@ describe("Hugging Face API shape", () => {
             "securityStatus=true",
             "expand[]=siblings",
             "expand[]=safetensors",
+            "expand[]=private",
         ]) {
             expect(url).toContain(part);
         }

@@ -50,6 +50,7 @@ const expand = [
     "downloads",
     "likes",
     "createdAt",
+    "private",
 ];
 
 export function modelUrl(base: string, id: string, revision: string | null): string {
@@ -272,6 +273,14 @@ export function analyseModel(m: HfModel, now: number): ModelReport {
     };
 }
 
+function notFound(): Finding {
+    return {
+        id: "hf_not_found",
+        severity: "info",
+        title: "Model not found on Hugging Face, or it is private",
+    };
+}
+
 export async function readHuggingface(
     env: HfEnv,
     src: { id: string; revision: string | null },
@@ -284,17 +293,7 @@ export async function readHuggingface(
         ...(env.token ? { originHeaders: { authorization: `Bearer ${env.token}` } } : {}),
     });
     if (res.status === 401 || res.status === 404) {
-        return {
-            model: null,
-            notes: [
-                {
-                    id: "hf_not_found",
-                    severity: "info",
-                    title: "Model not found on Hugging Face, or it is private",
-                },
-            ],
-            complete: true,
-        };
+        return { model: null, notes: [notFound()], complete: true };
     }
     if (res.status === 429) {
         return {
@@ -322,7 +321,12 @@ export async function readHuggingface(
             complete: false,
         };
     }
-    const model = modelFrom(bodyJson(res));
+    const json = bodyJson(res);
+    // The gateway's token may see private models, which must look the same as missing ones
+    if ((json as { private?: unknown } | null)?.private === true) {
+        return { model: null, notes: [notFound()], complete: true };
+    }
+    const model = modelFrom(json);
     if (!model) {
         return {
             model: null,
