@@ -1,0 +1,12 @@
+{
+    "name": "bugnet",
+    "owner": { "name": "Bugnet" },
+    "description": "Bugnet plugins for Claude Code",
+    "plugins": [
+        {
+            "name": "bugnet",
+            "source": "./plugin",
+            "description": "Run untrusted or heavy software in disposable cloud Linux sandboxes"
+        }
+    ]
+}
