@@ -60,7 +60,7 @@ const huggingfacePages = new Set([
     "tasks",
 ]);
 
-// Git refuses spaces, controls and ~^:?*[\ in ref names, so a link holding them is no real ref
+// Git refuses spaces, control characters and most punctuation in ref names, so such a link is fake
 export const gitRef = /^(?!.*\.\.)(?!-)[A-Za-z0-9._/+@-]{1,200}$/;
 const assetName = /^[A-Za-z0-9._+@~-]{1,200}$/;
 

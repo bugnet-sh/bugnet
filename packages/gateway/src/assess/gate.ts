@@ -14,7 +14,7 @@ export function createGate(max: number, queued: number): Gate {
             active++;
         } else {
             if (waiting.length >= queued) return null;
-            // A finishing job hands its slot straight to the next waiter, so active never overshoots
+            // A finishing job hands its slot to the next waiter, so active never overshoots
             await new Promise<void>((resolve, reject) => {
                 const go = () => {
                     signal.removeEventListener("abort", stop);

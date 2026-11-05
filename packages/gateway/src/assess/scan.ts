@@ -198,7 +198,7 @@ function pipeMatches(text: string): { index: number; line: string }[] {
 
 const bareHost = /(?:^|[\s"'(=])((?:[a-z0-9-]{1,63}\.){1,10}[a-z]{2,24})(?=[/:])/gi;
 
-// True when every host the line names is the script's own, such as bun.sh fetching bun.sh/install.ps1
+// True when every host the line names is the script's own, as when bun.sh fetches bun.sh/x
 function onlySelf(line: string, selfHost: string | undefined): boolean {
     if (!selfHost) return false;
     const hosts = urlsIn(line).map((u) => u.host);
