@@ -137,6 +137,7 @@ describe.each(["legacy", "modern"] as const)("bugnet_secret_from_env, %s client"
             [
                 "Add a secret to your Bugnet sandbox?",
                 "",
+                "Sandbox: handle ending uvwxyz",
                 "Name: HF_TOKEN",
                 "Read from: environment variable HF_TOKEN",
                 "Sent only to: huggingface.co",

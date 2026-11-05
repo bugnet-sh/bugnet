@@ -202,12 +202,14 @@ function plain(s: string): string {
     return s.replace(/[\p{Cc}\p{Cf}]/gu, "?");
 }
 
-function prompt(spec: SecretSpec, checked: CheckedSource): string {
+// The handle's end lets the user match the sandbox with the chat's, against an injected handle
+function prompt(handle: string, spec: SecretSpec, checked: CheckedSource): string {
     const preset = presetFor(spec.name);
     const headers = ["Authorization", ...spec.headerNames].join(", ");
     const lines = [
         "Add a secret to your Bugnet sandbox?",
         "",
+        `Sandbox: handle ending ${handle.slice(-6)}`,
         `Name: ${spec.name}`,
         `Read from: ${plain(checked.label)}`,
         `Sent only to: ${spec.hosts.join(", ")}`,
@@ -343,7 +345,7 @@ export async function secretFromEnv(
             return inputRequired({
                 inputRequests: {
                     confirm: inputRequired.elicit({
-                        message: prompt(spec, checked),
+                        message: prompt(args.handle, spec, checked),
                         requestedSchema: { type: "object", properties: {} },
                     }),
                 },

@@ -1,6 +1,10 @@
 // The line grammar of the dotenv package, so a file that works with dotenv reads the same here
-const line =
-    /^\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?$/gm;
+const line = new RegExp(
+    String.raw`^\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)` +
+        String.raw`(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*\`(?:\\\`|[^\`])*\`|[^#\r\n]+)?` +
+        String.raw`\s*(?:#.*)?$`,
+    "gm",
+);
 
 export function parseDotenv(text: string): Map<string, string> {
     const out = new Map<string, string>();

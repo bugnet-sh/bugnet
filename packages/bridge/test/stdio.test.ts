@@ -51,7 +51,7 @@ describe("the bugnet-mcp command", () => {
     });
 
     for (const era of ["legacy", "modern"] as const) {
-        // A release pins only the deploy's box keys, so the development key the fake route lists fails
+        // A release pins only the deploy's box keys, so the fake route's development key fails
         it(
             `serves the gateway over stdio to a ${era} client and refuses an unpinned key`,
             { timeout: 60_000 },

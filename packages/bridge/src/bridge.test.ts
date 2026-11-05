@@ -295,7 +295,7 @@ describe("pass-through", () => {
         expect(b.lines.join("\n")).not.toMatch(/sbx_/);
     });
 
-    it("lists only its own tool while the gateway is down, then says when that changes", async () => {
+    it("lists only its own tool while the gateway is down, then says when it is back", async () => {
         const remote = fakeRemote(() => done);
         remote.up = false;
         const b = await bridge({ remote, deps: { relistMs: 10 } });
@@ -351,7 +351,7 @@ describe("pass-through", () => {
     });
 
     for (const era of ["legacy", "modern"] as const) {
-        it(`hands the gateway's input requests to a ${era} client and returns its answer`, async () => {
+        it(`hands the gateway's input requests to a ${era} client and back`, async () => {
             const remote = fakeRemote((params) => {
                 if (!params.inputResponses) {
                     return inputRequired({

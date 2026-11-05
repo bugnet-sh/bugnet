@@ -1,4 +1,4 @@
-// The router and the egress proxy compare these forms exactly, so the page and the bridge share them
+// The router and the egress proxy compare these forms exactly, so the page and bridge share them
 
 export class CanonicalError extends Error {}
 
