@@ -1,58 +1,67 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { z } from "zod";
 
-const context = "bugnet-quote-v1.";
-const prefix = "q1.";
+const context = "bugnet-quote-v2.";
+const prefix = "q2.";
+const flagOrder = [
+    ["ssh", "s"],
+    ["preview", "p"],
+    ["gpu", "g"],
+] as const;
 
-const quotedPackage = z.object({
-    id: z.string(),
-    priceMicros: z.number().int(),
-    minutes: z.number().int(),
-    vcpu: z.number().int(),
-    memoryMib: z.number().int(),
-    diskGib: z.number().int(),
-    gpuCount: z.number().int(),
-});
+export interface QuotedPackage {
+    id: string;
+    priceMicros: number;
+    minutes: number;
+    vcpu: number;
+    memoryMib: number;
+    diskGib: number;
+    gpuCount: number;
+}
 
-const claimsSchema = z.object({
-    packages: z.array(quotedPackage),
-    requirements: z.object({ ssh: z.boolean(), preview: z.boolean(), gpu: z.boolean() }),
-    source: z.string(),
-    expiresAt: z.number().int(),
-});
-
-export type QuotedPackage = z.infer<typeof quotedPackage>;
-export type QuoteClaims = z.infer<typeof claimsSchema>;
+export interface QuoteClaims {
+    requirements: { ssh: boolean; preview: boolean; gpu: boolean };
+    expiresAt: number;
+}
 
 export class QuoteError extends Error {}
 
-function mac(key: Buffer, seg: string): Buffer {
+// Agents copy the quoteId by hand, so it holds only the expiry, the needs and a short signature
+function mac(key: Buffer, body: string): string {
     return createHmac("sha256", key)
-        .update(context + seg)
-        .digest();
+        .update(context + body)
+        .digest()
+        .subarray(0, 12)
+        .toString("base64url");
 }
 
-// A quote is a signed claim the gateway hands out and gets back, so no replica stores it
 export function signQuote(key: Buffer, claims: QuoteClaims): string {
-    const seg = Buffer.from(JSON.stringify(claims)).toString("base64url");
-    return `${prefix}${seg}.${mac(key, seg).toString("base64url")}`;
+    const flags = flagOrder.map(([k, f]) => (claims.requirements[k] ? f : "")).join("") || "-";
+    const body = `${Math.ceil(claims.expiresAt / 1000).toString(36)}.${flags}`;
+    return `${prefix}${body}.${mac(key, body)}`;
 }
 
 export function verifyQuote(key: Buffer, token: string, now: number): QuoteClaims {
-    if (!token.startsWith(prefix)) throw new QuoteError("not a quote id");
-    const [seg, sig, extra] = token.slice(prefix.length).split(".");
-    if (!seg || !sig || extra !== undefined) throw new QuoteError("malformed quote id");
-    const want = mac(key, seg);
-    const got = Buffer.from(sig, "base64url");
+    const id = token.trim();
+    if (!id.startsWith(prefix)) throw new QuoteError("not a quote id, call bugnet_quote");
+    const [exp, flags, sig, extra] = id.slice(prefix.length).split(".");
+    if (!exp || !flags || !sig || extra !== undefined || !/^(-|s?p?g?)$/.test(flags)) {
+        throw new QuoteError("malformed quote id, copy it in full or call bugnet_quote again");
+    }
+    const want = Buffer.from(mac(key, `${exp}.${flags}`));
+    const got = Buffer.from(sig);
     if (got.length !== want.length || !timingSafeEqual(got, want)) {
-        throw new QuoteError("quote id does not verify");
+        throw new QuoteError(
+            "quote id does not verify, copy it in full or call bugnet_quote again",
+        );
     }
-    let claims: QuoteClaims;
-    try {
-        claims = claimsSchema.parse(JSON.parse(Buffer.from(seg, "base64url").toString("utf8")));
-    } catch {
-        throw new QuoteError("malformed quote id");
+    const expiresAt = Number.parseInt(exp, 36) * 1000;
+    if (!Number.isFinite(expiresAt) || now >= expiresAt) {
+        throw new QuoteError("quote expired, call bugnet_quote again");
     }
-    if (now >= claims.expiresAt) throw new QuoteError("quote expired, call bugnet_quote again");
-    return claims;
+    const requirements = {
+        ssh: flags.includes("s"),
+        preview: flags.includes("p"),
+        gpu: flags.includes("g"),
+    };
+    return { requirements, expiresAt };
 }

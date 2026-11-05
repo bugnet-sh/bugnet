@@ -120,7 +120,7 @@ const quoteInput = z.object({
 });
 
 const startInput = z.object({
-    quoteId: z.string().max(4000).describe("quoteId from bugnet_quote or bugnet_assess"),
+    quoteId: z.string().max(200).describe("quoteId from bugnet_quote or bugnet_assess"),
     packageId: z.string().max(100),
     confirmPriceUsd: z
         .string()
@@ -206,12 +206,7 @@ export async function buildQuote(
     }
     const rec = recommend(sized, args.workload, args.expectedMinutes);
     const expiresAt = deps.now() + deps.config.limits.quote_ttl;
-    const quoteId = signQuote(deps.config.secrets.quoteKey, {
-        packages: available,
-        requirements,
-        source: args.source ?? "",
-        expiresAt,
-    });
+    const quoteId = signQuote(deps.config.secrets.quoteKey, { requirements, expiresAt });
     const lines = [...available]
         .sort((a, b) => a.priceMicros - b.priceMicros)
         .map(
@@ -337,13 +332,23 @@ export const registerSandboxTools: Register = (server, deps) => {
                     if (e instanceof QuoteError) throw new GatewayError("invalid", e.message);
                     throw e;
                 }
-                const pkg = claims.packages.find((p) => p.id === args.packageId);
-                if (!pkg) {
+                const est = await deps.router.estimate(
+                    { requirements: claims.requirements },
+                    { signal: AbortSignal.timeout(15_000) },
+                );
+                const option = est.options.find((o) => o.packageId === args.packageId);
+                if (!option?.available) {
+                    const open = est.options.filter((o) => o.available).map((o) => o.packageId);
                     throw new GatewayError(
                         "invalid",
-                        `package ${args.packageId} is not in the quote`,
+                        `package ${args.packageId} ` +
+                            (option ? "cannot start right now" : "is not on offer") +
+                            (open.length > 0
+                                ? `, the packages open now are ${open.join(", ")}`
+                                : ""),
                     );
                 }
+                const pkg = quoted(option);
                 const priced = Number.parseFloat(args.confirmPriceUsd.replace(/^\$/, ""));
                 if (!Number.isFinite(priced) || Math.abs(priced * 1e6 - pkg.priceMicros) > 0.5) {
                     throw new GatewayError(

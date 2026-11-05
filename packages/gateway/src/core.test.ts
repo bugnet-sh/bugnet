@@ -1,7 +1,7 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { describe, expect, it } from "vitest";
 import { ConfigError, checkSettings, parseDuration, parseSettings, readSecrets } from "./config.ts";
-import { signQuote, verifyQuote, QuoteError, type QuoteClaims } from "./quote.ts";
+import { signQuote, verifyQuote, type QuoteClaims } from "./quote.ts";
 import { fromRouter, safeMessage } from "./router.ts";
 import { cleanText, looksLikeText, tail } from "./sanitize.ts";
 import { secretLooking } from "./tools/jobs.ts";
@@ -29,37 +29,28 @@ describe("sanitize", () => {
 describe("quote tokens", () => {
     const key = Buffer.alloc(32, 7);
     const claims: QuoteClaims = {
-        packages: [
-            {
-                id: "p1",
-                priceMicros: 50000,
-                minutes: 10,
-                vcpu: 2,
-                memoryMib: 2048,
-                diskGib: 10,
-                gpuCount: 0,
-            },
-        ],
-        requirements: { ssh: false, preview: false, gpu: false },
-        source: "",
-        expiresAt: 2_000,
+        requirements: { ssh: false, preview: false, gpu: true },
+        expiresAt: 2_000_000,
     };
 
-    it("round-trips and expires", () => {
+    it("round-trips, stays short enough to copy and expires", () => {
         const tok = signQuote(key, claims);
-        expect(verifyQuote(key, tok, 1_000)).toEqual(claims);
-        expect(() => verifyQuote(key, tok, 2_000)).toThrow(QuoteError);
+        expect(tok).toMatch(/^q2\.[0-9a-z]+\.g\.[A-Za-z0-9_-]{16}$/);
+        expect(tok.length).toBeLessThan(40);
+        expect(verifyQuote(key, ` ${tok} `, 1_000_000)).toEqual(claims);
+        expect(() => verifyQuote(key, tok, 2_000_000)).toThrow(/expired/);
     });
 
-    it("refuses another key and tampering", () => {
+    it("refuses another key, changed needs, a changed expiry and typos", () => {
         const tok = signQuote(key, claims);
         expect(() => verifyQuote(Buffer.alloc(32, 8), tok, 1_000)).toThrow(/verify/);
-        const [p, seg, sig] = tok.split(".");
-        const forged = Buffer.from(
-            JSON.stringify({ ...claims, packages: [{ ...claims.packages[0], priceMicros: 1 }] }),
-        ).toString("base64url");
-        expect(() => verifyQuote(key, `${p}.${forged}.${sig}`, 1_000)).toThrow(/verify/);
-        expect(seg).toBeTruthy();
+        const [p, exp, , sig] = tok.split(".");
+        expect(() => verifyQuote(key, `${p}.${exp}.-.${sig}`, 1_000)).toThrow(/verify/);
+        expect(() => verifyQuote(key, `${p}.zzzzzz.g.${sig}`, 1_000)).toThrow(/verify/);
+        const typo = tok.slice(0, -1) + (tok.endsWith("A") ? "B" : "A");
+        expect(() => verifyQuote(key, typo, 1_000)).toThrow(/copy it in full/);
+        expect(() => verifyQuote(key, `${p}.${exp}.x.${sig}`, 1_000)).toThrow(/malformed/);
+        expect(() => verifyQuote(key, "q1.abc.def", 1_000)).toThrow(/not a quote id/);
     });
 });
 
