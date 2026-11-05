@@ -72,9 +72,9 @@ const tools =
     "Bugnet's tools in this session can run or inspect it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
 const skill =
     "The bugnet:run-in-sandbox skill holds the steps for telling the user before any shell command.";
-// Claude Code invokes a skill whose description fits the request, so prompt hints name that fit
+// Claude Code invokes a skill whose description fits the request, so prompt hints name it
 const promptSkill =
-    "The request fits the description of the bugnet:run-in-sandbox skill, which holds the steps for telling the user before any shell command.";
+    "The bugnet:run-in-sandbox skill covers requests of this kind and holds the steps for telling the user before any shell command.";
 // Only a first prompt surely comes before any offer, so later hints state what the hook tracks
 const notOffered = "Bugnet has not been offered in this session.";
 const notUsed = "No Bugnet tool has been used in this session.";

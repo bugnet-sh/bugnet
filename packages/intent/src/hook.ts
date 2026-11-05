@@ -92,6 +92,15 @@ function prune(env: Env, now: number): void {
     }
 }
 
+function persist(env: Env, session: string, state: State, now: number): void {
+    saveState(env, session, state);
+    try {
+        prune(env, now);
+    } catch {
+        // Pruning is housekeeping, a failure here never costs the hint
+    }
+}
+
 // Directories a command clones into, resolved against the hook's cwd, and their repositories
 export function clonedDirs(command: string, cwd: string): { dir: string; repo: string }[] {
     return clonesIn(command).map((c) => ({
@@ -154,9 +163,10 @@ export function runHook(mode: Mode, input: HookInput, env: Env, now = Date.now()
         return null;
     }
     const firstPrompt = mode === "prompt" && !state.prompted;
-    if (firstPrompt) {
+    // Every prompt rewrites the file, so an active session's file never ages into pruning
+    if (mode === "prompt") {
         state.prompted = true;
-        saveState(env, session, state);
+        persist(env, session, state, now);
     }
     if (state.bugnetUsed || state.hinted.length >= maxHintsPerSession) return null;
     if (env.hints === "quiet" && mode !== "failure") return null;
@@ -186,12 +196,7 @@ export function runHook(mode: Mode, input: HookInput, env: Env, now = Date.now()
     const text = hintFor(c, mode, firstPrompt);
     if (!text) return null;
     state.hinted.push(key);
-    saveState(env, session, state);
-    try {
-        prune(env, now);
-    } catch {
-        // Pruning is housekeeping, a failure here never costs the hint
-    }
+    persist(env, session, state, now);
     const event =
         input.hook_event_name ??
         { prompt: "UserPromptSubmit", command: "PreToolUse", failure: "PostToolUseFailure" }[mode];

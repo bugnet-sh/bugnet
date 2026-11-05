@@ -1,7 +1,7 @@
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { clonedDirs, loadState, runHook, type Env } from "./hook.ts";
 
 function env(hints: Env["hints"] = "normal"): Env {
@@ -89,6 +89,26 @@ describe("runHook hints", () => {
         expect(runHook("prompt", plain, e2)).toBeNull();
         expect(loadState(e2, "h1").prompted).toBe(true);
         expect(context(runHook("prompt", kokoro, e2))).not.toContain("has not been offered");
+    });
+
+    it("prunes old sessions and keeps its own file fresh on prompts without a hint", () => {
+        const e = env();
+        const plain = { ...kokoro, prompt: "fix the failing test in my repo" };
+        runHook("prompt", { ...plain, session_id: "gone" }, e);
+        runHook("prompt", plain, e);
+        const gone = join(e.stateDir, "gone.json");
+        const own = join(e.stateDir, "h1.json");
+        const past = new Date(Date.now() - 3 * 24 * 3600 * 1000);
+        utimesSync(gone, past, past);
+        utimesSync(own, past, past);
+        const random = vi.spyOn(Math, "random").mockReturnValue(0);
+        try {
+            expect(runHook("prompt", plain, e)).toBeNull();
+        } finally {
+            random.mockRestore();
+        }
+        expect(existsSync(gone)).toBe(false);
+        expect(loadState(e, "h1").prompted).toBe(true);
     });
 
     it("prints nothing for an ordinary prompt", () => {

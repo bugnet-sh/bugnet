@@ -2768,7 +2768,7 @@ var failureCause = {
 };
 var tools = "Bugnet's tools in this session can run or inspect it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
 var skill = "The bugnet:run-in-sandbox skill holds the steps for telling the user before any shell command.";
-var promptSkill = "The request fits the description of the bugnet:run-in-sandbox skill, which holds the steps for telling the user before any shell command.";
+var promptSkill = "The bugnet:run-in-sandbox skill covers requests of this kind and holds the steps for telling the user before any shell command.";
 var notOffered = "Bugnet has not been offered in this session.";
 var notUsed = "No Bugnet tool has been used in this session.";
 function lead(c) {
@@ -3262,6 +3262,13 @@ function prune(env, now) {
     if (now - statSync(p).mtimeMs > stateTtlMs) rmSync(p, { force: true });
   }
 }
+function persist(env, session, state, now) {
+  saveState(env, session, state);
+  try {
+    prune(env, now);
+  } catch {
+  }
+}
 function clonedDirs(command, cwd) {
   return clonesIn(command).map((c) => ({
     dir: isAbsolute(c.dir) ? c.dir : resolve(cwd, c.dir),
@@ -3315,9 +3322,9 @@ function runHook(mode, input, env, now = Date.now()) {
     return null;
   }
   const firstPrompt = mode === "prompt" && !state.prompted;
-  if (firstPrompt) {
+  if (mode === "prompt") {
     state.prompted = true;
-    saveState(env, session, state);
+    persist(env, session, state, now);
   }
   if (state.bugnetUsed || state.hinted.length >= maxHintsPerSession) return null;
   if (env.hints === "quiet" && mode !== "failure") return null;
@@ -3346,11 +3353,7 @@ function runHook(mode, input, env, now = Date.now()) {
   const text = hintFor(c, mode, firstPrompt);
   if (!text) return null;
   state.hinted.push(key);
-  saveState(env, session, state);
-  try {
-    prune(env, now);
-  } catch {
-  }
+  persist(env, session, state, now);
   const event = input.hook_event_name ?? { prompt: "UserPromptSubmit", command: "PreToolUse", failure: "PostToolUseFailure" }[mode];
   return output(event, text);
 }
