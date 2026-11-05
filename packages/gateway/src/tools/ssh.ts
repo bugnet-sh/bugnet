@@ -86,8 +86,9 @@ export const registerSshTools: Register = (server, deps) => {
                 "comes from ssh-keygen -t ed25519 -N '' -f ~/.ssh/bugnet_<alias>, where <alias> " +
                 "is the sshAlias bugnet_start and bugnet_status show, and publicKey is the line " +
                 "of its .pub file, never the private key. Codex, whose sandbox cannot write " +
-                '~/.ssh, passes identityFile "$TMPDIR/bugnet/<alias>" and knownHostsFile ' +
-                '"$TMPDIR/bugnet/known_hosts". The same key again is safe.',
+                "~/.ssh, makes the key at $TMPDIR/bugnet/<alias> and passes identityFile " +
+                '"$TMPDIR/bugnet/<alias>" and knownHostsFile "$TMPDIR/bugnet/known_hosts". ' +
+                "The same key again is safe.",
             inputSchema: z.object({
                 handle: handleInput,
                 publicKey: z
