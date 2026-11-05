@@ -451,6 +451,27 @@ describe("whole repos", () => {
         expect(f[0]?.title.length).toBeLessThan(100);
     });
 
+    it("stays fast on hostile input at the largest file cap", () => {
+        const mib = 1024 * 1024;
+        const inputs = [
+            " ".repeat(mib),
+            "curl ".repeat(mib / 5),
+            "curl x | sh ".repeat(mib / 12),
+            `cmdclass = {${"'a',".repeat(mib / 4)}`,
+            "mnemonic ".repeat(mib / 9),
+            "-r".repeat(mib / 2),
+            `"${"a".repeat(199)}" `.repeat(mib / 202),
+            "eval(".repeat(mib / 5),
+        ];
+        for (const text of inputs) {
+            for (const path of ["setup.py", "README.md", "install.sh", "package.json"]) {
+                const started = performance.now();
+                scanFile(file(path, text), "normal");
+                expect(performance.now() - started).toBeLessThan(1500);
+            }
+        }
+    });
+
     it("sorts by severity, drops duplicates and keeps at most three per rule", () => {
         const f = (id: string, severity: Finding["severity"], evidence: string): Finding => ({
             id,

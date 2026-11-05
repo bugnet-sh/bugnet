@@ -61,11 +61,6 @@ function excerpt(text: string, index: number, prefix?: string): string {
     return evidence(prefix ? `${prefix}: ${line}` : line);
 }
 
-function lineAt(text: string, index: number): string {
-    const end = text.indexOf("\n", index);
-    return text.slice(index, end < 0 ? text.length : end);
-}
-
 function where(ctx: TextContext): string {
     return ctx.kind === "command" ? "The command" : ctx.path;
 }
@@ -142,10 +137,10 @@ function shadyHost(host: string): boolean {
 /* Text rules */
 
 const pipeShell: RegExp[] = [
-    /\b(?:curl|wget)\b[^\n|;&]*\|\s*(?:sudo\s+(?:-\S+\s+)*)?(?:ba|z|k|da|fi)?sh\b/gi,
-    /\b(?:curl|wget)\b[^\n|;&]*\|\s*(?:sudo\s+)?(?:python(?:\d(?:\.\d+)?)?|perl|ruby|node)\b(?!\s+-m\s+json)/gi,
-    /\b(?:iwr|irm|Invoke-WebRequest|Invoke-RestMethod)\b[^\n|]*\|\s*(?:iex|Invoke-Expression)\b/gi,
-    /\b(?:iex|Invoke-Expression)\b[\s(]*(?:New-Object\s+(?:System\.)?Net\.WebClient\)?\.DownloadString|(?:iwr|irm|Invoke-WebRequest|Invoke-RestMethod)\b)/gi,
+    /\b(?:curl|wget)\b[^\n|;&]{0,400}\|[ \t]*(?:sudo[ \t]+(?:-\S{1,20}[ \t]+){0,4})?(?:ba|z|k|da|fi)?sh\b/gi,
+    /\b(?:curl|wget)\b[^\n|;&]{0,400}\|[ \t]*(?:sudo[ \t]+)?(?:python(?:\d(?:\.\d+)?)?|perl|ruby|node)\b(?![ \t]+-m[ \t]+json)/gi,
+    /\b(?:iwr|irm|Invoke-WebRequest|Invoke-RestMethod)\b[^\n|]{0,400}\|[ \t]*(?:iex|Invoke-Expression)\b/gi,
+    /\b(?:iex|Invoke-Expression)\b[\s(]{0,10}(?:New-Object\s+(?:System\.)?Net\.WebClient\)?\.DownloadString|(?:iwr|irm|Invoke-WebRequest|Invoke-RestMethod)\b)/gi,
     /\b(?:ba|z)?sh\s+<\(\s*(?:curl|wget)\b/gi,
     /\b(?:ba|z)?sh\s+-c\s+["']\$\(\s*(?:curl|wget)\b/gi,
 ];
@@ -153,8 +148,12 @@ const pipeShell: RegExp[] = [
 export function pipeToShell(text: string, ctx: TextContext): Finding[] {
     const hits: Finding[] = [];
     for (const re of pipeShell) {
+        let seen = 0;
         for (const m of text.matchAll(re)) {
-            const shady = urlsIn(lineAt(text, m.index)).some((u) => shadyHost(u.host));
+            if (++seen > 50) break;
+            const end = m.index + m[0].length;
+            const near = m[0] + (text.slice(end, end + 300).split("\n")[0] ?? "");
+            const shady = urlsIn(near).some((u) => shadyHost(u.host));
             hits.push({
                 id: "pipe_to_shell",
                 severity: shady ? "high" : shift("medium", ctx.trust),
@@ -167,7 +166,7 @@ export function pipeToShell(text: string, ctx: TextContext): Finding[] {
 }
 
 const decodeExec =
-    /\b(?:eval|exec|Function|Invoke-Expression|iex)\s*\(\s*(?:(?:[\w$]+\.)*(?:atob|b64decode|b32decode|b85decode|a85decode|unhexlify|fromhex|decompress|loads|FromBase64String)\s*\(|Buffer\.from\s*\(|__import__\s*\(\s*['"](?:base64|zlib|marshal|codecs|binascii)['"])/i;
+    /\b(?:eval|exec|Function|Invoke-Expression|iex)\s*\(\s*(?:(?:[\w$]{1,40}\.){0,4}(?:atob|b64decode|b32decode|b85decode|a85decode|unhexlify|fromhex|decompress|loads|FromBase64String)\s*\(|Buffer\.from\s*\(|__import__\s*\(\s*['"](?:base64|zlib|marshal|codecs|binascii)['"])/i;
 const encodedPowershell =
     /\b(?:powershell|pwsh)(?:\.exe)?\b[^\n]{0,80}?\s-e(?:nc(?:odedcommand)?)?\s+[A-Za-z0-9+/=]{40,}/i;
 const longBlob = /[A-Za-z0-9+/]{200,}={0,2}|(?:[0-9a-fA-F]{2}){100,}|(?:\\x[0-9a-fA-F]{2}){40,}/g;
@@ -210,16 +209,19 @@ export function obfuscatedExec(text: string, ctx: TextContext): Finding[] {
 
 export function hiddenWhitespace(text: string, ctx: TextContext): Finding[] {
     if (ctx.kind !== "code") return [];
-    const m = /[ \t]{300,}\S/.exec(text);
-    if (!m) return [];
-    return [
-        {
-            id: "hidden_whitespace",
-            severity: "high",
-            title: `${ctx.path} hides code after a long run of blank space`,
-            evidence: excerpt(text, m.index, ctx.path),
-        },
-    ];
+    for (const m of text.matchAll(/[ \t]+/g)) {
+        const next = text.charAt(m.index + m[0].length);
+        if (m[0].length < 300 || next === "" || /\s/.test(next)) continue;
+        return [
+            {
+                id: "hidden_whitespace",
+                severity: "high",
+                title: `${ctx.path} hides code after a long run of blank space`,
+                evidence: excerpt(text, m.index, ctx.path),
+            },
+        ];
+    }
+    return [];
 }
 
 const webhookPatterns = [
@@ -322,13 +324,15 @@ const sendPatterns = [
     /\bsocket\.send/i,
     /\bUpload(?:String|File|Data)\b/,
     /\bInvoke-(?:RestMethod|WebRequest)\b/i,
-    /\bcurl\b[^\n]*\s(?:-d|--data(?:-binary|-raw|-urlencode)?|-F|--form|-T|--upload-file)\s/i,
+    /\bcurl\b[^\n]{0,300}\s(?:-d|--data(?:-binary|-raw|-urlencode)?|-F|--form|-T|--upload-file)\s/i,
     /api\/webhooks\//i,
 ];
 
 export function walletTheft(text: string, ctx: TextContext): Finding[] {
     const window = ctx.kind === "docs" ? 300 : 1500;
+    let seen = 0;
     for (const m of text.matchAll(walletTerm)) {
+        if (++seen > 50) break;
         const around = text.slice(Math.max(0, m.index - window), m.index + window);
         if (!sendPatterns.some((re) => re.test(around))) continue;
         return [
@@ -399,14 +403,14 @@ export function npmLifecycle(file: RepoFile, trust: Trust): Finding[] {
 const pyNetwork =
     /\b(?:urllib\.request|urlopen|urlretrieve|requests\.(?:get|post|put)|httpx\.(?:get|post|Client)|http\.client|socket\.socket|urllib3\.|aiohttp\.)/;
 const pyShellNet =
-    /\b(?:os\.system|os\.popen|subprocess\.\w+|check_output|check_call|Popen)\s*\([^\n]*\b(?:curl|wget|powershell|Invoke-WebRequest|bitsadmin|certutil)\b/;
+    /\b(?:os\.system|os\.popen|subprocess\.\w+|check_output|check_call|Popen)\s*\([^\n]{0,300}\b(?:curl|wget|powershell|Invoke-WebRequest|bitsadmin|certutil)\b/;
 const pyDecode =
     /\b(?:b64decode|b32decode|b85decode|a85decode|unhexlify|fromhex|marshal\.loads|zlib\.decompress)\s*\(/;
 const pyExec = /\b(?:exec|eval)\s*\(/g;
 const pyLocalExec =
     /^\s*(?:compile\s*\()?\s*(?:open|read|Path|pathlib|f\.read|fp\.read|io\.open)\b|version/;
 const pyInstallHook =
-    /cmdclass\s*=\s*\{[^}]*['"](?:install|develop|egg_info|bdist_wheel|build_py)['"]|class\s+\w+\s*\(\s*(?:install|develop|_install)\s*\)/;
+    /cmdclass\s*=\s*\{[^}]{0,500}['"](?:install|develop|egg_info|bdist_wheel|build_py)['"]|class\s+\w+\s*\(\s*(?:install|develop|_install)\s*\)/;
 
 export function setupPy(file: RepoFile, trust: Trust): Finding[] {
     const t = file.text;
@@ -769,7 +773,7 @@ function dependencyNames(f: RepoFile): string[] {
         }
     } else if (lower === "pyproject.toml" || lower === "setup.py") {
         for (const m of f.text.matchAll(
-            /["']([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:\[[^\]]*\])?\s*(?:[<>=!~;@]|["'])/g,
+            /["']([A-Za-z0-9][A-Za-z0-9._-]{0,100})[ \t]*(?:\[[^\]\n]{0,100}\])?[ \t]*(?:[<>=!~;@]|["'])/g,
         )) {
             names.push(m[1] as string);
         }
@@ -851,7 +855,7 @@ export function scanRepo(snap: RepoSnapshot, now: number): RepoScan {
 /* Commands */
 
 const rmSystem =
-    /\brm\s+(?:-[a-zA-Z]+\s+|--[a-z-]+\s+)*-[a-zA-Z]*[rR][a-zA-Z]*\s+(?:-[a-zA-Z]+\s+|--[a-z-]+\s+)*["']?(?:\/\*?|~\/?\*?|\$HOME\/?\*?|\$\{HOME\}\/?\*?|\/(?:usr|etc|var|bin|sbin|lib|lib64|boot|opt|System|Library|Applications|home|Users|root|private)\/?\*?)["']?(?=\s|$|;|&|\|)|\b(?:rmdir|rd)\s+\/s\b[^\n]*\b[A-Za-z]:\\(?:Windows|Users)?\\?(?=\s|$|["'])/i;
+    /\brm\s+(?:-[a-zA-Z]{1,10}\s+|--[a-z-]{1,30}\s+){0,6}-[a-zA-Z]{0,10}[rR][a-zA-Z]{0,10}\s+(?:-[a-zA-Z]{1,10}\s+|--[a-z-]{1,30}\s+){0,6}["']?(?:\/\*?|~\/?\*?|\$HOME\/?\*?|\$\{HOME\}\/?\*?|\/(?:usr|etc|var|bin|sbin|lib|lib64|boot|opt|System|Library|Applications|home|Users|root|private)\/?\*?)["']?(?=\s|$|;|&|\|)|\b(?:rmdir|rd)\s+\/s\b[^\n]*\b[A-Za-z]:\\(?:Windows|Users)?\\?(?=\s|$|["'])/i;
 
 const commandRules: { id: string; severity: Severity; title: string; re: RegExp }[] = [
     {
@@ -870,7 +874,7 @@ const commandRules: { id: string; severity: Severity; title: string; re: RegExp 
         id: "cmd_chmod_run",
         severity: "medium",
         title: "The command marks a file executable and runs it",
-        re: /\bchmod\s+(?:-\w+\s+)*(?:[ugoa]*\+x|[0-7]*[1357][0-7]{0,2})\s+\S+[^\n]*?(?:&&|;)\s*(?:sudo\s+)?\.{0,2}\/\S*/i,
+        re: /\bchmod\s+(?:-\w{1,10}\s+){0,4}(?:[ugoa]{0,4}\+x|[0-7]{0,3}[1357][0-7]{0,2})\s+[^\s;&]{1,200}[^\n]{0,200}?(?:&&|;)\s*(?:sudo\s+)?\.{0,2}\/\S*/i,
     },
     {
         id: "cmd_persistence",
