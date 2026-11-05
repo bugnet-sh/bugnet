@@ -429,8 +429,10 @@ export const registerSandboxTools: Register = (server, deps) => {
         {
             title: "Bugnet sandbox status",
             description:
-                "State, deadline and time left of a sandbox. waitSeconds waits for the state " +
-                "to change, for example while it is starting.",
+                "State, deadline, time left and extension prices of a sandbox. Everything is " +
+                "deleted at the deadline, so download results first, or extend with " +
+                "bugnet_extend once the user agrees. waitSeconds waits for the state to change, " +
+                "for example while it is starting.",
             inputSchema: z.object({
                 handle: handleInput,
                 waitSeconds: z.number().int().min(0).max(45).optional(),

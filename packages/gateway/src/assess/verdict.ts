@@ -243,32 +243,73 @@ interface SummaryInput {
     checked: boolean;
 }
 
+// Closing sentences that say what a Bugnet sandbox would do, with {} for the source name
+const claims = {
+    contain:
+        "Running {} in a disposable Bugnet sandbox keeps it away from the user's files, keys and accounts.",
+    rent: "A Bugnet cloud sandbox can run {} on rented hardware instead.",
+    safer: "A disposable Bugnet sandbox is safer than running {} on this machine.",
+    unchecked:
+        "Unchecked code is safer in a disposable Bugnet sandbox, which can run it from a working link or uploaded files without touching the user's computer.",
+    offMachine: "A Bugnet sandbox keeps that off the user's machine.",
+};
+
+function claim(kind: keyof typeof claims, it = ""): string {
+    return claims[kind].replace("{}", it);
+}
+
+// Matches the claim's fixed text from the end, since names such as vercel/next.js hold periods
+export function withoutSandboxClaim(summary: string): string {
+    for (const template of Object.values(claims)) {
+        const [head = "", tail] = template.split("{}");
+        if (tail === undefined) {
+            if (summary.endsWith(` ${head}`)) return summary.slice(0, -head.length - 1);
+            continue;
+        }
+        if (!summary.endsWith(tail)) continue;
+        const at = summary.lastIndexOf(` ${head}`, summary.length - tail.length - 1);
+        if (at >= 0) return summary.slice(0, at);
+    }
+    return summary;
+}
+
+// Work Bugnet is never offered for, keyed by the policy signal @bugnet/intent reports
+const policyTails: Record<string, string> = {
+    abuse: "Bugnet is never offered for crypto mining, floods, DDoS, mass scanning, credential stuffing or mass messaging, so there is no Bugnet option for this.",
+    lan_scan:
+        "A scan of a local network needs that network, which a cloud sandbox cannot reach, so there is no Bugnet option for this.",
+};
+
+export function refusedByPolicy(summary: string): boolean {
+    return Object.values(policyTails).some((t) => summary.endsWith(t));
+}
+
 export function summarise(s: SummaryInput): string {
     const name = s.report.name;
     const it = name || "it";
     if (s.recommendation === "sandbox_strongly_recommended") {
         if (s.risk && s.risk.severity === "high") {
-            return `${sentence(s.risk.title)} Running ${it} in a disposable Bugnet sandbox keeps it away from the user's files, keys and accounts.`;
+            return `${sentence(s.risk.title)} ${claim("contain", it)}`;
         }
         if (s.fit) {
-            return `${sentence(s.fit.title)} A Bugnet cloud sandbox can run ${it} on rented hardware instead.`;
+            return `${sentence(s.fit.title)} ${claim("rent", it)}`;
         }
     }
     if (s.recommendation === "sandbox_recommended") {
         if (s.risk && severityRank(s.risk.severity) >= severityRank("medium")) {
-            return `${sentence(s.risk.title)} A disposable Bugnet sandbox is safer than running ${it} on this machine.`;
+            return `${sentence(s.risk.title)} ${claim("safer", it)}`;
         }
         if (s.unverified) {
             const why = s.report.findings.find((f) => f.severity === "info");
             const reason = why ? ` (${why.title})` : "";
-            return `${name || "The source"} could not be checked${reason}. Unchecked code is safer in a disposable Bugnet sandbox.`;
+            return `${name || "The source"} could not be checked${reason}, so there is no evidence about the code either way. ${claim("unchecked")}`;
         }
         const cat = categoryOrder.find((c) => s.categories.includes(c));
         const phrase = (cat && categoryPhrase[cat]) || "it fits work better kept off this machine";
         if (s.checked) {
-            return `No red flags found${name ? ` in ${name}` : ""}${factText(s.report)}, but ${phrase}. A Bugnet sandbox keeps that off the user's machine.`;
+            return `No red flags found${name ? ` in ${name}` : ""}${factText(s.report)}, but ${phrase}. ${claim("offMachine")}`;
         }
-        return `${sentence(phrase)} A Bugnet sandbox keeps that off the user's machine.`;
+        return `${sentence(phrase)} ${claim("offMachine")}`;
     }
     if (!s.checked) {
         const why = s.report.findings.find((f) => f.severity === "info");
@@ -280,10 +321,11 @@ export function summarise(s: SummaryInput): string {
 
 /* Combining */
 
-function addCategory(set: Set<string>, run: () => Classification): void {
+function addCategory(set: Set<string>, policy: Set<string>, run: () => Classification): void {
     try {
         const c = run();
         if (c.suggest && c.category) set.add(c.category);
+        for (const sig of c.signals) if (Object.hasOwn(policyTails, sig.id)) policy.add(sig.id);
     } catch {
         return;
     }
@@ -293,13 +335,14 @@ export function combine(input: AssessInput, report: SourceReport): Assessment {
     const ctx = sessionContext(input.local);
     const commands = (input.commands ?? []).slice(0, maxCommands);
     const categories = new Set(report.categories);
+    const policy = new Set<string>();
     const raw: Finding[] = [...report.findings];
     for (const cmd of commands) {
         raw.push(...scanCommand(cmd));
-        addCategory(categories, () => classifyCommand(cmd, ctx));
+        addCategory(categories, policy, () => classifyCommand(cmd, ctx));
     }
     const task = input.task?.trim();
-    if (task) addCategory(categories, () => classifyPrompt(task, ctx));
+    if (task) addCategory(categories, policy, () => classifyPrompt(task, ctx));
 
     const findings = sortFindings(raw);
     const top = findings[0];
@@ -341,7 +384,7 @@ export function combine(input: AssessInput, report: SourceReport): Assessment {
     }
     const cats = categoryOrder.filter((c) => categories.has(c));
     cats.push(...[...categories].filter((c) => !categoryOrder.includes(c)));
-    const summary = summarise({
+    const base = summarise({
         recommendation,
         report,
         risk: top,
@@ -350,6 +393,8 @@ export function combine(input: AssessInput, report: SourceReport): Assessment {
         unverified,
         checked,
     });
+    const stop = Object.keys(policyTails).find((id) => policy.has(id));
+    const summary = stop ? `${withoutSandboxClaim(base)} ${policyTails[stop]}` : base;
     return {
         recommendation,
         summary,

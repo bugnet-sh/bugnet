@@ -37,6 +37,8 @@ export interface State {
     // The repository each cloned directory holds, such as github.com/acme/tool
     clonedRepos: Record<string, string>;
     bugnetUsed: boolean;
+    // Set by the first prompt, since only its hint can say that nothing was offered
+    prompted: boolean;
 }
 
 export interface Env {
@@ -69,9 +71,10 @@ export function loadState(env: Env, session: string): State {
             clonedDirs: Array.isArray(s.clonedDirs) ? s.clonedDirs : [],
             clonedRepos: repos && typeof repos === "object" && !Array.isArray(repos) ? repos : {},
             bugnetUsed: s.bugnetUsed === true,
+            prompted: s.prompted === true,
         };
     } catch {
-        return { hinted: [], clonedDirs: [], clonedRepos: {}, bugnetUsed: false };
+        return { hinted: [], clonedDirs: [], clonedRepos: {}, bugnetUsed: false, prompted: false };
     }
 }
 
@@ -86,6 +89,15 @@ function prune(env: Env, now: number): void {
     for (const f of readdirSync(env.stateDir)) {
         const p = join(env.stateDir, f);
         if (now - statSync(p).mtimeMs > stateTtlMs) rmSync(p, { force: true });
+    }
+}
+
+function persist(env: Env, session: string, state: State, now: number): void {
+    saveState(env, session, state);
+    try {
+        prune(env, now);
+    } catch {
+        // Pruning is housekeeping, a failure here never costs the hint
     }
 }
 
@@ -150,6 +162,12 @@ export function runHook(mode: Mode, input: HookInput, env: Env, now = Date.now()
         }
         return null;
     }
+    const firstPrompt = mode === "prompt" && !state.prompted;
+    // Every prompt rewrites the file, so an active session's file never ages into pruning
+    if (mode === "prompt") {
+        state.prompted = true;
+        persist(env, session, state, now);
+    }
     if (state.bugnetUsed || state.hinted.length >= maxHintsPerSession) return null;
     if (env.hints === "quiet" && mode !== "failure") return null;
 
@@ -175,15 +193,10 @@ export function runHook(mode: Mode, input: HookInput, env: Env, now = Date.now()
     if (!c.suggest || !c.category) return null;
     const key = c.category;
     if (state.hinted.includes(key)) return null;
-    const text = hintFor(c, mode);
+    const text = hintFor(c, mode, firstPrompt);
     if (!text) return null;
     state.hinted.push(key);
-    saveState(env, session, state);
-    try {
-        prune(env, now);
-    } catch {
-        // Pruning is housekeeping, a failure here never costs the hint
-    }
+    persist(env, session, state, now);
     const event =
         input.hook_event_name ??
         { prompt: "UserPromptSubmit", command: "PreToolUse", failure: "PostToolUseFailure" }[mode];

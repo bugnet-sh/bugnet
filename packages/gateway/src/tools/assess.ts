@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Assessment } from "../assess/assessor.ts";
 import { sortFindings } from "../assess/scan.ts";
-import { maxCommands, sentence } from "../assess/verdict.ts";
+import { maxCommands, refusedByPolicy, sentence, withoutSandboxClaim } from "../assess/verdict.ts";
 import { ok, withProgress, type Register } from "./common.ts";
 import { buildQuote, describeSize, sizeText, workloads, type BuiltQuote } from "./sandbox.ts";
 
@@ -10,16 +10,16 @@ export const quoteBudgetMs = 8_000;
 const shownFindings = 8;
 
 export const assessDescription =
-    "Free, read-only check before installing or running an untrusted GitHub repo, script or " +
-    "installer, an AI model such as text to speech, image generation or a local LLM, or " +
-    "anything that needs a GPU. It returns whether a disposable Bugnet cloud sandbox is safer " +
-    "or needed, and why: repo age, stars and owner, install scripts that download or run " +
+    "Free, read-only check before cloning, installing or running on the user's computer an AI " +
+    "model such as text to speech, image generation or a local LLM, an untrusted GitHub repo, " +
+    "script, installer or binary, a tool that needs Linux, x86 or an NVIDIA GPU, a risky " +
+    "experiment or an hours-long job. It returns whether a disposable Bugnet cloud sandbox is " +
+    "safer or needed, and why: repo age, stars and owner, install scripts that download or run " +
     "binaries, obfuscated code, pickle-only model weights, and the GPU, memory and disk the " +
     "work needs against the user's machine, plus a priced quote with a quoteId for " +
-    "bugnet_start. Pass what the user wants as task, the repo URL, Hugging Face model id or " +
-    "script URL as source, the commands you plan to run, and the user's os, arch, RAM and GPU " +
-    "when known. Fetched files are never returned, only short findings. It charges nothing " +
-    "and starts nothing.";
+    "bugnet_start. Pass the request as task, the repo URL, Hugging Face model id or script URL " +
+    "as source, planned commands, and the user's os, arch, RAM and GPU when known. Fetched " +
+    "files are never returned, only short findings. It charges nothing and starts nothing.";
 
 const assessInput = z.object({
     task: z.string().max(2000).optional().describe("What the user wants, in their words"),
@@ -95,7 +95,13 @@ export function renderAssessment(a: Assessment, quote: BuiltQuote | null): strin
             lines.push(`- ${f.severity}: ${f.title}${f.evidence ? ` [${f.evidence}]` : ""}`);
         }
     }
-    lines.push(needsLine(a), ...quoteLines(quote), "Ask the user before bugnet_start.");
+    lines.push(needsLine(a), ...quoteLines(quote));
+    if (a.recommendation !== "local_ok") {
+        lines.push(
+            "The user has not seen this check, so share it before any local install or run.",
+        );
+    }
+    lines.push("Ask the user before bugnet_start.");
     return lines.join("\n");
 }
 
@@ -107,7 +113,7 @@ export function tooLargeSummary(a: Assessment): string {
         `No Bugnet package is large enough for ${size}${fit ? " either" : ""}, ` +
         "so a smaller or quantised variant is the way to run it.";
     if (fit && a.risk.level !== "high") return `${sentence(fit.title)} ${tail}`;
-    return `${a.summary} ${tail}`;
+    return `${withoutSandboxClaim(a.summary)} ${tail}`;
 }
 
 // For work that fits a package Bugnet sells but none can start now, such as GPU work without a GPU class
@@ -117,7 +123,7 @@ export function unavailableSummary(a: Assessment): string {
         ? "No Bugnet GPU sandbox is available right now, so Bugnet cannot run it yet."
         : "No Bugnet package can start right now, try again in a minute.";
     if (fit && a.risk.level !== "high") return `${sentence(fit.title)} ${tail}`;
-    return `${a.summary.replace(/ A Bugnet cloud sandbox can run .*$/, "")} ${tail}`;
+    return `${withoutSandboxClaim(a.summary)} ${tail}`;
 }
 
 function within<T>(work: Promise<T>, ms: number): Promise<T> {
@@ -193,10 +199,13 @@ export const registerAssessTool: Register = (server, deps) => {
             } catch (e) {
                 deps.log.warn("assess quote failed", { err: (e as Error).message });
             }
-            if (quote && !quote.structured.largeEnough) {
-                assessment = { ...assessment, summary: tooLargeSummary(assessment) };
-            } else if (quote && !quote.structured.recommended) {
-                assessment = { ...assessment, summary: unavailableSummary(assessment) };
+            // A summary that rules Bugnet out stays as it is, whatever the quote holds
+            if (quote && !refusedByPolicy(assessment.summary)) {
+                if (!quote.structured.largeEnough) {
+                    assessment = { ...assessment, summary: tooLargeSummary(assessment) };
+                } else if (!quote.structured.recommended) {
+                    assessment = { ...assessment, summary: unavailableSummary(assessment) };
+                }
             }
             return ok(renderAssessment(assessment, quote), {
                 assessment,

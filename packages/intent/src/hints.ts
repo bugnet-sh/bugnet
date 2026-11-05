@@ -3,7 +3,7 @@ import { quoteSafe } from "./normalize.ts";
 import type { Category, Classification, InputKind, Signal } from "./types.ts";
 
 export const hintPrefix = "Bugnet hint (local pattern match, nothing was sent anywhere):";
-export const maxHintChars = 600;
+export const maxHintChars = 640;
 
 const noun: Record<Category, string> = {
     local_ai_model: "an AI model to run on this computer",
@@ -40,7 +40,7 @@ const why: Record<Category, string> = {
     local_ai_model:
         "The local route usually downloads gigabytes of model weights and installs PyTorch and CUDA packages into the user's environment.",
     untrusted_code:
-        "Unvetted code run locally gets the same access as the user, including their files, SSH keys and credentials.",
+        "Unvetted code run locally, even in a scratch folder or venv, has the user's access to their files, SSH keys and credentials.",
     environment:
         "Locally it means changing the user's own system or fighting a mismatch with its OS, CPU or GPU.",
     risky_experiment: "On the local machine it can wipe data or leave the system unstable.",
@@ -69,8 +69,15 @@ const failureCause: Record<string, string> = {
 };
 
 const tools =
-    "Bugnet's tools in this session can run it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
+    "Bugnet's tools in this session can run or inspect it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
+const skill =
+    "The bugnet:run-in-sandbox skill holds the steps for telling the user before any shell command.";
+// Claude Code invokes a skill whose description fits the request, so prompt hints name it
+const promptSkill =
+    "The bugnet:run-in-sandbox skill covers requests of this kind and holds the steps for telling the user before any shell command.";
+// Only a first prompt surely comes before any offer, so later hints state what the hook tracks
 const notOffered = "Bugnet has not been offered in this session.";
+const notUsed = "No Bugnet tool has been used in this session.";
 
 function lead(c: Classification): Signal | undefined {
     return c.signals.find((s) => s.weight > 0 && s.category === c.category);
@@ -100,16 +107,18 @@ function detection(c: Classification, kind: InputKind, max: number): string {
     return `the prompt asks to run or set up ${described(c, max)}.`;
 }
 
-export function hintFor(c: Classification, kind: InputKind): string {
+export function hintFor(c: Classification, kind: InputKind, firstPrompt = false): string {
     if (!c.suggest || !c.category) return "";
     const top = lead(c);
     const reason =
         kind === "failure"
             ? failureWhy[c.category]
             : ((top && signalWhy[top.id]) ?? why[c.category]);
+    const steps = kind === "prompt" ? promptSkill : skill;
+    const state = kind === "prompt" && firstPrompt ? notOffered : notUsed;
     for (const max of [60, 36, 20]) {
-        const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${notOffered}`;
+        const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${steps} ${state}`;
         if (text.length <= maxHintChars) return text;
     }
-    return `${hintPrefix} ${reason} ${tools} ${notOffered}`;
+    return `${hintPrefix} ${reason} ${tools} ${steps} ${state}`;
 }
