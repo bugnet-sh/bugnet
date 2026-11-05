@@ -1,38 +1,39 @@
-import { Client } from "@modelcontextprotocol/client";
-import { InMemoryTransport, McpServer } from "@modelcontextprotocol/server";
+import { Code } from "@connectrpc/connect";
 import { describe, expect, it } from "vitest";
 import type { Assessment, Assessor } from "../assess/assessor.ts";
 import { combine } from "../assess/verdict.ts";
-import { parseSettings, type Config } from "../config.ts";
-import { silentLog } from "../log.ts";
-import type { Payments } from "../payments/port.ts";
+import {
+    Confidence,
+    Dimension,
+    EstimateBasis,
+    GpuNeed,
+    SourceKind,
+    WarningCode,
+    Workload,
+    type EstimateRequest,
+} from "../gen/bugnet/router/v1/router_pb.ts";
+import { withClientAddress } from "../request.ts";
 import type { RouterClient } from "../router.ts";
 import { verifyQuote } from "../quote.ts";
 import {
+    callTool,
+    connectTools,
+    fakeRouter,
+    routerError,
+    testConfig,
+    testDeps,
+    testNow,
+    type RouterImpl,
+} from "../testing/harness.ts";
+import {
     assessDescription,
-    registerAssessTool,
     renderAssessment,
     tooLargeSummary,
     unavailableSummary,
 } from "./assess.ts";
-import type { Deps } from "./common.ts";
-import { buildQuote } from "./sandbox.ts";
+import { buildQuote, type BuiltQuote } from "./quote.ts";
 
-const now = Date.parse("2026-11-05T12:00:00Z");
-
-function config(): Config {
-    return {
-        ...parseSettings(""),
-        secrets: {
-            internalToken: "",
-            quoteKey: Buffer.alloc(32, 3),
-            orderPrivateKey: null,
-            paymentsToken: "",
-            githubToken: "",
-            huggingfaceToken: "",
-        },
-    };
-}
+const now = testNow;
 
 const assessment: Assessment = {
     recommendation: "sandbox_strongly_recommended",
@@ -79,7 +80,7 @@ function option(
 }
 
 async function connect(
-    router: Partial<RouterClient>,
+    router: RouterImpl,
     seen: { input?: unknown } = {},
     result: Assessment = assessment,
 ) {
@@ -89,20 +90,8 @@ async function connect(
             return result;
         },
     };
-    const deps: Deps = {
-        config: config(),
-        router: router as RouterClient,
-        payments: {} as Payments,
-        assessor,
-        log: silentLog,
-        now: () => now,
-    };
-    const server = new McpServer({ name: "t", version: "0" });
-    registerAssessTool(server, deps);
-    const [a, b] = InMemoryTransport.createLinkedPair();
-    await server.connect(a);
-    const client = new Client({ name: "t", version: "0" });
-    await client.connect(b);
+    const deps = testDeps({ router: fakeRouter(router), assessor });
+    const client = await connectTools(deps);
     return { client, deps };
 }
 
@@ -140,18 +129,18 @@ describe("bugnet_assess tool", () => {
 
     it("returns the verdict, at most eight findings, needs and a GPU quote", async () => {
         const seen: { input?: unknown } = {};
-        let requirements: unknown;
+        let asked: EstimateRequest | undefined;
         const { client, deps } = await connect(
             {
-                estimate: (async (req: { requirements: unknown }) => {
-                    requirements = req.requirements;
+                estimate(req) {
+                    asked = req;
                     return {
                         options: [
                             option("cpu-s", 50_000n, 0, 4096),
                             option("gpu-m", 900_000n, 1, 32768),
                         ],
                     };
-                }) as unknown as RouterClient["estimate"],
+                },
             },
             seen,
         );
@@ -179,12 +168,17 @@ describe("bugnet_assess tool", () => {
         );
         expect(text).toMatch(/quoteId \(valid 10 min\): q3\./);
         expect(text.trim().endsWith("Ask the user before bugnet_start.")).toBe(true);
-        expect(requirements).toMatchObject({ gpu: true });
+        expect(asked?.requirements).toMatchObject({ gpu: true });
+        expect(asked).toMatchObject({
+            source: "black-forest-labs/FLUX.1-schnell",
+            workload: Workload.INFERENCE,
+        });
         expect(seen.input).toMatchObject({
             task: "run flux",
             source: "black-forest-labs/FLUX.1-schnell",
         });
-        const quote = r.structuredContent?.quote as { quoteId: string };
+        const quote = r.structuredContent?.quote as { quoteId: string; floor: unknown };
+        expect(quote.floor).toBeNull();
         const claims = verifyQuote(deps.config.secrets.quoteKey, quote.quoteId, now);
         expect(claims.requirements.gpu).toBe(true);
         expect(r.structuredContent?.assessment.recommendation).toBe("sandbox_strongly_recommended");
@@ -205,10 +199,18 @@ describe("bugnet_assess tool", () => {
                 ],
             },
         };
-        const estimate = (async () => ({
-            options: [option("cpu-s", 50_000n, 0, 4096), option("gpu-m", 900_000n, 1, 32768)],
-        })) as unknown as RouterClient["estimate"];
-        const { client } = await connect({ estimate }, {}, huge);
+        const { client } = await connect(
+            {
+                estimate: () => ({
+                    options: [
+                        option("cpu-s", 50_000n, 0, 4096),
+                        option("gpu-m", 900_000n, 1, 32768),
+                    ],
+                }),
+            },
+            {},
+            huge,
+        );
         const r = (await client.callTool({
             name: "bugnet_assess",
             arguments: { source: "deepseek-ai/DeepSeek-R1" },
@@ -228,15 +230,17 @@ describe("bugnet_assess tool", () => {
 
     it("gives the router call a signal that aborts when the quote budget runs out", async () => {
         let seen: AbortSignal | undefined;
+        let abortedAtCall: boolean | undefined;
         const { client, deps } = await connect({
-            estimate: (async (_req: unknown, opts?: { signal?: AbortSignal }) => {
-                seen = opts?.signal;
+            estimate(_req, ctx) {
+                seen = ctx.signal;
+                abortedAtCall = ctx.signal.aborted;
                 return { options: [option("cpu-s", 50_000n, 0, 4096)] };
-            }) as unknown as RouterClient["estimate"],
+            },
         });
         await client.callTool({ name: "bugnet_assess", arguments: { source: "acme/model" } });
         expect(seen).toBeInstanceOf(AbortSignal);
-        expect(seen?.aborted).toBe(false);
+        expect(abortedAtCall).toBe(false);
         const stop = new AbortController();
         const hang = buildQuote(
             {
@@ -259,9 +263,9 @@ describe("bugnet_assess tool", () => {
 
     it("still returns the assessment when the router is down", async () => {
         const { client } = await connect({
-            estimate: (async () => {
-                throw new Error("connect ECONNREFUSED");
-            }) as unknown as RouterClient["estimate"],
+            estimate() {
+                throw routerError(Code.Unavailable, undefined, { message: "connect refused" });
+            },
         });
         const r = (await client.callTool({
             name: "bugnet_assess",
@@ -282,6 +286,190 @@ describe("bugnet_assess tool", () => {
             arguments: { commands: Array.from({ length: 21 }, () => "ls") },
         })) as Result;
         expect(r.isError).toBe(true);
+    });
+});
+
+describe("bugnet_assess with the router's estimator", () => {
+    const floored = (init: Record<string, unknown> = {}) => ({
+        options: [
+            { ...option("gpu-m", 900_000n, 1, 32768), fits: false, shortOn: [Dimension.MEMORY] },
+            {
+                ...option("gpu-l", 1_800_000n, 1, 65536, 200),
+                fits: true,
+                totalPriceMicros: 1_800_000n,
+            },
+        ],
+        estimateId: "0f8b6c2e-41d7-4a3b-9c5e-7d2a1b3c4d5e",
+        basis: EstimateBasis.SIGNALS,
+        confidence: Confidence.HIGH,
+        floor: {
+            resources: { vcpu: 8, memoryMib: 40960, diskGib: 80, gpuCount: 1, gpuMemoryGib: 24 },
+            minutes: 30,
+            gpu: GpuNeed.REQUIRED,
+        },
+        recommendedPackageId: "gpu-l",
+        reasons: [{ ruleId: "hf.weights", message: "The weights take 23.8 GiB" }],
+        warnings: [{ code: WarningCode.GATED_MODEL, message: "The model is gated" }],
+        source: { kind: SourceKind.HUGGINGFACE_MODEL },
+        ...init,
+    });
+
+    it("takes the floor, warnings and recommended package from the router", async () => {
+        const { client } = await connect({ estimate: () => floored() });
+        const r = (await client.callTool({
+            name: "bugnet_assess",
+            arguments: { source: "black-forest-labs/FLUX.1-schnell" },
+        })) as Result;
+        const quote = r.structuredContent?.quote as unknown as BuiltQuote["structured"];
+        expect(quote.floor).toEqual(
+            expect.objectContaining({ memoryGiB: 40, diskGiB: 80, gpu: "required" }),
+        );
+        expect(quote.recommended?.packageId).toBe("gpu-l");
+        expect(quote.warnings).toEqual(["The model is gated"]);
+        const a = r.structuredContent?.assessment as Assessment;
+        expect(a.needs).toEqual({
+            gpu: true,
+            minMemoryGiB: 40,
+            minDiskGiB: 80,
+            workload: "inference",
+        });
+        expect(a.summary).toBe(assessment.summary);
+        expect(a.risk).toEqual(assessment.risk);
+        const text = r.content.map((c) => c.text).join("\n");
+        expect(text).toMatch(
+            /^Needs: GPU yes, memory about 40 GiB, disk about 80 GiB, workload inference\./m,
+        );
+        expect(text).toMatch(
+            /^Recommended package: gpu-l, 4 vCPU \/ 64 GiB \/ 1 GPU, 30 min, \$1\.8 USDC\.$/m,
+        );
+        expect(text).toMatch(/^Why: The weights take 23\.8 GiB\.$/m);
+        expect(text).toMatch(/^Warning: The model is gated\.$/m);
+    });
+
+    it("says no package is large enough from the router's floor", async () => {
+        const { client } = await connect({
+            estimate: () =>
+                floored({
+                    recommendedPackageId: "",
+                    options: [
+                        {
+                            ...option("gpu-m", 900_000n, 1, 32768),
+                            fits: false,
+                            shortOn: [Dimension.MEMORY],
+                        },
+                    ],
+                    warnings: [{ code: WarningCode.TOO_LARGE, message: "No package has 40 GiB" }],
+                }),
+        });
+        const r = (await client.callTool({
+            name: "bugnet_assess",
+            arguments: { source: "black-forest-labs/FLUX.1-schnell" },
+        })) as Result;
+        const a = r.structuredContent?.assessment as Assessment;
+        expect(a.summary).toBe(
+            "Needs about 27.6 GiB of memory. No Bugnet package is large enough for about 40 GiB " +
+                "of memory and 80 GiB of disk either, so a smaller or quantised variant is the " +
+                "way to run it.",
+        );
+        const text = r.content.map((c) => c.text).join("\n");
+        expect(text).toMatch(/No package is large enough, 1 others are in the quote/);
+    });
+
+    it("says no package can start when the router's pick is busy", async () => {
+        const { client } = await connect({
+            estimate: () => {
+                const busy = floored();
+                busy.options[1] = { ...busy.options[1], available: false } as never;
+                return busy;
+            },
+        });
+        const r = (await client.callTool({
+            name: "bugnet_assess",
+            arguments: { source: "black-forest-labs/FLUX.1-schnell" },
+        })) as Result;
+        const a = r.structuredContent?.assessment as Assessment;
+        expect(a.summary).toMatch(/No Bugnet GPU sandbox is available right now/);
+    });
+
+    it("quotes without the source when the router refuses it", async () => {
+        const asked: string[] = [];
+        const { client } = await connect({
+            estimate(req) {
+                asked.push(req.source);
+                if (req.source) throw routerError(Code.InvalidArgument, "SOURCE_INVALID");
+                return { options: [option("cpu-s", 50_000n, 0, 4096)] };
+            },
+        });
+        const r = (await client.callTool({
+            name: "bugnet_assess",
+            arguments: { source: "black-forest-labs/FLUX.1-schnell" },
+        })) as Result;
+        expect(asked).toEqual(["black-forest-labs/FLUX.1-schnell", ""]);
+        expect(r.structuredContent?.quote).not.toBeNull();
+    });
+
+    it("sends no source the assessor could not read as one", async () => {
+        let asked: EstimateRequest | undefined;
+        const { client } = await connect(
+            {
+                estimate(req) {
+                    asked = req;
+                    return { options: [option("cpu-s", 50_000n, 0, 4096)] };
+                },
+            },
+            {},
+            { ...assessment, source: { kind: "none", ref: "", facts: {} } },
+        );
+        await client.callTool({ name: "bugnet_assess", arguments: { source: "just words" } });
+        expect(asked?.source).toBe("");
+    });
+
+    it("tells the RetryInfo delay when the router limits the quote", async () => {
+        const { client } = await connect({
+            estimate() {
+                throw routerError(Code.ResourceExhausted, "RATE_LIMITED", { retryAfterMs: 5000 });
+            },
+        });
+        const r = (await client.callTool({
+            name: "bugnet_assess",
+            arguments: { source: "acme/model" },
+        })) as Result;
+        expect(r.isError).toBeFalsy();
+        const text = r.content.map((c) => c.text).join("\n");
+        expect(text).toMatch(
+            /^No quote: too many quotes for now, bugnet_quote answers again after 5 s\.$/m,
+        );
+        expect(r.structuredContent?.assessment.summary).toBe(assessment.summary);
+    });
+
+    it("is limited per client address before any source is read", async () => {
+        const seen: { input?: unknown } = {};
+        const assessor: Assessor = {
+            async assess(input) {
+                seen.input = input;
+                return assessment;
+            },
+        };
+        const deps = testDeps({
+            config: testConfig("[limits]\nquote_burst = 1"),
+            router: fakeRouter({
+                estimate: () => ({ options: [option("cpu-s", 50_000n, 0, 4096)] }),
+            }),
+            assessor,
+        });
+        const client = await connectTools(deps);
+        const call = () =>
+            withClientAddress("198.51.100.4", () =>
+                callTool(client, "bugnet_assess", { source: "acme/model" }),
+            );
+        expect((await call()).isError).toBe(false);
+        seen.input = undefined;
+        const limited = await call();
+        expect(limited.isError).toBe(true);
+        expect(limited.text).toBe(
+            "assess: too many quotes and checks from this address for now. Retry after 5 s.",
+        );
+        expect(seen.input).toBeUndefined();
     });
 });
 

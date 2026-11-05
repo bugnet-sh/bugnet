@@ -1,9 +1,20 @@
+import { Code, ConnectError } from "@connectrpc/connect";
 import { z } from "zod";
 import type { Assessment } from "../assess/assessor.ts";
 import { sortFindings } from "../assess/scan.ts";
 import { maxCommands, refusedByPolicy, sentence, withoutSandboxClaim } from "../assess/verdict.ts";
-import { ok, withProgress, type Register } from "./common.ts";
-import { buildQuote, describeSize, sizeText, workloads, type BuiltQuote } from "./sandbox.ts";
+import { fromRouter } from "../router.ts";
+import { failure, ok, withProgress, type Deps, type Register } from "./common.ts";
+import {
+    buildQuote,
+    describeSize,
+    limitQuotes,
+    sizeText,
+    workloads,
+    type BuiltQuote,
+    type QuoteFloor,
+    type QuoteRequest,
+} from "./quote.ts";
 
 export const assessBudgetMs = 12_000;
 export const quoteBudgetMs = 8_000;
@@ -56,29 +67,49 @@ function needsLine(a: Assessment): string {
     return `Needs: GPU ${n.gpu ? "yes" : "no"}, memory ${mem}, disk ${disk}, workload ${n.workload}.${fit}`;
 }
 
-function quoteLines(quote: BuiltQuote | null): string[] {
+export interface RenderOptions {
+    ttlMinutes?: number;
+    // The router's RetryInfo delay when it refused the quote for its rate limit
+    retryAfterMs?: number | null;
+}
+
+function quoteLines(quote: BuiltQuote | null, opts: RenderOptions): string[] {
+    if (!quote && opts.retryAfterMs != null) {
+        const s = Math.ceil(opts.retryAfterMs / 1000);
+        return [`No quote: too many quotes for now, bugnet_quote answers again after ${s} s.`];
+    }
     if (!quote) return ["No quote: prices are unavailable right now, call bugnet_quote later."];
     const q = quote.structured;
     const lines: string[] = [];
     const rec = q.recommended;
-    const pkg = rec ? q.packages.find((p) => p.id === rec.packageId) : undefined;
+    const open = q.packages.filter((p) => p.available);
+    const pkg = rec ? open.find((p) => p.id === rec.packageId) : undefined;
     if (rec) {
         const size = pkg ? `, ${describeSize(pkg)}, ${pkg.minutes} min` : "";
+        const why = rec.why ? `, because ${rec.why}` : "";
+        const n = rec.extensionsNeeded;
+        const total =
+            n > 0 ? `, ${rec.totalPriceUsd} in all with ${n} extension${n > 1 ? "s" : ""}` : "";
         lines.push(
-            `Recommended package: ${rec.packageId}${size}, ${rec.priceUsd} USDC, because ${rec.why}.`,
+            `Recommended package: ${rec.packageId}${size}, ${rec.priceUsd} USDC${total}${why}.`,
         );
-    } else if (q.packages.length > 0) {
+        if (!rec.why && q.reasons.length > 0) lines.push(`Why: ${q.reasons.join(". ")}.`);
+    } else if (open.length > 0) {
         const why = q.largeEnough ? "fits these needs" : "is large enough";
-        lines.push(`No package ${why}, ${q.packages.length} others are in the quote.`);
+        lines.push(`No package ${why}, ${open.length} others are in the quote.`);
     } else {
         lines.push("No package can start right now. Try again in a minute.");
     }
     for (const w of q.warnings) lines.push(`Warning: ${w}.`);
-    if (q.packages.length > 0) lines.push(`quoteId (valid 10 min): ${q.quoteId}`);
+    if (open.length > 0) lines.push(`quoteId (valid ${opts.ttlMinutes ?? 10} min): ${q.quoteId}`);
     return lines;
 }
 
-export function renderAssessment(a: Assessment, quote: BuiltQuote | null): string {
+export function renderAssessment(
+    a: Assessment,
+    quote: BuiltQuote | null,
+    opts: RenderOptions = {},
+): string {
     const all = sortFindings([...a.risk.findings, ...a.fit.findings]);
     const shown = all.slice(0, shownFindings);
     const cats = a.categories.length > 0 ? ` Categories: ${a.categories.join(", ")}.` : "";
@@ -95,7 +126,7 @@ export function renderAssessment(a: Assessment, quote: BuiltQuote | null): strin
             lines.push(`- ${f.severity}: ${f.title}${f.evidence ? ` [${f.evidence}]` : ""}`);
         }
     }
-    lines.push(needsLine(a), ...quoteLines(quote));
+    lines.push(needsLine(a), ...quoteLines(quote, opts));
     if (a.recommendation !== "local_ok") {
         lines.push(
             "The user has not seen this check, so share it before any local install or run.",
@@ -126,6 +157,32 @@ export function unavailableSummary(a: Assessment): string {
     return `${withoutSandboxClaim(a.summary)} ${tail}`;
 }
 
+// The router's floor replaces the gateway's own sizing once its estimator gives one
+export function sizedByRouter(a: Assessment, floor: QuoteFloor): Assessment {
+    const needs = {
+        ...a.needs,
+        gpu: floor.gpu === "required",
+        minMemoryGiB: floor.memoryGiB > 0 ? floor.memoryGiB : null,
+        minDiskGiB: floor.diskGiB > 0 ? floor.diskGiB : null,
+    };
+    return { ...a, needs };
+}
+
+// A source the router refuses still leaves a quote for the work without it
+async function assessQuote(
+    deps: Deps,
+    req: QuoteRequest,
+    signal: AbortSignal,
+): Promise<BuiltQuote> {
+    try {
+        return await buildQuote(deps, req, signal);
+    } catch (e) {
+        const refused = e instanceof ConnectError && e.code === Code.InvalidArgument;
+        if (!refused || req.source === undefined) throw e;
+        return buildQuote(deps, { ...req, source: undefined }, signal);
+    }
+}
+
 function within<T>(work: Promise<T>, ms: number): Promise<T> {
     let timer: NodeJS.Timeout | undefined;
     const late = new Promise<never>((_, reject) => {
@@ -145,6 +202,11 @@ export const registerAssessTool: Register = (server, deps) => {
             _meta: { "anthropic/alwaysLoad": true },
         },
         async (args, ctx) => {
+            try {
+                limitQuotes(deps, "assess");
+            } catch (e) {
+                return failure(e, "assess");
+            }
             const signal = AbortSignal.any([
                 ctx.mcpReq.signal,
                 AbortSignal.timeout(assessBudgetMs),
@@ -176,21 +238,24 @@ export const registerAssessTool: Register = (server, deps) => {
                 };
             }
             let quote: BuiltQuote | null = null;
+            let retryAfterMs: number | null = null;
             const quoteSignal = AbortSignal.any([
                 ctx.mcpReq.signal,
                 AbortSignal.timeout(quoteBudgetMs),
             ]);
             try {
                 quote = await within(
-                    buildQuote(
+                    assessQuote(
                         deps,
                         {
-                            source: args.source,
+                            source: assessment.source.kind !== "none" ? args.source : undefined,
                             workload: assessment.needs.workload,
                             expectedMinutes: args.expectedMinutes,
                             needs: assessment.needs.gpu ? ["gpu"] : [],
-                            minMemoryGiB: assessment.needs.minMemoryGiB,
-                            minDiskGiB: assessment.needs.minDiskGiB,
+                            fallback: {
+                                minMemoryGiB: assessment.needs.minMemoryGiB,
+                                minDiskGiB: assessment.needs.minDiskGiB,
+                            },
                         },
                         quoteSignal,
                     ),
@@ -198,16 +263,23 @@ export const registerAssessTool: Register = (server, deps) => {
                 );
             } catch (e) {
                 deps.log.warn("assess quote failed", { err: (e as Error).message });
+                const err = fromRouter(e, "quote");
+                if (err.kind === "rate_limited") retryAfterMs = err.retryAfterMs;
             }
+            const floor = quote?.structured.floor ?? null;
+            if (floor) assessment = sizedByRouter(assessment, floor);
             // A summary that rules Bugnet out stays as it is, whatever the quote holds
             if (quote && !refusedByPolicy(assessment.summary)) {
-                if (!quote.structured.largeEnough) {
+                const n = assessment.needs;
+                const sized = n.minMemoryGiB !== null || n.minDiskGiB !== null;
+                if (!quote.structured.largeEnough && sized) {
                     assessment = { ...assessment, summary: tooLargeSummary(assessment) };
                 } else if (!quote.structured.recommended) {
                     assessment = { ...assessment, summary: unavailableSummary(assessment) };
                 }
             }
-            return ok(renderAssessment(assessment, quote), {
+            const ttlMinutes = Math.round(deps.config.limits.quote_ttl / 60_000);
+            return ok(renderAssessment(assessment, quote, { ttlMinutes, retryAfterMs }), {
                 assessment,
                 quote: quote?.structured ?? null,
             });

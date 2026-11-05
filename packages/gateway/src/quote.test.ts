@@ -117,9 +117,7 @@ describe("quote ids", () => {
         const id = signQuote(key, claims);
         expect(() => verifyQuote(key, id.slice(0, -3), before)).toThrow(/copy it in full/);
         const [p, exp, flags, , sig] = fields(id);
-        expect(() => verifyQuote(key, [p, exp, flags, sig].join("."), before)).toThrow(
-            /malformed/,
-        );
+        expect(() => verifyQuote(key, [p, exp, flags, sig].join("."), before)).toThrow(/malformed/);
         expect(() => verifyQuote(key, `${id}.extra`, before)).toThrow(/malformed/);
         expect(() => verifyQuote(key, [p, exp, "q", "-", sig].join("."), before)).toThrow(
             /malformed/,

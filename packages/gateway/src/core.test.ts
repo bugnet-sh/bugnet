@@ -4,7 +4,7 @@ import { ConfigError, checkSettings, parseDuration, parseSettings, readSecrets }
 import { fromRouter, safeMessage } from "./router.ts";
 import { cleanText, looksLikeText, tail } from "./sanitize.ts";
 import { secretLooking } from "./tools/jobs.ts";
-import { recommend } from "./tools/sandbox.ts";
+import { recommend } from "./tools/quote.ts";
 import type { QuotedPackage } from "./quote.ts";
 
 describe("sanitize", () => {
