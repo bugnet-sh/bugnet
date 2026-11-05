@@ -9,6 +9,9 @@ export interface ScriptReport {
     findings: Finding[];
 }
 
+// Install hosts can serve a clean script to a scanner and the payload to curl, so this asks as curl does
+export const scriptHeaders = { "user-agent": "curl/8.7.1", accept: "*/*" };
+
 const binaryName =
     /\.(?:exe|dll|scr|msi|bat|cmd|ps1|vbs|jar|apk|so|dylib|bin|appimage|deb|rpm|pkg|dmg|zip|rar|7z|tar|tgz|gz|xz)$/i;
 
@@ -50,7 +53,11 @@ export async function readScript(
     signal: AbortSignal,
 ): Promise<ScriptReport> {
     const findings: Finding[] = [];
-    const res = await env.fetch(url, { signal, maxBytes: env.maxFileBytes });
+    const res = await env.fetch(url, {
+        signal,
+        maxBytes: env.maxFileBytes,
+        headers: scriptHeaders,
+    });
     const facts: ScriptReport["facts"] = { host: hostOf(res.url) ?? "", status: res.status };
     if (res.url !== url) facts.redirectedTo = hostOf(res.url) ?? "";
     if (res.status !== 200) {
