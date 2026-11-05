@@ -55,6 +55,13 @@ export const action = family(String.raw`
     baixar|baixa|baixe|fazer funcionar|por pra rodar
 `);
 
+// A request aimed at pasted commands, as opposed to editing or explaining them
+export const runsPasted = family(String.raw`
+    (?:run|execute|exec|try|install|launch|start|paste|ejecut\w*|corre|correr|calistir\w*|ausfu(?:e)?hr\w*|rodar|roda|executar|instala\w*)(?: (?:it|this|that|these|them|those|the))?(?: (?:above|below|following|same))?(?: (?:install )?(?:commands?|scripts?|snippet|lines?|one[- ]liners?|installer|steps?|code|block))?(?= *(?:$|[\n,.!?:;]|(?:for|please|pls|on|in|here|now|again|first|and|then|so|to|from|locally|myself|anyway)(?![a-z])))
+    (?:set|fire|boot) (?:it|this|that|them) up|get (?:it|this|that|them) (?:running|working|going)
+    safe to (?:run|install|execute)|is (?:this|it|that) safe
+`);
+
 // Doing the AI task itself counts as intent for AI subjects
 export const taskVerb = family(String.raw`
     transcrib\w*|transkribier\w*|desifre\w*|yaziya (?:dok|cevir|aktar)\w*|subtitl\w*|caption\w*|diariz\w*
@@ -162,56 +169,88 @@ export const ownRepoBefore = family(String.raw`
     (?:my|our|mine|benim|kendi|mi|nuestro|meu|nosso|mein\w*|unser\w*) (?:own |propio |eigene\w* )?(?:\w+ )?(?:repo|repository|fork|project|app|site|code|repom|projem|proyecto|projeto|projekt)\w*[ :]*(?:at |on |from |is |here |-)?$
 `);
 
+// Things a person can hand over that run as code, so a client sending a bug report does not count
+const codeNoun = String.raw`(?:repo|repos|repository|script|scripts|(?<!(?:csv|json|pdf|data|log|text|config|excel|word|design|figma|image|video|audio) )files?|binary|binaries|tool|tools|bot|bots|exe|executable|zip|archive|app|apk|dmg|msi|installer|program|plugin|extension|package|mod|mods|patcher|crack|cheat|hack|cli|one[- ]liner|take[- ]home|mcp server|[\w-]+\.(?:exe|zip|rar|7z|apk|dmg|pkg|app|msi|jar|sh|py|js|ps1|bat))(?![a-z0-9_])`;
+
+const person = String.raw`(?:an? |my |some |this |that |the |random )?(?:random )?(?:friend|buddy|mate|cousin|brother|sister|someone|somebody|some ?one|guy|dude|stranger|recruiter|client|vendor|person|user|redditor|youtuber|streamer|seller|account|anon)s?(?! (?:on|from|in|at) (?:my|our) (?:team|company|org|work|office|department))`;
+
+const handed = String.raw`(?:sent|sends|send|shared|shares|gave|gives|linked|links|dropped|drops|posted|posts|dm'?d|dmed|messaged|emailed|uploaded|recommended|recommends|passed|forwarded|handed)`;
+
+// Where strangers post code
+const place = String.raw`(?:reddit|subreddit|discord|telegram|youtube|tiktok|twitter|tweet|x\.com|forum|forums|hacker news|4chan|facebook|instagram|whatsapp|pastebin|gist|medium|blog|random (?:site|website|page)|website|video|livestream|stream|group chat|channel|thread|comments?|dms?|github|gitlab)`;
+
+const pronoun = String.raw`(?:this|it|these|them|that)(?= *(?:$|[\n,.!?:;]|(?:on|over|via|in|from|earlier|yesterday|today|last|and|but|to|so|which|for)(?![a-z])))`;
+
+const handedObject = String.raw`(?: (?:me|us|him|her|them))?(?: (?:${pronoun}|(?:(?:a|an|the|this|that|these|those|their|his|her|some|over|along) )?(?:link to (?:(?:a|an|the|this|their|his|her|some) )?)?(?:[\w'.-]+ ){0,3}?${codeNoun}))`;
+
+// Code that reached the user from someone else, and the place or person it came from
 export const origin = family(String.raw`
-    (?:found|saw|seen|got|spotted|came across)\b[^\n]{0,40}?\b(?:on|in|at|from|via) (?:a |an |the |some )?(?:\w+ ){0,2}?(?:reddit|discord|telegram|youtube|tiktok|twitter|tweet|x\.com|forum|thread|blog|medium|pastebin|hacker news|4chan|facebook|instagram|whatsapp|random site|website|video|stream|server|group|channel)
-    from (?:a |an |the |some )?(?:\w+ ){0,2}?(?:reddit|discord|telegram|youtube|tiktok|twitter|tweet|forum|thread|pastebin|hacker news|4chan|random site|blog comment)
-    (?:a friend|my friend|friend|someone|somebody|some guy|a guy|a stranger|my cousin|my brother|a recruiter|the recruiter|recruiter|a client|a vendor|a person|this guy)\b[^\n]{0,40}?\b(?:sent|shared|linked|gave|dm'?d|dmed|emailed|posted|recommended|uploaded|said)
+    ${person}\b[^\n.?!]{0,40}?\b${handed}${handedObject}
+    (?:this|that|the|a|an|some|these) (?:[\w'.-]+ ){0,3}?${codeNoun} (?:that |which )?(?:i |we )?(?:got |received )?(?:from )?${person}[^\n.?!]{0,30}? ${handed}
+    ${codeNoun} (?:[\w'.-]+ ){0,3}?(?:from|by) ${person}
+    (?:found|saw|seen|got|spotted|came across|stumbled (?:on|upon|across)|downloaded|grabbed|picked up) (?:${pronoun}|(?:a|an|the|this|that|some) (?:[\w'.-]+ ){0,3}?${codeNoun})(?: [\w'.-]+){0,4}? (?:on|in|at|from|via|off) (?:a |an |the |some |this )?(?:[\w'.-]+ ){0,2}?${place}
+    ${codeNoun} (?:that |which )?(?:i |we |someone |somebody |a guy |some guy )?(?:found|saw|seen|got|spotted|came across|downloaded|grabbed|posted|shared|linked|dropped)(?: it)? (?:on|in|at|from|via|off) (?:a |an |the |some |this )?(?:[\w'.-]+ ){0,2}?${place}
+    ${codeNoun} (?:from|off|via) (?:a |an |the |some |this |that )?(?:[\w'.-]+ ){0,2}?${place}
+    ${codeNoun} (?:[\w'.-]+ ){0,3}?(?:that |which )?(?:supposedly|apparently|allegedly|claims? to|claiming to|promises to|promising to|is supposed to|swears it)
     take[- ]home|coding (?:test|challenge|assignment|exercise)|interview (?:task|project|assignment|test)
     tech(?:nical)? (?:test|assessment)
-    (?:reddit|discord|telegram|youtube|tiktok|twitter|forum|eksi|instagram)\w*'?(?:te|ta|de|da|ten|tan|den|dan|deki|daki)
-    (?:arkadasim|biri|birisi|kuzenim|ise alimci|musteri)\w* [^\n]{0,30}?(?:gonderdi|atti|yolladi|paylasti|verdi)
+    (?:reddit|discord|telegram|youtube|tiktok|twitter|forum|eksi|instagram|github)\w*'?(?:te|ta|de|da|ten|tan|den|dan|deki|daki)\b[^\n.?!]{0,40}?(?:buldum|gordum|rastladim|paylas\w*|atti\w*|gonder\w*|yolla\w*|indir\w*|onerdi\w*|verdi\w*)
+    (?:arkadasim|biri|birisi|kuzenim|ise alimci|musteri|tanimadigim biri)\w* [^\n.?!]{0,30}?(?:repo|script|program|arac|uygulama|dosya|exe|zip|bot|link|baglanti|kod|hile)\w* [^\n.?!]{0,20}?(?:gonderdi|atti|yolladi|paylasti|verdi)
     (?:mulakat|ise alim|case|teknik) (?:odevi|gorevi|projesi|testi)
-    (?:lo |la )?(?:encontre|vi) en (?:\w+ ){0,2}?(?:reddit|discord|telegram|youtube|tiktok|twitter|un foro|foro)
-    (?:en|de) (?:un |el )?(?:foro|reddit|discord|telegram|youtube|tiktok)
-    me (?:lo |la )?(?:mando|paso|envio|compartio) (?:un amigo|alguien|un reclutador|un cliente|mi primo)
+    (?:lo |la )?(?:encontre|vi|baje|descargue) en (?:\w+ ){0,2}?(?:reddit|discord|telegram|youtube|tiktok|twitter|un foro|foro)
+    en (?:un |el )?(?:foro|reddit|discord|telegram|youtube|tiktok) (?:\w+ ){0,2}?(?:encontre|vi|me pasaron|pasaron|compartieron|subieron)
+    me (?:lo |la )?(?:mando|paso|envio|compartio|dio|recomendo) (?:un amigo|una amiga|alguien|un desconocido|un reclutador|un cliente|mi primo|un tipo)
+    (?:un amigo|una amiga|alguien|un desconocido|un reclutador|un cliente|mi primo|un tipo)(?: (?:de|en) \w+)? (?:me |nos )?(?:mando|paso|envio|compartio|dio|recomendo) (?:un |una |el |la |este |esta |esto |lo )?(?:\w+ ){0,2}?(?:repo|repositorio|script|programa|herramienta|bot|archivo|ejecutable|exe|zip|app|aplicacion|instalador|extension|codigo|enlace|link)
+    (?:script|repo|programa|herramienta|bot|archivo|codigo|app) (?:que )?(?:encontre|vi|baje|descargue|pasaron|compartieron) en (?:un |una |el |la )?(?:\w+ )?(?:foro|reddit|discord|telegram|youtube|tiktok)
     prueba tecnica|ejercicio de (?:entrevista|seleccion)|reclutador
     (?:auf|bei|in) (?:\w+ )?(?:reddit|discord|telegram|youtube|tiktok|twitter|einem forum|forum) (?:gefunden|gesehen)
-    (?:ein freund|ein kumpel|jemand|ein recruiter|ein kunde)[^\n]{0,30}?(?:geschickt|gesendet|geteilt)
+    (?:ein freund|eine freundin|ein kumpel|jemand|ein fremder|ein recruiter|ein kunde)[^\n.?!]{0,40}?(?:skript|script|programm|tool|repo|datei|exe|zip|bot|app|link|installer|code|das|es|dies)\b[^\n.?!]{0,30}?(?:geschickt|gesendet|geteilt|gegeben|empfohlen)
     (?:probe|test|bewerbungs)aufgabe|vorstellungsgesprach
-    (?:achei|vi|encontrei)[^\n]{0,40}?(?:no|num|na|em um|em uma) (?:\w+ ){0,2}?(?:youtube|reddit|discord|telegram|tiktok|twitter|forum)
-    (?:um amigo|alguem|meu primo|um recrutador)[^\n]{0,30}?(?:mandou|enviou|passou|compartilhou)
+    (?:achei|vi|encontrei|baixei) (?:um |uma |esse |essa |este |esta |isso |isto )(?:\w+ ){0,2}?(?:no|num|na|numa|em um|em uma|do|da) (?:\w+ ){0,2}?(?:youtube|reddit|discord|telegram|tiktok|twitter|forum)
+    (?:um amigo|uma amiga|alguem|meu primo|um recrutador|um desconhecido)[^\n.?!]{0,30}?(?:mandou|enviou|passou|compartilhou) (?:um |uma |o |a |esse |essa |este |isso |isto )?(?:\w+ ){0,2}?(?:repo|repositorio|script|programa|ferramenta|bot|arquivo|executavel|exe|zip|app|aplicativo|instalador|extensao|codigo|link)
 `);
 
+const paidApp = String.raw`(?:photoshop|office|windows|adobe|fl studio|capcut|autocad|premiere|illustrator|lightroom|after effects|matlab|ableton|vegas|corel|spotify|netflix|youtube)`;
+const aiApp = String.raw`(?:claude code|claude|copilot|cursor|chatgpt|sora|kling|seedance|midjourney|elevenlabs|voicemod)`;
+const game = String.raw`(?:roblox|valorant|fortnite|cs2|csgo|counter[- ]strike|apex legends|warzone|gta|pubg|tarkov|overwatch|r6|dota|genshin|free fire|minecraft|rust|apex|cod)`;
+
+// Each entry names a lure outright, so free, unlock, patch or a game name alone never counts
 export const lure = family(String.raw`
-    cracked|keygen|serial key|activator|kms ?pico|pirated|warez|nulled|unlocker
-    crack(?:s)? (?:for|of|version|download|setup|apk|exe)|free (?:\w+ )?(?:nitro|robux|v-?bucks|followers|likes|netflix|vip)
-    (?:get|unlock|activate)\w* (?:\w+ ){0,3}?(?:premium|pro|plus) (?:\w+ ){0,2}?(?:for free|free|without paying)
-    without paying|bypass (?:the )?(?:paywall|license|licensing|activation|drm)
-    mod menu|aimbot|wallhack|wall hack|esp hack|triggerbot|spoofer|hwid|dll inject\w*|cheat engine
-    game (?:hacks?|trainers?|cheats?)|auto ?farm\w*|autoclicker
+    cracked|keygen|serial key|activator|kms ?pico|kms ?auto|pirated|warez|nulled|unlocker
+    crack(?:s)? (?:for|of|version|download|setup|apk|exe|patch)
+    free (?:\w+ )?(?:nitro|robux|v-?bucks|followers|likes|vip|premium)(?! (?:trial|tier|plan|plans|features?|period|month|week|users?|members?))
+    (?:get|unlock|activate|gives?|giving)\w* (?:\w+ ){0,3}?(?:premium|pro|plus|vip) (?:\w+ ){0,2}?(?:for free|free|without paying|for nothing|gratis)
+    bypass (?:the )?(?:paywall|license|licensing|activation|drm|anti[- ]?cheat)|(?:license|licensing|activation|drm) (?:bypass|crack|patch)
+    mod menu|aimbot|wallhack|wall hack|esp hack|triggerbot|spoofer|hwid (?:spoof\w*|ban\w*)|dll inject\w*|cheat engine
+    game (?:hacks?|trainers?|cheats?)|auto[- ]?farm\w*|auto[- ]?clicker
     inject\w* (?:\w+ ){0,2}?into (?:the |a )?(?:running )?(?:game|process)
-    (?:crack|cracked|keygen|patch|activator|kms)\w*\b[^\n]{0,30}?\b(?:photoshop|office|windows|adobe|fl studio|capcut|autocad|premiere|illustrator|lightroom|after effects|matlab|ableton|vegas|corel)
-    (?:photoshop|office|windows|adobe|fl studio|capcut|autocad|premiere|illustrator|lightroom|after effects|matlab|ableton|vegas|corel)[^\n]{0,20}?\b(?:crack|cracked|keygen|activator|kirik|crackeado|craqueado)\w*
-    (?:roblox|valorant|fortnite|cs2|csgo|counter[- ]strike|apex|warzone|rust|gta|minecraft|pubg|tarkov|overwatch|cod|r6|dota|genshin|free fire) (?:\w+ )?(?:cheats?|hacks?|esp|aimbot|scripts?|executor|injector|mod menu|trainer|exploit|unlocker|spoofer)
+    (?:crack|cracked|keygen|activator)\w*\b[^\n]{0,30}?\b${paidApp}
+    ${paidApp}[^\n]{0,20}?\b(?:crack|cracked|keygen|activator|kirik|crackeado|craqueado)\w*
+    ${paidApp} (?:premium |pro |plus )?(?:patcher|unlocker|mod apk)
+    ${game} (?:\w+ )?(?:cheats?|hacks?|aimbot|executor|injector|mod menu|trainer|unlocker|spoofer)
     (?:nitro|robux|token|account|gift ?card|v-?bucks) (?:gen|generator)|token (?:grabber|logger|stealer)
     stealer|remote access trojan|rat (?:builder|client|panel|tool)
     (?:wallet|seed phrase|seed|mnemonic|private key) (?:recover\w*|finder|cracker|checker|drainer|brute\w*)
     drainer|(?:recover|find|brute ?force|crack)\w* (?:\w+ ){0,3}?(?:seed phrase|mnemonic|wallet)
     airdrop (?:claim\w*|bot|farmer|farming|hunter|checker)|claim\w* (?:\w+ ){0,2}?airdrop
     (?:sniper|mev|sandwich|arbitrage|arb|pump|copy[- ]?trade|copytrade|volume|memecoin|crypto|forex|trading) (?:\w+ )?bots?
-    (?:instagram|insta|tiktok|youtube|twitter|twitch|spotify) (?:\w+ )?(?:bot|booster|liker|viewer bot|follow bot|follower bot)
-    (?:view|follower|like|follow)s? ?(?:bot|booster)|captcha (?:solver|bypass)
-    (?:leaked|cracked|unlock\w*|free|premium|uncensored|jailbroken)\b[^\n]{0,30}?\b(?:claude code|copilot|cursor|chatgpt|sora|kling|seedance|ltx|z[_ -]?image|voicemod|comfyui|midjourney|elevenlabs|photoshop|adobe|capcut|fl studio)
+    (?:instagram|insta|tiktok|youtube|twitter|twitch|spotify|discord|kick) (?:\w+ )?(?:views?|viewers?|follows?|followers?|likes?|likers?|subs|subscribers?|streams?|listeners?|plays?|comments?|members?|engagement) ?(?:bot|booster|farm\w*|gen\w*)
+    (?:view|viewer|follower|like|follow|subscriber)s? ?(?:bot|booster)|captcha (?:solver|bypass)
+    (?:leaked|cracked|jailbroken)\b[^\n]{0,30}?\b${aiApp}
+    ${aiApp} (?:premium|pro|plus|max|ultra) (?:\w+ ){0,2}?(?:for free|free|without paying|for nothing|unlocked|crack\w*|keygen)
+    free ${aiApp} (?:premium|pro|plus|max|ultra|accounts?|licen[cs]es?|keys?|subscriptions?|access)
     leaked (?:source|build|version|code|model)|uncensored (?:image|model|generator|ai)
     hile\w*|kirik (?:surum|program)\w*|korsan\w*|lisans (?:anahtari|kirma)\w*
     (?:bedava|ucretsiz) (?:nitro|robux|vp|vbucks|takipci|begeni|lisans|premium|pro)\w*|hesap (?:botu|calma)
     kripto (?:bot|cuzdan)\w*|cuzdan (?:kurtar|bul)\w*|takipci (?:botu|hilesi|bot)|sizdiril\w*
     trucos? (?:para|de) (?:juego|valorant|fortnite|roblox)|crackead[oa]|pirata|activador|licencia gratis
     gratis (?:premium|nitro|robux|pavos)|generador de (?:nitro|robux|cuentas)
-    bot de (?:trading|cripto|seguidores)|recuperar (?:billetera|cartera|frase semilla)|filtrad[oa]
+    bot de (?:trading|cripto|seguidores)|recuperar (?:billetera|cartera|frase semilla)
+    (?:version|codigo|modelo|build|cuentas?) filtrad[oa]s?
     raubkop\w*|aktivator|kostenlos\w* (?:premium|pro|nitro|robux|lizenz|vollversion)|vollversion gratis
     generator fu(?:e)?r (?:nitro|robux)|krypto[- ]?(?:bot|wallet)|trading[- ]?bot|wallet (?:wiederherstell\w*|knacken)
     geleakt\w*|craqueado|ativador|gerador de (?:robux|nitro)|hack\w* (?:de|pra|para) (?:minecraft|roblox|free fire)
+    (?:premium|pro|plus|vip) (?:de graca|gratis|gratuito|kostenlos|bedava|ucretsiz)
 `);
 
 export const ownBefore =
@@ -283,9 +322,13 @@ export const explicit = family(String.raw`
     virtuelle\w* maschine|isoliert\w* umgebung|in der cloud|entfernte\w* (?:server|maschine)|wegwerf\w*
 `);
 
-// Payment and browser sandboxes are not requests for an isolated machine
+// Payment, app store, CRM and browser sandboxes are not requests for an isolated machine
 export const notIsolation = family(String.raw`
-    iframe|stripe|paypal|braintree|plaid|adyen|sandbox (?:attribute|attr|flag|mode|account|keys?|credentials|api|url|domain)
+    iframe|stripe|paypal|braintree|plaid|adyen|square|razorpay|mollie|klarna|checkout|payments?|merchant
+    test (?:cards?|card numbers?|mode|merchants?|accounts?|users?)|card numbers?|credit cards?
+    in-app purchases?|iap|storekit|app store|testflight|google play|play console|ios build|android build
+    salesforce|apex|sfdx|scratch orgs?|crm|hubspot|zoho|netsuite|shopify|ebay|amazon pay|twilio|docusign|coinbase
+    sandbox (?:attribute|attr|flag|mode|accounts?|keys?|credentials|api|url|domain|orgs?|tenant|instance|users?|testers?|store)
 `);
 
 export const notMine = family(String.raw`
@@ -294,6 +337,7 @@ export const notMine = family(String.raw`
     (?:keep|stay) (?:it |this |that )?(?:off|away from) my (?:machine|laptop|computer|mac|pc|system)
     (?:instead of|not on|outside(?: of)?|away from|other than|that isn'?t|that is not|isn'?t|is not|but not on) (?:on )?my (?:own )?(?:machine|laptop|computer|mac|macbook|pc|system|box)
     (?:run|test|try|execute|install|do|put|host|detonate)\w* (?:[^ \n]+ ){0,4}?(?:(?:somewhere|someplace) (?:else|safe|isolated)|elsewhere)
+    (?:run|test|try|execute|install|build|open|detonate|do|put)\w* (?:[^ \n]+ ){0,4}?(?:on|in|onto) (?:some |an? )?(?:other|another|different|separate|second|spare|someone else'?s) (?:computer|machine|box|pc|laptop|device|system|host)
     (?:bilgisayarim|makinem|laptopum|sistemim)\w*[^\n]{0,40}?(?:kurmak istemiyorum|calistirmak istemiyorum|bulasmasin|bozul\w*|kirlen\w*|zarar\w*)
     baska bir (?:makine|yer)\w*
     no quiero (?:instalar|ejecutar|correr|tener)\w*[^\n]{0,30}?en mi (?:pc|computadora|ordenador|maquina|portatil|laptop|mac|sistema)
@@ -370,7 +414,8 @@ export const destructive = family(String.raw`
     rm -[a-z]*r[a-z]*f?[a-z]* (?:--no-preserve-root )?(?:/|~|\$home|/\*|/usr|/etc|/bin|/var|/system)(?=\s|$)
     dd(?:[- ]based)? [^\n]{0,40}?(?:/dev/|disk|drive|ssd|speed test)
     mkfs\w*|wipefs|wipe (?:the |my )?(?:disk|drive|ssd|partition)|format (?:the |my )?(?:disk|drive|ssd|partition|c:)
-    fork ?bomb|kernel panic|fill (?:up )?the disk|oom killer|break (?:my|the) (?:system|machine|os|install)
+    fork ?bomb|(?:cause|trigger|force|induce|provoke)\w* (?:a |the )?kernel panic|oom killer|break (?:my|the) (?:system|machine|os|install)
+    fill\w* (?:up )?(?:the |my |all )?(?:disk|drive|ssd)(?: space)? (?:until|till|on purpose|to (?:see|test|check|simulate))|simulate (?:a )?full disk|disk[- ]full (?:test|scenario|simulation)
     chaos (?:test|engineering|monkey)|(?:disk|ssd)\w* (?:\w+ )?(?:sil|bicimlendir|formatla)\w*|sistemi bozabilir
     borrar el disco|formate(?:ar|o) (?:el |mi )?(?:disco|ssd|unidad)|romper el sistema
     festplatte (?:lo(?:e)?schen|formatieren)|formatier\w* (?:\w+ )?festplatte|system kaputt
@@ -385,17 +430,28 @@ export const kernelText = family(String.raw`
 /* Long, heavy jobs */
 
 export const heavyPhrase = family(String.raw`
-    overnight|over night|while i sleep|(?:just )?(?:let|leave) it (?:go|run|running|cook|churn)
-    leave it running|kick (?:it |this )?off|for (?:a few |several |many )?hours|takes? (?:hours|forever|days|ages)
-    all night|for days|keep (?:it )?running|run for (?:like |about |around )?\d+ ?(?:h|hrs?|hours|days)
+    overnight|over night|over the weekend|while i(?:'?m)? (?:sleep\w*|away|out|at work)|all night|all day
+    (?:let|leave|keep) (?:it|this|that|them|everything) (?:go|going|run|running|cook|cooking|churn\w*|chug\w*|grind\w*|crunch\w*|on)
+    (?:run|running) (?:it |this |them )?(?:in the background|unattended)
+    for (?:a few |several |many |\d+ )?(?:hours|days)|takes? (?:hours|forever|days|ages)
+    (?:will|would|might|could|it'?ll|gonna|going to) take (?:hours|forever|days|ages|all night)
+    run for (?:like |about |around )?\d+ ?(?:h|hrs?|hours|days)
     toda la noche|durante horas|tarda horas|u(?:e)?ber nacht|stundenlang|gece boyunca|saatlerce
     a noite toda|durante a noite|por horas|demora horas|for (?:an|one|a full) hour|all day|for a day
 `);
 
 export const heavyTask = family(String.raw`
-    param(?:eter)? sweep|grid search|hyperparameter (?:search|sweep|tuning)|backtest\w*|fuzz\w*|render\w*
-    monte carlo|benchmark\w*|batch (?:job|process\w*)
+    param(?:eter)? (?:sweep|search)|grid search|random search|hyper-?param\w* (?:search|sweep|tuning|optimi[sz]\w*)
+    optuna|ray tune|backtest\w*|fuzz\w*|render\w*|monte carlo|benchmark\w*|batch (?:job|process\w*)
+    transcod\w*|re-?encod\w*|(?:convert|encode|compress)\w* (?:\w+ ){0,5}?(?:to|into|as|with) (?:av1|hevc|h\.?265|x265|vp9|prores)
 `);
+
+// Data volumes that make a job long, counted only next to another sign of real work
+export const volume = /(?<![\w.])(\d+(?:\.\d+)?) ?(tb|terabytes?|gb|gigabytes?)(?![a-z])/g;
+
+// A count of items times the time each takes, such as 40k runs at 3s each
+export const perItem =
+    /(?<![\w.])(\d+(?:[.,]\d+)?)(k)?\+? (?:[a-z-]+ ){0,2}?[a-z]+s?\b[^\n]{0,24}?\b(?:at |@ |~|about |around )*~?(\d+(?:\.\d+)?) ?(s|sec|secs|seconds?|m|mins?|minutes?|h|hrs?|hours?)(?: each| apiece| per | a piece)/g;
 
 // Builds of projects so large that one local build takes an hour or more
 export const longBuild = family(String.raw`
@@ -408,7 +464,9 @@ export const loadTest = family(String.raw`
 `);
 
 export const heat = family(String.raw`
-    laptop (?:overheats|gets hot|heats up)|fans? (?:spin|scream|go crazy|get loud)|drains? (?:my )?battery
+    (?:laptop|mac|macbook|machine|computer|pc|cpu|gpu) (?:\w+ )?(?:overheat\w*|gets hot|heats up|melt\w*|cook\w*|fry\w*|on fire|throttl\w*)
+    melt\w* (?:my |the )?(?:laptop|mac|macbook|machine|computer|pc|cpu|gpu)|thermal throttl\w*
+    fans? (?:spin|scream|go crazy|get loud)|drains? (?:my )?battery
     isiniyor|se calienta|wird hei(?:ss)?|lufter|esquenta
 `);
 
@@ -419,23 +477,29 @@ export const minutes =
 export const repeats =
     /(?<![\w.])(\d+) (?:times|veces|vezes|mal|kez|defa|runs|iterations|builds)(?![a-z])/g;
 export const batch =
-    /(?<![\w.])(\d+(?:[.,]\d+)?)(k)?\+? ?(?:images|pictures|photos|files|videos|clips|recordings|episodes|tracks|songs|documents|pdfs|combos|combinations|samples|shots|avatars|lectures|podcasts|hours of (?:audio|video|footage))(?![a-z])/g;
+    /(?<![\w.])(\d+(?:[.,]\d+)?)(k)?\+? ?(?:[a-z-]+ ){0,2}?(?:images?|pictures?|photos?|files?|videos?|clips?|recordings?|episodes?|tracks?|songs?|documents?|pdfs?|combos?|combinations?|samples?|shots?|avatars?|lectures?|podcasts?|runs?|configs?|configurations?|hours of (?:audio|video|footage))(?![a-z])/g;
 export const wholeBatch = family(String.raw`
     (?:all|every|whole) (?:of )?(?:my|the|our) (?:\w+ )?(?:backlog|archive|library|recordings|footage|dataset|photos|videos|collection)
+    (?:my|the|our) (?:whole|entire|full) (?:[\w.-]+ ){0,2}?(?:backlog|archive|library|recordings|footage|dataset|photos|videos|collection|catalog)
 `);
 export const epochs = /(?<![\w.])(\d+) epochs?(?![a-z])/g;
 
 /* Signals against an offer */
 
 export const concept = family(String.raw`
-    ^(?:what|whats|what's|which|why|explain|eli5|how come|how much|how many|is it (?:possible|worth|safe|true)|should i|would it|do i need)
+    ^(?:what|whats|what's|which|why|explain|eli5|how come|how much|how many|is it (?:possible|worth|true)|should i|would it|do i need)
+    ^(?:acikla|explica|explique|explicar|erkla(?:e)?r)\w*
     how (?:does|do|did|is|are|would) (?:\S+ ){0,6}?(?:work|works|differ|compare|detect\w*|handle\w*)
-    explain|walk me through
     (?:what'?s|what is) the difference|difference between|pros and cons|just curious|out of curiosity|theoretically|in theory
-    nedir|nasil calisir|ne ise yarar|acikla\w*|farki ne\w*|ne kadar [^\n]{0,30}?(?:ister|gerekir|tutar)|merak ediyorum
-    que es|como funciona|explica\w*|cual es la diferencia|por que
-    was ist|wie funktioniert|erkla(?:e)?r\w*|was ist der unterschied|nur theoretisch|theoretisch
-    o que (?:e|faz)|explicar|explique|qual a diferenca
+    nedir|nasil calisir|ne ise yarar|farki ne\w*|ne kadar [^\n]{0,30}?(?:ister|gerekir|tutar)|merak ediyorum
+    que es|como funciona|cual es la diferencia|por que
+    was ist|wie funktioniert|was ist der unterschied|nur theoretisch|theoretisch
+    o que (?:e|faz)|qual a diferenca
+`);
+
+// Asking for an explanation, which cancels subjects in its own clause only
+export const explainOnly = family(String.raw`
+    explain|walk me through|acikla\w*|explica\w*|erkla(?:e)?r\w*|explicar|explique
 `);
 
 export const readOnly = family(String.raw`
@@ -446,17 +510,25 @@ export const readOnly = family(String.raw`
     solo (?:leer|revisar|mirar|explicar)|sin (?:ejecutar|instalar|correr)
     nur (?:lesen|anschauen|durchsehen|pru(?:e)?fen)|ohne (?:auszufu(?:e)?hren|zu installieren)
     nicht ausfu(?:e)?hren|nichts (?:installieren|ausfu(?:e)?hren)
-    so explicar|nao precisa (?:mudar|rodar|executar)|sem (?:rodar|executar|instalar)
+    so (?:explicar|ler|olhar)|nao (?:precisa |quero que (?:voce )?)(?:mud|alter|rod|execut|instal)\w*|sem (?:rodar|executar|instalar)
+    no (?:cambies|modifiques|ejecutes|instales|corras) nada|nichts (?:a(?:e)?ndern|vera(?:e)?ndern)
 `);
 
 export const hosted = family(String.raw`
     openai(?![ /-]whisper)|anthropic|claude api|gemini api|google (?:cloud )?(?:tts|speech|text-to-speech|vertex)
     vertex ai|azure (?:openai|speech|tts|cognitive)|aws polly|amazon polly|bedrock
-    elevenlabs|eleven labs|replicate|deepgram|assembly ?ai|stability(?: ai)? api|api (?:da|de|der|del) stability
+    elevenlabs|eleven labs|replicate|deepgram|assembly ?ai|stability(?: ai)? api
+    apis? (?:da|de|der|del|do|von) (?:\w+ )?(?:stability|openai|elevenlabs|replicate|google|anthropic|mistral|deepgram|cohere|groq)
     together\.ai|together ai|fireworks\.ai|fireworks ai|groq|fal\.ai|runway ?ml|runway api|luma api|cartesia
     play\.?ht|hugging ?face inference|inference (?:api|endpoints?)|openrouter|cohere
     (?:mistral|deepseek|qwen|gemma|llama|perplexity|midjourney) (?:api|platform)|speechmatics|rev\.ai|hume ai
     api key|api_key|whisper api|(?:tts|speech|transcription|image generation|video generation) api
+`);
+
+// Unvetted code that wants the user's keys, the classic way such tools steal them
+export const wantsSecrets = family(String.raw`
+    (?:needs?|requires?|asks? (?:me )?for|wants?|uses|takes|reads|grabs|expects) (?:\w+ ){0,3}?(?:api[- _]?keys?|private keys?|seed phrases?|mnemonic|wallet (?:keys?|files?)|secret keys?|passwords?|tokens?|credentials|cookies|keystore)
+    (?:enter|paste|put|give it|type) (?:in )?(?:\w+ ){0,2}?(?:private keys?|seed phrases?|mnemonic|api[- _]?keys?|passwords?|wallet (?:keys?|files?))
 `);
 
 export const notHostedBefore =
@@ -471,7 +543,7 @@ export const offline = family(String.raw`
 
 // Clause-local signs that the request is about the user's own work
 export const own = family(String.raw`
-    (?:my|our) (?:own )?(?:app|apps|application|project|repo|repository|code|codebase|service|api|server|site|website|portfolio|script|component|module|tests|test suite|library|lib|package|cli|bot|extension|plugin|mod|dotfiles|backend|frontend|dashboard|blog|startup|saas|game|fork|branch|pr|workflow|pipeline|infra|cluster|monorepo)
+    (?:my|our) (?:own )?(?:app|apps|application|project|repo|repository|code|codebase|service|api(?! (?:keys?|tokens?|secrets?|credentials))|server|site|website|portfolio|script|component|module|tests|test suite|library|lib|package|cli|bot|extension|plugin|mod|dotfiles|backend|frontend|dashboard|blog|startup|saas|game|fork|branch|pr|workflow|pipeline|infra|cluster|monorepo)
     (?:src|lib|app|routes|components|pages|tests?|spec|internal|cmd|pkg)/[^ \n]+\.(?:tsx?|jsx?|py|go|rs|rb|java|kt|swift|cs|php|vue|svelte)
     [\w-]+\.(?:tsx|jsx|vue|svelte)
     (?:benim|kendi) (?:projem|uygulamam|kodum|sitem|repom|botum)\w*|projemdeki|projemde|uygulamamda|kodumda|repomda
@@ -481,8 +553,9 @@ export const own = family(String.raw`
 `);
 
 export const docs = family(String.raw`
-    (?:write|draft|update|generate|create|add|improve) (?:\w+ ){0,3}?(?:readme|docs?|documentation|changelog|blog post|article|tutorial|plan doc|markdown|guide|docstrings)
-    just the markdown|(?:readme|docs?|dokumantasyon|dokumentation|documentacion|documentacao)\w* (?:yaz|schreib|escrib|escrev)\w*
+    (?:write|draft|update|generate|create|add|improve|rewrite|reword|rephrase|proofread|polish|translate|summari[sz]e|outline)(?: up)? (?:[\w'-]+ ){0,4}?(?:readme|docs?|documentation|changelog|blog post|article|tutorial|markdown|guide|docstrings|plan|spec|proposal|outline|rfc|runbook|checklist|write-?up|post|essay|report)
+    (?:readme|docs?|documentation|changelog|markdown)(?: [\w'-]+){0,2} (?:section|paragraph|page|wording|text|copy)
+    (?:readme|docs?|dokumantasyon|dokumentation|documentacion|documentacao)\w* (?:yaz|schreib|escrib|escrev)\w*
 `);
 
 export const tests = family(String.raw`
@@ -491,7 +564,7 @@ export const tests = family(String.raw`
 `);
 
 export const edit = family(String.raw`
-    fix|refactor|rename|convert|clean up|tidy|lint|bump|upgrade|squash|commit|push|deploy|migrate|merge|rebase
+    fix|refactor|rename|convert|clean up|tidy|lint|bump|upgrade|squash|commit|push|deploy|migrate|merge|rebase|rewrite
     pull (?:the )?latest|latest changes|pull request|code review|review the
     corrige|arregla|refactoriza|duzelt\w*|behebe|reparier\w*|conserta
 `);

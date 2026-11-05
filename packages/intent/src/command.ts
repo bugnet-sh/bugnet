@@ -9,6 +9,7 @@ import { find } from "./lexicon.ts";
 import * as L from "./lexicon.ts";
 import { ascii, clip, norm, spaced } from "./normalize.ts";
 import { heavyPackage, isLurePackage, typosquatOf } from "./packages.ts";
+import { famousOwners, repoOf } from "./repos.ts";
 import { parse, type Segment } from "./shell.ts";
 import { finish, hit, none, refuse, type Hit } from "./score.ts";
 import type { Classification, SessionContext } from "./types.ts";
@@ -167,22 +168,6 @@ const mainstream = [
     "gh.io/copilot-install",
 ];
 
-// Owners whose repositories are well known, so a clone of theirs is not unvetted code
-const famousOwners = new Set(
-    `facebook facebookresearch meta-llama microsoft google google-research googleapis vercel openai
-    anthropics huggingface pytorch tensorflow torvalds rust-lang golang nodejs python apple aws
-    awslabs kubernetes docker moby hashicorp ggerganov ggml-org ollama comfyanonymous
-    automatic1111 lllyasviel oobabooga coqui-ai hexgrad suno-ai mozilla apache nvidia intel
-    gitlab-org jetbrains sveltejs vuejs angular nestjs denoland oven-sh astral-sh pallets django
-    tiangolo psf numpy pandas-dev scikit-learn matplotlib jupyter electron flutter dotnet homebrew
-    ohmyzsh nvm-sh neovim vim git curl ffmpeg openssl postgres redis elastic grafana prometheus
-    home-assistant supabase prisma tailwindlabs shadcn-ui langchain-ai run-llama ultralytics
-    stability-ai black-forest-labs wan-video tencent deepseek-ai qwenlm mistralai vllm-project
-    sgl-project expressjs webpack vitejs babel eslint prettier`
-        .split(/\s+/)
-        .filter(Boolean),
-);
-
 // Full URLs, host/path forms, and bare hosts such as get.scoop.sh
 function looksLikeUrl(w: string): boolean {
     return (
@@ -254,19 +239,6 @@ function isMainstream(url: string): boolean {
 
 function urlArg(seg: Segment): string | null {
     return seg.argv.slice(1).find(looksLikeUrl) ?? null;
-}
-
-// github.com/owner/repo from any clone or browse URL
-function repoOf(url: string): { short: string; owner: string; host: string } {
-    const u = url
-        .replace(/^git@([^:]+):/, "$1/")
-        .replace(/^[a-z+]+:\/\//i, "")
-        .replace(/^www\./, "")
-        .replace(/\.git$/, "")
-        .replace(/\/+$/, "");
-    const [host = "", owner = "", name = ""] = u.split("/");
-    const short = name ? `${host}/${owner}/${name}` : u;
-    return { short: short.toLowerCase(), owner: owner.toLowerCase(), host: host.toLowerCase() };
 }
 
 function add(st: State, h: Hit): void {
@@ -1296,7 +1268,7 @@ const lureName =
 const pocName =
     /(?<![a-z])(?:poc|exploit|exploits|sploit|cve \d{4} \d+|lpe|privesc|rce|0day|pwn|rootkit)(?![a-z])/;
 const walletSecret =
-    /\.config\/solana\/id\.json|(?:^|\/)keystore(?:\/|$)|wallet\.dat|^--(?:private[-_]?key|mnemonic|seed(?:[-_]phrase)?|wallet[-_]?file)(?:=|$)/;
+    /\.config\/solana\/[\w.-]+\.json|(?:^|\/)(?:keystore|keypairs?)(?:\/|\.json|$)|wallet\.dat|\.(?:ethereum|bitcoin|electrum)\/|^--(?:private[-_]?key|mnemonic|seed(?:[-_]phrase)?|keypair|wallet(?:[-_]?(?:file|path|key))?)(?:=|$)/;
 
 const disguised =
     /\.(?:pdf|docx?|xlsx?|jpe?g|png|mp4|mp3|txt)\.(?:exe|scr|bat|cmd|js|vbs|lnk|com|pif|app)$/i;

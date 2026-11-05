@@ -5,13 +5,15 @@
  * next to an intent to run, set up or try it. Signs of the user's own work, such as docs, tests or
  * edits to their project, cancel subjects in their own clause only, so a risky step buried in a
  * list of chores still counts. Questions, hosted APIs and read-only requests count against the
- * whole prompt.
+ * whole prompt. Pasted logs, READMEs and code blocks are content and count only when the request
+ * asks to run them.
  */
 import { classifyCommand } from "./command.ts";
 import * as L from "./lexicon.ts";
 import { find, findAll } from "./lexicon.ts";
 import { norm } from "./normalize.ts";
 import { signatures } from "./failure.ts";
+import { isFamousRepo } from "./repos.ts";
 import { finish, hit, none, refuse, type Hit } from "./score.ts";
 import type { Classification, SessionContext } from "./types.ts";
 
@@ -21,9 +23,11 @@ interface Located {
 }
 
 interface Clause {
-    pos: number;
+    code: number;
+    risky: number;
     heavy: number;
-    ownWork: number;
+    own: number;
+    edit: number;
     writing: number;
     negs: Hit[];
 }
@@ -34,6 +38,17 @@ const clauseBreak =
 // Fetch-and-run and system commands typed into prose, and anything in backticks
 const commandStart =
     /(?<![\w-])(?:curl|wget|iwr|irm|invoke-webrequest|sudo|git clone|docker run|dd|rm -rf|xattr)\s[^\n]*?(?=[.!?](?:\s|$)|\n|$)|`[^`\n]+`/g;
+
+// Log lines, stack frames, headings and shell prompts that a user pastes rather than types
+const pasteLine =
+    /^(?:#{1,6} |[$>] |\+ |-{3,}|={3,}|\||\[?\d{1,4}[-/:.]\d{1,2}|\[(?:info|warn|warning|error|debug|trace|fatal)\]|(?:info|warn|warning|error|err!|debug|trace|fatal|npm err!|npm warn)\b|at [\w$.<]+ ?\(|file "|traceback|step \d|#\d+ |-? ?(?:run|script|command|steps?):)/;
+
+const commandLine =
+    /^(?:sudo |run )?(?:curl|wget|iwr|irm|bash|sh|zsh|git|npm|npx|pnpm|yarn|bun|pip3?|pipx|uv|python3?|node|deno|docker|podman|brew|apt(?:-get)?|dnf|yum|chmod|make|cargo|go|export|source|\.\/)(?![\w-])/;
+
+// A command line that also carries a request is typed, not pasted
+const requestWords =
+    /\?|\b(?:can you|could you|would you|please|pls|plz|for me|help me|i want|i'd like|i need|is it safe|is this safe|and then|then run|and run)\b/;
 
 // Words that every local failure signature contains one of, so most prompts skip them all
 const errorLike =
@@ -59,11 +74,11 @@ function clauseOf(starts: number[], at: number): number {
     return lo;
 }
 
-// URLs become spaces of the same length, so indices stay valid and words inside them do not match
-function blank(t: string, spans: RegExpExecArray[]): string {
-    const ranges = spans
-        .map((m) => [m.index as number, (m.index as number) + m[0].length] as const)
-        .sort((a, b) => a[0] - b[0]);
+type Range = readonly [number, number];
+
+// Ranges become spaces of the same length, so indices stay valid and words inside them do not match
+function blank(t: string, spans: Range[]): string {
+    const ranges = [...spans].sort((a, b) => a[0] - b[0]);
     const parts: string[] = [];
     let at = 0;
     for (const [from, to] of ranges) {
@@ -74,6 +89,27 @@ function blank(t: string, spans: RegExpExecArray[]): string {
     }
     parts.push(t.slice(at));
     return parts.join("");
+}
+
+function spans(matches: RegExpExecArray[]): Range[] {
+    return matches.map((m) => [m.index, m.index + m[0].length] as const);
+}
+
+// Lines of pasted material such as fenced code, logs, headings and bare command lines
+function pastedLines(t: string): Range[] {
+    if (!t.includes("\n")) return [];
+    const out: Range[] = [];
+    let fence = false;
+    let at = 0;
+    for (const line of t.split("\n")) {
+        const end = at + line.length;
+        const marker = /^(?:```|~~~)/.test(line);
+        const command = commandLine.test(line) && !requestWords.test(line);
+        if (marker || fence || pasteLine.test(line) || command) out.push([at, end]);
+        if (marker) fence = !fence;
+        at = end + 1;
+    }
+    return out;
 }
 
 // Widens a match that starts at a file extension to the whole file name before it
@@ -101,21 +137,21 @@ function repoShort(url: string): string {
         .join("/");
 }
 
-function isFamous(url: string): boolean {
-    const owner = repoShort(url).split("/")[1] ?? "";
-    return /^(?:facebook|facebookresearch|meta-llama|microsoft|google|vercel|openai|huggingface|pytorch|tensorflow|torvalds|rust-lang|golang|nodejs|python|apple|kubernetes|docker|hashicorp|ggerganov|ggml-org|ollama|comfyanonymous|automatic1111|lllyasviel|oobabooga|coqui-ai|hexgrad|suno-ai|mozilla|apache|nvidia)$/.test(
-        owner,
-    );
-}
-
 export function classifyPrompt(text: string, ctx: SessionContext = {}): Classification {
-    const t = norm(text);
-    if (t === "") return none;
+    const full = norm(text);
+    if (full === "") return none;
+
+    // Pasted logs, READMEs and code blocks are content unless the request asks to run them
+    const pasted = pastedLines(full);
+    const request = pasted.length > 0 ? blank(full, pasted) : full;
+    const keepPaste =
+        pasted.length === 0 || !/[a-z]/.test(request) || find(L.runsPasted, request) !== null;
+    const t = keepPaste ? full : request;
 
     const repos = findAll(L.repoUrl, t);
     const hfs = findAll(L.hfUrl, t);
     const urls = findAll(L.anyUrl, t);
-    const bare = blank(t, [...urls, ...repos, ...hfs]);
+    const bare = blank(t, spans([...urls, ...repos, ...hfs]));
 
     const act = find(L.action, bare);
     const verb = find(L.taskVerb, bare);
@@ -158,7 +194,7 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     let externalRepo = false;
     for (const m of repos) {
         const at = m.index as number;
-        if (find(L.ownRepoBefore, before(t, at)) || isFamous(m[0])) continue;
+        if (find(L.ownRepoBefore, before(t, at)) || isFamousRepo(repoShort(m[0]))) continue;
         externalRepo = true;
         put(at, hit("unfamiliar_repo", "untrusted_code", act ? 4 : 1, m[0], repoShort(m[0])));
         break;
@@ -175,11 +211,7 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     const file = named(bare, find(L.receivedFile, bare));
     const fileContext = find(L.receivedContext, bare);
     const from = find(L.origin, bare);
-    if (from) {
-        const code = file !== null || repos.length > 0 || find(L.repoWord, bare) !== null;
-        const w = doing && code ? 4 : doing || code ? 3 : 1;
-        global.push(hit("origin", "untrusted_code", w, from[0]));
-    }
+    if (from) put(from.index, hit("origin", "untrusted_code", doing ? 4 : 3, from[0]));
     const strongFile = named(bare, find(L.disguisedFile, bare)) ?? find(L.enableMacros, bare);
     if (strongFile) {
         put(
@@ -204,17 +236,24 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     if (exploit && act) {
         put(exploit.index as number, hit("exploit", "untrusted_code", 4, exploit[0], exploit[0]));
     }
+    const unvetted = () =>
+        located.some((l) => l.hit.category === "untrusted_code" && l.hit.weight >= 3);
+    const secret = find(L.wantsSecrets, bare);
+    if (secret && unvetted())
+        put(secret.index, hit("wants_secrets", "untrusted_code", 2, secret[0]));
     const doubt = find(L.safety, bare);
-    if (doubt) {
-        const about =
-            urls.length > 0 || repos.length > 0 || file !== null || find(L.repoWord, bare);
-        global.push(hit("safety_doubt", "untrusted_code", about ? 3 : 1, doubt[0]));
-    }
+    const about =
+        urls.length > 0 ||
+        repos.length > 0 ||
+        file !== null ||
+        from !== null ||
+        find(L.repoWord, bare) !== null;
+    if (doubt) global.push(hit("safety_doubt", "untrusted_code", about ? 3 : 1, doubt[0]));
 
     /* The user asks for isolation */
     const iso = find(L.explicit, bare);
     if (iso) {
-        const around = t.slice(Math.max(0, (iso.index as number) - 30), (iso.index as number) + 40);
+        const around = bare.slice(Math.max(0, iso.index - 40), iso.index + iso[0].length + 60);
         if (!find(L.notIsolation, around)) global.push(hit("asks_isolation", null, 6, iso[0]));
     }
     const away = find(L.notMine, bare);
@@ -240,8 +279,8 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     const driver = find(L.driverText, bare);
     if (driver && act)
         put(driver.index as number, hit("driver_setup", "environment", 4, driver[0]));
-    for (const s of errorLike.test(t) ? signatures : []) {
-        const m = s.re.exec(t);
+    for (const s of errorLike.test(full) ? signatures : []) {
+        const m = s.re.exec(full);
         if (m) {
             put(m.index, hit(`pasted_${s.id}`, s.category, 3, m[0]));
             break;
@@ -283,6 +322,11 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     for (const m of findAll(L.heavyPhrase, bare).slice(0, 2)) cue(m, 2, false);
     cue(atLeast(L.hours, 1), 2, false);
     cue(atLeast(L.minutes, 30), 2, false);
+    cue(
+        findAll(L.perItem, bare).find((m) => perItemSeconds(m) >= 3600),
+        2,
+        false,
+    );
     cue(find(L.heavyTask, bare), 1, true);
     cue(find(L.longBuild, bare), 2, true);
     for (const m of findAll(L.loadTest, bare).slice(0, 2)) cue(m, 2, true);
@@ -295,6 +339,13 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     );
     cue(find(L.wholeBatch, bare), 1, true);
     cue(atLeast(L.epochs, 20), 2, true);
+    if (work > 0) {
+        cue(
+            findAll(L.volume, bare).find((m) => /^t/.test(m[2] as string) || Number(m[1]) >= 200),
+            1,
+            true,
+        );
+    }
     const heavy = work > 0 ? work + time : Math.min(time, 2);
     if (heavy > 0) {
         const w = doing ? Math.min(heavy, 5) : heavy >= 4 ? 4 : Math.min(heavy, 2);
@@ -317,8 +368,8 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
         }
     }
 
-    const stop = find(L.abuse, t);
-    const lan = find(L.lanScan, t);
+    const stop = find(L.abuse, full);
+    const lan = find(L.lanScan, full);
     if (located.length === 0 && !global.some((h) => h.weight > 0)) {
         if (stop) return refuse([], hit("abuse", null, -10, stop[0]));
         return lan ? refuse([], hit("lan_scan", null, -10, lan[0])) : none;
@@ -339,26 +390,30 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     negate(L.docs, "writing_docs", -5);
     negate(L.tests, "writing_tests", -3);
     negate(L.edit, "editing_code", -2);
+    negate(L.explainOnly, "explain_only", -3);
 
     /* Whole-prompt signals against an offer */
     // A question that opens the prompt stays a question even when it mentions running something
     const question = find(L.concept, bare);
     if (question) {
         const firm = !act || (question.index === 0 && !iso && !away);
-        global.push(hit("concept_question", null, firm ? -5 : -2, question[0]));
+        const weight = doubt && about ? -2 : firm ? -5 : -2;
+        global.push(hit("concept_question", null, weight, question[0]));
     }
     if (!iso && !away) {
         const ro = find(L.readOnly, bare);
         if (ro) global.push(hit("read_only", null, -6, ro[0]));
     }
+    const inSecret = (at: number) =>
+        secret !== null && at >= secret.index && at < secret.index + secret[0].length;
     const api = findAll(L.hosted, bare).find(
-        (m) => !L.notHostedBefore.test(before(bare, m.index as number, 30)),
+        (m) => !inSecret(m.index) && !L.notHostedBefore.test(before(bare, m.index as number, 30)),
     );
     if (api) {
-        const unvetted = located.some(
+        const strong = located.some(
             (l) => l.hit.category === "untrusted_code" && l.hit.weight >= 4,
         );
-        global.push(hit("hosted_api", null, unvetted ? -2 : -6, api[0]));
+        global.push(hit("hosted_api", null, strong ? -2 : -6, api[0]));
     }
     const remote = find(L.remoteTarget, bare);
     if (remote) global.push(hit("remote_target", null, -3, remote[0]));
@@ -367,25 +422,37 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
 
     /* Clause sums never go below zero, so chores elsewhere cannot cancel a risky step */
     const perClause = new Map<number, Clause>();
+    const empty = (): Clause => ({
+        code: 0,
+        risky: 0,
+        heavy: 0,
+        own: 0,
+        edit: 0,
+        writing: 0,
+        negs: [],
+    });
     for (const l of located) {
         const c = clauseOf(starts, l.at);
-        const e = perClause.get(c) ?? { pos: 0, heavy: 0, ownWork: 0, writing: 0, negs: [] };
+        const e = perClause.get(c) ?? empty();
         if (l.hit.category === "heavy_compute") e.heavy += l.hit.weight;
-        else e.pos += l.hit.weight;
+        else if (l.hit.category === "risky_experiment") e.risky += l.hit.weight;
+        else e.code += l.hit.weight;
         perClause.set(c, e);
     }
     for (const n of negatives) {
         const e = perClause.get(clauseOf(starts, n.at));
         if (!e) continue;
         if (n.hit.id === "writing_docs" || n.hit.id === "writing_tests") e.writing += n.hit.weight;
-        else e.ownWork += n.hit.weight;
+        else if (n.hit.id === "own_project") e.own += n.hit.weight;
+        else e.edit += n.hit.weight;
         e.negs.push(n.hit);
     }
     let points = global.reduce((s, h) => s + h.weight, 0);
     const kept: Hit[] = [...located.map((l) => l.hit), ...global];
     for (const e of perClause.values()) {
-        // Heavy jobs on the user's own code are the point, so only docs or tests cancel them
-        points += Math.max(0, e.pos + e.ownWork + e.writing);
+        // The user's own code is trusted, but a wrecking or heavy step stays risky whoever wrote it
+        points += Math.max(0, e.code + e.own + e.edit + e.writing);
+        points += Math.max(0, e.risky + e.edit + e.writing);
         points += e.writing < 0 ? 0 : e.heavy;
         kept.push(...e.negs);
     }
@@ -393,4 +460,10 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     if (stop) return refuse(kept, hit("abuse", null, -10, stop[0]));
     if (lan) return refuse(kept, hit("lan_scan", null, -10, lan[0]));
     return finish(kept, points);
+}
+
+function perItemSeconds(m: RegExpExecArray): number {
+    const count = Number((m[1] as string).replace(",", ".")) * (m[2] ? 1000 : 1);
+    const unit = (m[4] as string)[0] === "h" ? 3600 : (m[4] as string)[0] === "m" ? 60 : 1;
+    return count * Number(m[3]) * unit;
 }
