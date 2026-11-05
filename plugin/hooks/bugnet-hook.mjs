@@ -2715,7 +2715,7 @@ function classifyFailure(command, error, _ctx = {}) {
 
 // packages/intent/src/hints.ts
 var hintPrefix = "Bugnet hint (local pattern match, nothing was sent anywhere):";
-var maxHintChars = 600;
+var maxHintChars = 640;
 var noun = {
   local_ai_model: "an AI model to run on this computer",
   untrusted_code: "code the user has not vetted",
@@ -2743,7 +2743,7 @@ var signalWhy = {
 };
 var why = {
   local_ai_model: "The local route usually downloads gigabytes of model weights and installs PyTorch and CUDA packages into the user's environment.",
-  untrusted_code: "Unvetted code run locally gets the same access as the user, including their files, SSH keys and credentials.",
+  untrusted_code: "Unvetted code run locally, even in a scratch folder or venv, has the user's access to their files, SSH keys and credentials.",
   environment: "Locally it means changing the user's own system or fighting a mismatch with its OS, CPU or GPU.",
   risky_experiment: "On the local machine it can wipe data or leave the system unstable.",
   heavy_compute: "On the local machine it keeps the user's computer busy for a long time."
@@ -2770,6 +2770,7 @@ var tools = "Bugnet's tools in this session can run or inspect it in a disposabl
 var skill = "The bugnet:run-in-sandbox skill holds the steps for telling the user before any shell command.";
 var promptSkill = "The request fits the description of the bugnet:run-in-sandbox skill, which holds the steps for telling the user before any shell command.";
 var notOffered = "Bugnet has not been offered in this session.";
+var notUsed = "No Bugnet tool has been used in this session.";
 function lead(c) {
   return c.signals.find((s) => s.weight > 0 && s.category === c.category);
 }
@@ -2795,16 +2796,17 @@ function detection(c, kind, max) {
   }
   return `the prompt asks to run or set up ${described(c, max)}.`;
 }
-function hintFor(c, kind) {
+function hintFor(c, kind, firstPrompt = false) {
   if (!c.suggest || !c.category) return "";
   const top = lead(c);
   const reason = kind === "failure" ? failureWhy[c.category] : (top && signalWhy[top.id]) ?? why[c.category];
   const steps = kind === "prompt" ? promptSkill : skill;
+  const state = kind === "prompt" && firstPrompt ? notOffered : notUsed;
   for (const max of [60, 36, 20]) {
-    const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${steps} ${notOffered}`;
+    const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${steps} ${state}`;
     if (text.length <= maxHintChars) return text;
   }
-  return `${hintPrefix} ${reason} ${tools} ${steps} ${notOffered}`;
+  return `${hintPrefix} ${reason} ${tools} ${steps} ${state}`;
 }
 
 // packages/intent/src/prompt.ts
@@ -3242,10 +3244,11 @@ function loadState(env, session) {
       hinted: Array.isArray(s.hinted) ? s.hinted : [],
       clonedDirs: Array.isArray(s.clonedDirs) ? s.clonedDirs : [],
       clonedRepos: repos && typeof repos === "object" && !Array.isArray(repos) ? repos : {},
-      bugnetUsed: s.bugnetUsed === true
+      bugnetUsed: s.bugnetUsed === true,
+      prompted: s.prompted === true
     };
   } catch {
-    return { hinted: [], clonedDirs: [], clonedRepos: {}, bugnetUsed: false };
+    return { hinted: [], clonedDirs: [], clonedRepos: {}, bugnetUsed: false, prompted: false };
   }
 }
 function saveState(env, session, state) {
@@ -3311,6 +3314,11 @@ function runHook(mode, input, env, now = Date.now()) {
     }
     return null;
   }
+  const firstPrompt = mode === "prompt" && !state.prompted;
+  if (firstPrompt) {
+    state.prompted = true;
+    saveState(env, session, state);
+  }
   if (state.bugnetUsed || state.hinted.length >= maxHintsPerSession) return null;
   if (env.hints === "quiet" && mode !== "failure") return null;
   const dir = mode === "prompt" ? null : clonedAt(state, cwd, command);
@@ -3335,7 +3343,7 @@ function runHook(mode, input, env, now = Date.now()) {
   if (!c.suggest || !c.category) return null;
   const key = c.category;
   if (state.hinted.includes(key)) return null;
-  const text = hintFor(c, mode);
+  const text = hintFor(c, mode, firstPrompt);
   if (!text) return null;
   state.hinted.push(key);
   saveState(env, session, state);

@@ -51,7 +51,7 @@ function cases(): [string, Classification, "prompt" | "command" | "failure"][] {
 describe("hintFor", () => {
     it.each(cases())("writes one factual paragraph for %s", (_name, c, kind) => {
         expect(c.suggest).toBe(true);
-        const text = hintFor(c, kind);
+        const text = hintFor(c, kind, true);
         expect(text.startsWith(hintPrefix)).toBe(true);
         expect(text.length).toBeLessThanOrEqual(maxHintChars);
         expect(text).not.toContain("\n");
@@ -59,8 +59,20 @@ describe("hintFor", () => {
         expect(text).toContain("bugnet_assess checks it for free");
         expect(text).toContain("bugnet:run-in-sandbox skill");
         expect(text).toContain("holds the steps for telling the user before any shell command");
-        expect(text.endsWith("Bugnet has not been offered in this session.")).toBe(true);
+        const state =
+            kind === "prompt"
+                ? "Bugnet has not been offered in this session."
+                : "No Bugnet tool has been used in this session.";
+        expect(text.endsWith(state)).toBe(true);
         expect(text.slice(hintPrefix.length)).not.toMatch(imperative);
+    });
+
+    it("claims nothing was offered only on the session's first prompt", () => {
+        const c = classifyPrompt("get kokoro tts running on my mac", mac);
+        expect(hintFor(c, "prompt", true)).toContain("Bugnet has not been offered");
+        const later = hintFor(c, "prompt");
+        expect(later).not.toContain("has not been offered");
+        expect(later.endsWith("No Bugnet tool has been used in this session.")).toBe(true);
     });
 
     it("names the subject and the local cost for an AI model", () => {
@@ -75,6 +87,7 @@ describe("hintFor", () => {
         const text = hintFor(c, "prompt");
         expect(text).toContain("github.com/someone/thing");
         expect(text).toContain("files, SSH keys and credentials");
+        expect(text).toContain("even in a scratch folder or venv");
     });
 
     it("says a command is about to run", () => {

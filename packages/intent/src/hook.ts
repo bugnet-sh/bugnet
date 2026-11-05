@@ -37,6 +37,8 @@ export interface State {
     // The repository each cloned directory holds, such as github.com/acme/tool
     clonedRepos: Record<string, string>;
     bugnetUsed: boolean;
+    // Set by the first prompt, since only its hint can say that nothing was offered
+    prompted: boolean;
 }
 
 export interface Env {
@@ -69,9 +71,10 @@ export function loadState(env: Env, session: string): State {
             clonedDirs: Array.isArray(s.clonedDirs) ? s.clonedDirs : [],
             clonedRepos: repos && typeof repos === "object" && !Array.isArray(repos) ? repos : {},
             bugnetUsed: s.bugnetUsed === true,
+            prompted: s.prompted === true,
         };
     } catch {
-        return { hinted: [], clonedDirs: [], clonedRepos: {}, bugnetUsed: false };
+        return { hinted: [], clonedDirs: [], clonedRepos: {}, bugnetUsed: false, prompted: false };
     }
 }
 
@@ -150,6 +153,11 @@ export function runHook(mode: Mode, input: HookInput, env: Env, now = Date.now()
         }
         return null;
     }
+    const firstPrompt = mode === "prompt" && !state.prompted;
+    if (firstPrompt) {
+        state.prompted = true;
+        saveState(env, session, state);
+    }
     if (state.bugnetUsed || state.hinted.length >= maxHintsPerSession) return null;
     if (env.hints === "quiet" && mode !== "failure") return null;
 
@@ -175,7 +183,7 @@ export function runHook(mode: Mode, input: HookInput, env: Env, now = Date.now()
     if (!c.suggest || !c.category) return null;
     const key = c.category;
     if (state.hinted.includes(key)) return null;
-    const text = hintFor(c, mode);
+    const text = hintFor(c, mode, firstPrompt);
     if (!text) return null;
     state.hinted.push(key);
     saveState(env, session, state);
