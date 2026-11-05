@@ -221,9 +221,11 @@ export function analyseModel(m: HfModel, now: number): ModelReport {
     if (pickles.length > 0 && !m.files.some((f) => safeWeights.test(f.name))) {
         const names = pickles.slice(0, 2).map((f) => f.name);
         const more = pickles.length > 2 ? ` and ${pickles.length - 2} more` : "";
+        // A pickle that a hundred thousand people have loaded is far less likely to hide code
+        const used = m.downloads !== null && m.downloads >= 100_000;
         findings.push({
             id: "pickle_weights",
-            severity: "medium",
+            severity: used ? "low" : "medium",
             title: "Weights are only in pickle files, and loading a pickle can run code",
             evidence: evidence(`${names.join(", ")}${more}`),
         });

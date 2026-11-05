@@ -411,7 +411,7 @@ describe("assessor over Hugging Face", () => {
         expect(calls[0]?.url).toContain("blobs=true");
         expect(r.recommendation).toBe("sandbox_recommended");
         expect(r.categories).toEqual(["local_ai_model"]);
-        expect(r.risk.findings).toMatchObject([{ id: "pickle_weights", severity: "medium" }]);
+        expect(r.risk.findings).toMatchObject([{ id: "pickle_weights", severity: "low" }]);
         expect(r.needs).toMatchObject({
             gpu: false,
             minMemoryGiB: 1.4,

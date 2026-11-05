@@ -200,6 +200,11 @@ describe("model findings", () => {
             now,
         );
         expect(pickles.findings).toMatchObject([{ id: "pickle_weights", severity: "medium" }]);
+        const popular = analyseModel(
+            model({ downloads: 11_880_507, files: [{ name: "kokoro.pth", size: 1 }] }),
+            now,
+        );
+        expect(popular.findings).toMatchObject([{ id: "pickle_weights", severity: "low" }]);
         const both = analyseModel(
             model({
                 files: [
