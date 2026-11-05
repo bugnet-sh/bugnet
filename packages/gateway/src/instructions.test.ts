@@ -6,7 +6,12 @@ describe("server instructions", () => {
         expect(instructions.length).toBeLessThanOrEqual(2048);
         const first = instructions.split("\n\n")[0] as string;
         expect(first.length).toBeLessThanOrEqual(512);
-        for (const word of ["Bugnet", "this computer", "bugnet_assess", "before the first fetch"]) {
+        for (const word of [
+            "Bugnet",
+            "this computer",
+            "bugnet_assess",
+            "before any shell command",
+        ]) {
             expect(first.toLowerCase()).toContain(word.toLowerCase());
         }
     });
@@ -20,6 +25,7 @@ describe("server instructions", () => {
             "benchmarks",
             "mining",
             "LAN scans",
+            "Name Bugnet",
         ]) {
             expect(instructions).toContain(word);
         }

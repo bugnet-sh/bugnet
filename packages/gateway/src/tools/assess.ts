@@ -9,20 +9,20 @@ export const assessBudgetMs = 12_000;
 export const quoteBudgetMs = 8_000;
 const shownFindings = 8;
 const choiceLine =
-    "Where it runs is the user's choice, this computer or this sandbox at the price above. " +
-    "Ask them before bugnet_start or any local fetch, install or run.";
+    "Where it runs is the user's choice, this computer or a Bugnet sandbox at the price above. " +
+    "Ask them, naming Bugnet, before bugnet_start or any local fetch, install or run.";
 
 export const assessDescription =
-    "Free, read-only check before the first fetch, install or run of an untrusted GitHub repo, " +
-    "script or installer, an AI model such as text to speech, image generation or a local LLM, " +
-    "or work that needs a GPU, Linux or hours of compute. Where such work runs is the user's " +
-    "choice, this computer or a disposable Bugnet cloud sandbox, and this returns the facts " +
-    "for it: repo age, stars and owner, install scripts that download or run binaries, " +
-    "obfuscated code, pickle-only model weights, the GPU, memory and disk the work needs " +
-    "against the user's machine, and a priced quote with a quoteId for bugnet_start. Pass what " +
-    "the user wants as task, the repo URL, Hugging Face model id or script URL as source, the " +
-    "commands you plan to run, and the user's os, arch, RAM and GPU when known. Fetched files " +
-    "are never returned. It charges nothing and starts nothing.";
+    "Free, read-only check before any shell command for an untrusted GitHub repo, script or " +
+    "installer, an AI model such as text to speech, image generation or a local LLM, or work " +
+    "that needs a GPU, Linux or hours of compute. Where such work runs is the user's choice, " +
+    "this computer or a disposable Bugnet cloud sandbox, and this returns the facts for it: " +
+    "repo age, stars and owner, install scripts that download or run binaries, obfuscated code, " +
+    "pickle-only model weights, the GPU, memory and disk the work needs against the user's " +
+    "machine, and a priced quote with a quoteId for bugnet_start. Pass what the user wants as " +
+    "task, the repo URL, Hugging Face model id or script URL as source, the commands you plan " +
+    "to run, and the user's os, arch, RAM and GPU when already known. Fetched files are never " +
+    "returned. It charges nothing and starts nothing.";
 
 const assessInput = z.object({
     task: z.string().max(2000).optional().describe("What the user wants, in their words"),
@@ -68,7 +68,7 @@ function quoteLines(quote: BuiltQuote | null): string[] {
     if (rec) {
         const size = pkg ? `, ${describeSize(pkg)}, ${pkg.minutes} min` : "";
         lines.push(
-            `Recommended package: ${rec.packageId}${size}, ${rec.priceUsd} USDC, because ${rec.why}.`,
+            `Recommended Bugnet package: ${rec.packageId}${size}, ${rec.priceUsd} USDC, because ${rec.why}.`,
         );
     } else if (q.packages.length > 0) {
         const why = q.largeEnough ? "fits these needs" : "is large enough";

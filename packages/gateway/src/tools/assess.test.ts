@@ -168,7 +168,7 @@ describe("bugnet_assess tool", () => {
             /Needs: GPU yes, memory about 27\.6 GiB, disk about 55 GiB, workload inference\. Fit with this machine: does_not_fit\./,
         );
         expect(text).toMatch(
-            /Recommended package: gpu-m, 4 vCPU \/ 32 GiB \/ 1 GPU, 30 min, \$0\.90 USDC/,
+            /Recommended Bugnet package: gpu-m, 4 vCPU \/ 32 GiB \/ 1 GPU, 30 min, \$0\.90 USDC/,
         );
         expect(text).toMatch(/quoteId \(valid 10 min\): q1\./);
         expect(
@@ -209,7 +209,7 @@ describe("bugnet_assess tool", () => {
             arguments: { source: "deepseek-ai/DeepSeek-R1" },
         })) as Result;
         const text = r.content.map((c) => c.text).join("\n");
-        expect(text).not.toMatch(/Recommended package/);
+        expect(text).not.toMatch(/Recommended Bugnet package/);
         expect(text).not.toMatch(/sandbox can run/);
         expect(text).toMatch(/No package is large enough, 2 others are in the quote/);
         expect(text).toMatch(
@@ -265,7 +265,9 @@ describe("bugnet_assess tool", () => {
         expect(r.isError).toBeFalsy();
         const text = r.content.map((c) => c.text).join("\n");
         expect(text).toMatch(/No quote: prices are unavailable right now/);
-        expect(text).toMatch(/Ask them before bugnet_start or any local fetch, install or run\.$/);
+        expect(text).toMatch(
+            /Ask them, naming Bugnet, before bugnet_start or any local fetch, install or run\.$/,
+        );
         expect(r.structuredContent?.quote).toBeNull();
         expect(r.structuredContent?.assessment.summary).toBe(assessment.summary);
     });

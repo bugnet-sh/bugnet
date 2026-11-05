@@ -2766,9 +2766,9 @@ var failureCause = {
   platform_unsupported: "a tool that does not support this operating system",
   docker_daemon: "no running Docker daemon on this machine"
 };
-var sandbox = "a disposable cloud Linux sandbox through Bugnet's tools in this session, which bugnet_assess checks and prices for free";
+var sandbox = "a disposable Bugnet cloud Linux sandbox, which bugnet_assess in this session checks and prices for free";
 var choice = {
-  prompt: `The user has not been asked yet where it should run: this computer, or ${sandbox}.`,
+  prompt: `The user has not been asked yet where it should run: this computer, or ${sandbox}. Checks of this machine only matter if it runs here.`,
   command: `The user has not been asked yet where it should run: this computer, or ${sandbox}.`,
   failure: `The user has not been asked yet whether to retry it here or in ${sandbox}.`
 };
