@@ -2,10 +2,12 @@ const decoder = new TextDecoder("utf-8", { fatal: false });
 
 // CSI, OSC, DCS and other escape sequences, then remaining C0 and C1 controls except tab and newline
 const escapes =
+    // eslint-disable-next-line no-control-regex
     /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)?|\u001b[PX^_][^\u001b]*(?:\u001b\\)?|\u001b[@-Z\\-_]|\u009b[0-?]*[ -/]*[@-~]/g;
+// eslint-disable-next-line no-control-regex
 const controls = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
 // Bidi overrides can make text read differently from what it is
-const bidi = /[‪-‮⁦-⁩]/g;
+const bidi = /[\u202a-\u202e\u2066-\u2069]/g;
 
 export function cleanText(text: string): string {
     return text
@@ -33,7 +35,7 @@ export function tail(data: Uint8Array | string, maxBytes: number): Tail {
     if (truncated) {
         const nl = text.indexOf("\n");
         if (nl >= 0 && nl < text.length - 1) text = text.slice(nl + 1);
-        text = text.replace(/^�+/, "");
+        text = text.replace(/^\ufffd+/, "");
     }
     return { text, truncated };
 }
