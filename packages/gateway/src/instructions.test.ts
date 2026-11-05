@@ -32,10 +32,10 @@ describe("server instructions", () => {
         );
     });
 
-    it("exclude abuse and LAN scans where Codex stops reading", () => {
+    it("name the excluded work, not a broad word, where Codex stops reading", () => {
         const first = instructions.slice(0, 512);
-        expect(first).toContain("Never for LAN scans or abuse such as miners and floods.");
-        expect(instructions).toContain("advise against running it (abuse aside)");
+        expect(first).toContain("Not for miners, floods, mass or LAN scans.");
+        expect(instructions).toContain("inspect it safely (not miners or floods)");
     });
 
     it("stay factual and never name infrastructure providers", () => {
