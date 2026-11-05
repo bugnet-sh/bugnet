@@ -2767,7 +2767,7 @@ var failureCause = {
   docker_daemon: "no running Docker daemon on this machine"
 };
 var tools = "Bugnet's tools in this session can run it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
-var skill = "The bugnet:run-in-sandbox skill holds the steps for telling the user, who sees text replies but not tool calls.";
+var skill = "The bugnet:run-in-sandbox skill holds the steps for telling the user before any shell command.";
 var notOffered = "Bugnet has not been offered in this session.";
 function lead(c) {
   return c.signals.find((s) => s.weight > 0 && s.category === c.category);
