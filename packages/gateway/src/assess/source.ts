@@ -6,6 +6,8 @@ export type Source =
           owner: string;
           repo: string;
           ref: string | null;
+          // Link segments after the ref, since a branch such as feature/x can hold slashes
+          refRest: string[];
           path: string | null;
           asset: string | null;
           key: string;
@@ -59,7 +61,7 @@ const huggingfacePages = new Set([
 ]);
 
 // Git refuses spaces, controls and ~^:?*[\ in ref names, so a link holding them is no real ref
-const gitRef = /^(?!.*\.\.)(?!-)[A-Za-z0-9._/+@-]{1,200}$/;
+export const gitRef = /^(?!.*\.\.)(?!-)[A-Za-z0-9._/+@-]{1,200}$/;
 const assetName = /^[A-Za-z0-9._+@~-]{1,200}$/;
 
 function none(reason: string): Source {
@@ -76,6 +78,7 @@ function github(
     ref: string | null = null,
     path: string | null = null,
     asset: string | null = null,
+    refRest: string[] = [],
 ): Source {
     const repo = repoRaw.replace(/\.git$/i, "");
     if (!ghOwner.test(owner) || !ghRepo.test(repo) || repo === "." || repo === "..") {
@@ -88,9 +91,9 @@ function github(
     const key =
         `github:${owner.toLowerCase()}/${repo.toLowerCase()}` +
         (ref ? `@${ref}` : "") +
-        (path ? `:${path}` : "") +
+        (path ? `:${path}` : refRest.map((r) => `/${r}`).join("")) +
         (asset ? `!${asset}` : "");
-    return { kind: "github", owner, repo, ref, path, asset, key };
+    return { kind: "github", owner, repo, ref, refRest, path, asset, key };
 }
 
 function huggingface(org: string | null, name: string, revision: string | null = null): Source {
@@ -120,12 +123,11 @@ function decode(segment: string): string {
 function fromGithubUrl(segs: string[]): Source {
     const [owner, repo, kind, ...rest] = segs;
     if (!owner || !repo) return none("a GitHub URL without a repo");
-    if (kind === "tree" || kind === "commit" || kind === "commits") {
-        return github(owner, repo, rest[0] ?? null);
-    }
+    if (kind === "tree") return github(owner, repo, rest[0] ?? null, null, null, rest.slice(1));
+    if (kind === "commit" || kind === "commits") return github(owner, repo, rest[0] ?? null);
     if (kind === "blob" || kind === "raw") {
         const path = rest.slice(1).join("/");
-        return github(owner, repo, rest[0] ?? null, path || null);
+        return github(owner, repo, rest[0] ?? null, path || null, null, rest.slice(1));
     }
     if (kind === "releases" && rest[0] === "download" && rest.length >= 3) {
         return github(owner, repo, rest[1] ?? null, null, rest.slice(2).join("/"));
@@ -227,7 +229,7 @@ export function sourceRef(s: Source): string {
             return (
                 `github.com/${s.owner}/${s.repo}` +
                 (s.ref ? `@${s.ref}` : "") +
-                (s.path ? `/${evidence(s.path)}` : "") +
+                evidence(s.path ? `/${s.path}` : s.refRest.map((r) => `/${r}`).join("")) +
                 (s.asset ? ` release file ${s.asset}` : "")
             );
         case "huggingface":

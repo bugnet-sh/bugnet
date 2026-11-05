@@ -1,6 +1,7 @@
 import type { Finding } from "./assessor.ts";
 import { bodyJson, bodyText, type Fetched, type Fetcher } from "./fetch.ts";
 import { safePath } from "./scan.ts";
+import { gitRef } from "./source.ts";
 
 export interface RepoInfo {
     owner: string;
@@ -156,6 +157,25 @@ export function pickFiles(
     return picked;
 }
 
+interface RefCandidate {
+    ref: string;
+    path: string | null;
+}
+
+export const maxRefTries = 4;
+
+// Shortest first, since git cannot hold both a branch feature and a branch feature/x
+export function refCandidates(ref: string, rest: string[], blob: boolean): RefCandidate[] {
+    const out: RefCandidate[] = [];
+    const longest = Math.min(maxRefTries - 1, blob ? rest.length - 1 : rest.length);
+    for (let k = 0; k <= longest; k++) {
+        const name = [ref, ...rest.slice(0, k)].join("/");
+        if (k > 0 && (!gitRef.test(name) || name.length > 200)) break;
+        out.push({ ref: name, path: blob ? rest.slice(k).join("/") || null : null });
+    }
+    return out;
+}
+
 // When the full listing is over the byte cap, the root and workflows still show what installs do
 async function shallowTree(
     apiGet: (path: string) => Promise<Fetched>,
@@ -202,7 +222,13 @@ function note(id: string, title: string): Finding {
 
 export async function readGithub(
     env: GithubEnv,
-    src: { owner: string; repo: string; ref: string | null; path: string | null },
+    src: {
+        owner: string;
+        repo: string;
+        ref: string | null;
+        refRest?: string[];
+        path: string | null;
+    },
     signal: AbortSignal,
 ): Promise<RepoSnapshot> {
     const snap: RepoSnapshot = {
@@ -270,13 +296,25 @@ export async function readGithub(
         return snap;
     }
     snap.info = info;
-    const ref = src.ref ?? info.defaultBranch;
     const repoPath = `/repos/${encodeURIComponent(info.owner)}/${encodeURIComponent(info.repo)}`;
 
-    const [ownerRes, treeRes] = await Promise.allSettled([
-        apiGet(`/users/${encodeURIComponent(info.owner)}`),
-        apiGet(`${repoPath}/git/trees/${encodeURIComponent(ref)}?recursive=1`),
-    ]);
+    const ownerCall = Promise.allSettled([apiGet(`/users/${encodeURIComponent(info.owner)}`)]);
+    const candidates = src.ref
+        ? refCandidates(src.ref, src.refRest ?? [], src.path !== null)
+        : [{ ref: info.defaultBranch, path: null }];
+    let found = candidates[0] as RefCandidate;
+    let treeRes: PromiseSettledResult<Fetched> | undefined;
+    for (const c of candidates) {
+        found = c;
+        [treeRes] = await Promise.allSettled([
+            apiGet(`${repoPath}/git/trees/${encodeURIComponent(c.ref)}?recursive=1`),
+        ]);
+        if (treeRes.status !== "fulfilled" || treeRes.value.status !== 404) break;
+    }
+    const [ownerRes] = await ownerCall;
+    const ref = found.ref;
+    const preferred = found.path;
+    if (!treeRes) throw new Error("no ref to read");
     if (ownerRes.status === "fulfilled" && ownerRes.value.status === 200) {
         const o = bodyJson(ownerRes.value) as { created_at?: unknown; type?: unknown };
         snap.ownerCreatedAt = str(o.created_at) || null;
@@ -308,8 +346,9 @@ export async function readGithub(
         if (snap.complete) limited();
         return snap;
     } else if (treeRes.status === "fulfilled" && treeRes.value.status === 404) {
+        const shown = src.path !== null ? (candidates[0] as RefCandidate).ref : ref;
         snap.notes.push(
-            note("github_ref_not_found", `Branch, tag or commit ${safePath(ref)} not found`),
+            note("github_ref_not_found", `Branch, tag or commit ${safePath(shown)} not found`),
         );
         return snap;
     } else {
@@ -319,7 +358,7 @@ export async function readGithub(
     }
 
     const raw = env.raw.replace(/\/$/, "");
-    const paths = pickFiles(snap.tree, src.path);
+    const paths = pickFiles(snap.tree, preferred);
     snap.picked = paths.length;
     const reads = await Promise.allSettled(
         paths.map((path) =>

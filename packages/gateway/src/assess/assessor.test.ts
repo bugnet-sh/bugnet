@@ -313,6 +313,45 @@ describe("assessor over GitHub", () => {
         expect(calls.length).toBe(first);
     });
 
+    it("finds a branch whose name holds a slash", async () => {
+        const snap = mainstream();
+        const base = githubRoutes(snap);
+        const api = "https://api.github.com/repos/pallets/flasky";
+        const routes: Record<string, Route> = {
+            [api]: base[api] as Route,
+            "https://api.github.com/users/pallets": base[
+                "https://api.github.com/users/pallets"
+            ] as Route,
+            [`${api}/git/trees/feature%2Fx`]: base[`${api}/git/trees/main`] as Route,
+            "https://raw.githubusercontent.com/pallets/flasky/feature/x/setup.py": {
+                text: "from setuptools import setup\nsetup(name='flasky')\n",
+            },
+        };
+        const { fetch, calls } = fakeFetch(routes);
+        const a = createAssessor(config(), { fetch, now: () => now });
+        const tree = await a.assess(
+            { source: "https://github.com/pallets/flasky/tree/feature/x" },
+            signal(),
+        );
+        expect(tree.risk.findings.map((f) => f.id)).not.toContain("github_ref_not_found");
+        expect(tree.source.ref).toBe("github.com/pallets/flasky@feature/x");
+        const blob = await a.assess(
+            { source: "https://github.com/pallets/flasky/blob/feature/x/setup.py" },
+            signal(),
+        );
+        expect(blob.source.facts.filesChecked).toMatch(/^setup\.py/);
+        const trees = calls.filter((c) => c.url.includes("/git/trees/")).map((c) => c.url);
+        expect(trees.filter((u) => u.includes("/trees/feature?"))).toHaveLength(2);
+        const gone = await a.assess(
+            { source: "https://github.com/pallets/flasky/tree/nope/deeper" },
+            signal(),
+        );
+        expect(gone.risk.findings[0]).toMatchObject({
+            id: "github_ref_not_found",
+            title: "Branch, tag or commit nope/deeper not found",
+        });
+    });
+
     it("notes a missing repo and keeps going", async () => {
         const { fetch } = fakeFetch({});
         const a = createAssessor(config(), { fetch, now: () => now });
