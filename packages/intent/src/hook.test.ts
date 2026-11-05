@@ -10,6 +10,16 @@ function env(hints: Env["hints"] = "normal"): Env {
         stateDir: mkdtempSync(join(tmpdir(), "bugnet-hook-")),
         platform: "darwin",
         arch: "arm64",
+        facts: {
+            os: "macos",
+            arch: "arm64",
+            ramGiB: 16,
+            cores: 8,
+            freeDiskGiB: 42,
+            usedDiskGiB: 410,
+            nvidia: false,
+            secrets: [".ssh"],
+        },
     };
 }
 
@@ -70,7 +80,14 @@ describe("runHook hints", () => {
         expect(context(out)).toMatch(
             /^Bugnet hint \(local pattern match, nothing was sent anywhere\):/,
         );
+        expect(context(out)).toContain("this Mac (arm64, 16 GiB RAM, 42 GiB free disk");
         expect(loadState(e, "h1").hinted).toEqual(["local_ai_model"]);
+    });
+
+    it("reads this computer's facts when none are given", () => {
+        const live: Env = { ...env(), platform: process.platform, facts: undefined };
+        const out = runHook("prompt", kokoro, live);
+        expect(context(out)).toMatch(/\d+ GiB RAM/);
     });
 
     it("prints nothing for an ordinary prompt", () => {

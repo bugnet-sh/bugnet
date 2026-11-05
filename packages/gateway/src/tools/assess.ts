@@ -95,7 +95,11 @@ export function renderAssessment(a: Assessment, quote: BuiltQuote | null): strin
             lines.push(`- ${f.severity}: ${f.title}${f.evidence ? ` [${f.evidence}]` : ""}`);
         }
     }
-    lines.push(needsLine(a), ...quoteLines(quote), "Ask the user before bugnet_start.");
+    lines.push(
+        needsLine(a),
+        ...quoteLines(quote),
+        "Ask the user before bugnet_start, naming Bugnet, what it spares them here and the price.",
+    );
     return lines.join("\n");
 }
 

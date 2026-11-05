@@ -261,7 +261,7 @@ export function summarise(s: SummaryInput): string {
         if (s.unverified) {
             const why = s.report.findings.find((f) => f.severity === "info");
             const reason = why ? ` (${why.title})` : "";
-            return `${name || "The source"} could not be checked${reason}. Unchecked code is safer in a disposable Bugnet sandbox.`;
+            return `${name || "The source"} could not be checked${reason}, so there is no evidence about the code either way. Unchecked code is safer in a disposable Bugnet sandbox, which can run it from a working link or uploaded files without touching the user's computer.`;
         }
         const cat = categoryOrder.find((c) => s.categories.includes(c));
         const phrase = (cat && categoryPhrase[cat]) || "it fits work better kept off this machine";

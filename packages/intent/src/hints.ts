@@ -77,7 +77,13 @@ const osSignals =
     /^(?:pasted_)?(?:needs_linux|needs_x86|kernel_module|exec_format|platform_unsupported)$/;
 
 const tools =
-    "Bugnet's tools in this session can run it in a disposable cloud Linux sandbox, paid per run, and bugnet_assess checks it for free";
+    "Bugnet's tools in this session can run it in a disposable cloud Linux sandbox, paid per run, and bugnet_assess";
+
+// What the free check covers, which is the step the local route would start with
+const checks: Partial<Record<Category, string>> = {
+    local_ai_model: "checks for free whether it fits this machine",
+    untrusted_code: "checks the source remotely for free, with no clone here",
+};
 const notOffered = "Bugnet has not been offered in this session.";
 
 function lead(c: Classification): Signal | undefined {
@@ -153,7 +159,7 @@ function consequence(c: Classification, f: MachineFacts): string | string[] {
             const home = dirs.map((d) => `~/${d}`);
             return home.length > 0 ? `${list(home)}, which exist here` : "the whole home folder";
         };
-        const run = `Run on ${machineName(f)}, it gets this user's access, including`;
+        const run = `On ${machineName(f)}, it runs with this user's access, including`;
         const scratch = "and a scratch folder or virtualenv does not limit what it can read";
         return [
             `${run} ${reach(f.secrets)}, ${scratch}.`,
@@ -179,7 +185,7 @@ function consequence(c: Classification, f: MachineFacts): string | string[] {
     }
     if (category === "risky_experiment") {
         const data = f.usedDiskGiB !== null ? ` with ${f.usedDiskGiB} GiB of files` : "";
-        return `Run on ${machineName(f)}, a mistake reaches its own disk${data} and its running system, while a broken sandbox is simply deleted.`;
+        return `On ${machineName(f)}, a mistake reaches its own disk${data} and its running system, while a broken sandbox is simply deleted.`;
     }
     const size = [
         f.cores !== null ? `${f.cores} cores` : "",
@@ -236,14 +242,15 @@ export function hintFor(c: Classification, kind: InputKind, facts?: MachineFacts
               : facts
                 ? consequences(c, facts)
                 : [why[c.category]];
+    const check = `${tools} ${checks[c.category] ?? "checks it for free"}`;
     const offer = (reason: string) => {
-        if (!facts) return `${tools}.`;
+        if (!facts) return `${check}.`;
         if (reason.includes(machineSummary(facts)))
-            return `${tools}, with those facts as its local input.`;
-        return `${tools} (local: ${localInput(facts)}).`;
+            return `${check}, with those facts as its local input.`;
+        return `${check} (local: ${localInput(facts)}).`;
     };
     for (const reason of reasons) {
-        for (const tail of [offer(reason), `${tools}.`]) {
+        for (const tail of [offer(reason), `${check}.`]) {
             for (const max of [60, 36, 20]) {
                 const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tail} ${notOffered}`;
                 if (text.length <= maxHintChars) return text;
@@ -252,5 +259,5 @@ export function hintFor(c: Classification, kind: InputKind, facts?: MachineFacts
     }
     const reason = reasons[reasons.length - 1] as string;
     const short = `${hintPrefix} ${reason} ${offer(reason)} ${notOffered}`;
-    return short.length <= maxHintChars ? short : `${hintPrefix} ${reason} ${tools}. ${notOffered}`;
+    return short.length <= maxHintChars ? short : `${hintPrefix} ${reason} ${check}. ${notOffered}`;
 }
