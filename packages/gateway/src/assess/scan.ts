@@ -886,7 +886,7 @@ const commandRules: { id: string; severity: Severity; title: string; re: RegExp 
 ];
 
 const secretPath =
-    /\.ssh\/|\bid_(?:rsa|ed25519|ecdsa|dsa)\b|\.aws\/credentials|\.config\/gcloud|\.kube\/config|\.docker\/config\.json|\.npmrc|\.pypirc|\.netrc|\.git-credentials|solana\/id\.json|\.ethereum\/keystore|wallet\.dat|Exodus\/|Electrum\/|\.electrum\b|Login Data|Local State|cookies\.sqlite|logins\.json|key4\.db|\bKeychains\b/i;
+    /\.ssh\b|\bid_(?:rsa|ed25519|ecdsa|dsa)\b|\.aws\/credentials|\.config\/gcloud|\.kube\/config|\.docker\/config\.json|\.npmrc|\.pypirc|\.netrc|\.git-credentials|solana\/id\.json|\.ethereum\/keystore|wallet\.dat|Exodus\/|Electrum\/|\.electrum\b|Login Data|Local State|cookies\.sqlite|logins\.json|key4\.db|\bKeychains\b/i;
 const secretReader =
     /\b(?:cat|cp|scp|rsync|curl|wget|nc|ncat|tar|zip|7z|base64|xxd|od|strings|less|more|head|tail|python3?|node|perl|ruby|Get-Content|type|security\s+find-\w+)\b/i;
 const secretBenign = /^\s*(?:ssh-keygen|ssh-add|ssh|chmod|chown|ls|mkdir|touch)\b/i;
