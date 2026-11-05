@@ -10,10 +10,12 @@
  * A run "offers" Bugnet when, before its first shell command, it calls or searches for a Bugnet
  * tool or its text mentions Bugnet (baseline: any sandbox, VM or container suggestion). Offers
  * made only after a denied shell command are reported as late, since the denial itself can push
- * the agent toward alternatives. "local_first" means a local install or run was tried before any
- * offer. Settings come from eval/agent/config.json.
+ * the agent toward alternatives. "before-run" also counts offers made after read-only looks such
+ * as ls, but before any command that fetches, installs or runs code. "local_first" means a local
+ * install or run was tried before any offer. "any-mention" counts every no-prompt run that named
+ * Bugnet or called its tools at any point. Settings come from eval/agent/config.json.
  *
- * Usage: tsx eval/agent/run.ts [--split dev|test] [--arms mcp,plugin] [--limit N] [--model M]
+ * Usage: tsx eval/agent/run.ts [--split dev|test|NAME] [--arms mcp,plugin] [--limit N] [--model M]
  *   [--suggest N] [--no N] [--ids a,b] [--gateway-url URL] [--plugin-dir DIR] [--tag NAME]
  *   [--concurrency N] [--budget USD]
  *
@@ -60,6 +62,8 @@ interface RunResult {
     offered: boolean;
     // Mentioned only after a denied shell command, reported but not counted
     offeredLate: boolean;
+    // Offered before any command that fetches, installs or runs code, read-only looks allowed
+    offeredBeforeRun: boolean;
     called: string[];
     mentioned: boolean;
     localFirst: boolean;
@@ -78,7 +82,7 @@ const opt = (name: string) => {
     return i >= 0 ? argv[i + 1] : undefined;
 };
 const cfg = JSON.parse(readFileSync(join(here, "config.json"), "utf8")) as Config;
-const split = opt("--split") === "test" ? "test" : "dev";
+const split = opt("--split") ?? "dev";
 const arms = (opt("--arms")?.split(",") as Arm[] | undefined) ?? cfg.arms;
 const limit = opt("--limit") ? Number(opt("--limit")) : Infinity;
 const ids = opt("--ids")?.split(",");
@@ -170,6 +174,8 @@ function score(item: Item, arm: Arm, lines: string[]): Omit<RunResult, "error"> 
     const called: string[] = [];
     const bashAttempts: string[] = [];
     let offeredBeforeBash = false;
+    let offeredBeforeRun = false;
+    let runs = 0;
     let mentioned = false;
     let localFirst = false;
     let hookHints = 0;
@@ -184,13 +190,15 @@ function score(item: Item, arm: Arm, lines: string[]): Omit<RunResult, "error"> 
             if (c.type === "text" && mentions(c.text ?? "")) {
                 mentioned = true;
                 if (bashAttempts.length === 0) offeredBeforeBash = true;
+                if (runs === 0) offeredBeforeRun = true;
             }
             if (c.type !== "tool_use" || !c.name) continue;
             if (c.name === "Skill") {
                 const skill = String((c.input as { skill?: string })?.skill ?? "");
                 called.push(`Skill:${skill}`);
-                if (/sandbox|bugnet/i.test(skill) && bashAttempts.length === 0) {
-                    offeredBeforeBash = true;
+                if (/sandbox|bugnet/i.test(skill)) {
+                    if (bashAttempts.length === 0) offeredBeforeBash = true;
+                    if (runs === 0) offeredBeforeRun = true;
                 }
                 continue;
             }
@@ -199,11 +207,13 @@ function score(item: Item, arm: Arm, lines: string[]): Omit<RunResult, "error"> 
             if (/bugnet/i.test(c.name) || searched) {
                 called.push(searched ? "ToolSearch" : c.name.replace(/^mcp__.*__/, ""));
                 if (bashAttempts.length === 0) offeredBeforeBash = true;
+                if (runs === 0) offeredBeforeRun = true;
             }
             if (c.name === "Bash") {
                 const cmd = String((c.input as { command?: string })?.command ?? "");
                 bashAttempts.push(cmd.slice(0, 200));
                 if (!offeredBeforeBash && installOrRun.test(cmd)) localFirst = true;
+                if (installOrRun.test(cmd)) runs++;
             }
         }
     }
@@ -213,6 +223,7 @@ function score(item: Item, arm: Arm, lines: string[]): Omit<RunResult, "error"> 
     if (mentions(finalText)) {
         mentioned = true;
         if (bashAttempts.length === 0) offeredBeforeBash = true;
+        if (runs === 0) offeredBeforeRun = true;
     }
     return {
         id: item.id,
@@ -221,6 +232,7 @@ function score(item: Item, arm: Arm, lines: string[]): Omit<RunResult, "error"> 
         category: item.category,
         offered: offeredBeforeBash,
         offeredLate: mentioned && !offeredBeforeBash,
+        offeredBeforeRun,
         called,
         mentioned,
         localFirst,
@@ -293,7 +305,7 @@ const results = await pool(jobs, cfg.concurrency, () => spent >= cfg.budgetUsd);
 
 const pct = (a: number, b: number) => (b === 0 ? "n/a" : `${((a / b) * 100).toFixed(0)}%`);
 console.log(
-    "\narm       recall(suggest)  false-offer(no)  late(suggest)  local-first(suggest)  errors  cost",
+    "\narm       recall(suggest)  before-run(suggest)  false-offer(no)  any-mention(no)  late(suggest)  local-first(suggest)  errors  cost",
 );
 for (const arm of arms) {
     const rs = results.filter((r) => r.arm === arm);
@@ -302,7 +314,9 @@ for (const arm of arms) {
     const cost = rs.reduce((s, r) => s + r.costUsd, 0);
     console.log(
         `${arm.padEnd(9)} ${pct(pos.filter((r) => r.offered).length, pos.length).padStart(15)}  ` +
+            `${pct(pos.filter((r) => r.offeredBeforeRun).length, pos.length).padStart(19)}  ` +
             `${pct(neg.filter((r) => r.offered).length, neg.length).padStart(15)}  ` +
+            `${pct(neg.filter((r) => r.mentioned || r.called.length > 0).length, neg.length).padStart(15)}  ` +
             `${pct(pos.filter((r) => r.offeredLate).length, pos.length).padStart(13)}  ` +
             `${pct(pos.filter((r) => r.localFirst).length, pos.length).padStart(20)}  ` +
             `${String(rs.filter((r) => r.error).length).padStart(6)}  $${cost.toFixed(2)}`,
