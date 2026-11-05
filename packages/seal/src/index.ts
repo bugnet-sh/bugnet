@@ -9,6 +9,7 @@ export {
     type SecretSpec,
 } from "./canonical.ts";
 export { pinnedKeys } from "./pinned.ts";
+export { presetFor, presets, withinPreset, type Preset } from "./presets.ts";
 export {
     SealError,
     boundPayload,
