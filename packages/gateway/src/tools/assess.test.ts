@@ -177,7 +177,7 @@ describe("bugnet_assess tool", () => {
         expect(text).toMatch(
             /Recommended package: gpu-m, 4 vCPU \/ 32 GiB \/ 1 GPU, 30 min, \$0\.90 USDC/,
         );
-        expect(text).toMatch(/quoteId \(valid 10 min\): q2\./);
+        expect(text).toMatch(/quoteId \(valid 10 min\): q3\./);
         expect(text.trim().endsWith("Ask the user before bugnet_start.")).toBe(true);
         expect(requirements).toMatchObject({ gpu: true });
         expect(seen.input).toMatchObject({

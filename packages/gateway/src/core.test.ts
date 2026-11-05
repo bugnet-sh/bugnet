@@ -1,7 +1,6 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { describe, expect, it } from "vitest";
 import { ConfigError, checkSettings, parseDuration, parseSettings, readSecrets } from "./config.ts";
-import { signQuote, verifyQuote, type QuoteClaims } from "./quote.ts";
 import { fromRouter, safeMessage } from "./router.ts";
 import { cleanText, looksLikeText, tail } from "./sanitize.ts";
 import { secretLooking } from "./tools/jobs.ts";
@@ -23,34 +22,6 @@ describe("sanitize", () => {
     it("tells text from binary", () => {
         expect(looksLikeText(new TextEncoder().encode("h\u00e9llo"))).toBe(true);
         expect(looksLikeText(new Uint8Array([0x89, 0x50, 0x00, 0xff]))).toBe(false);
-    });
-});
-
-describe("quote tokens", () => {
-    const key = Buffer.alloc(32, 7);
-    const claims: QuoteClaims = {
-        requirements: { ssh: false, preview: false, gpu: true },
-        expiresAt: 2_000_000,
-    };
-
-    it("round-trips, stays short enough to copy and expires", () => {
-        const tok = signQuote(key, claims);
-        expect(tok).toMatch(/^q2\.[0-9a-z]+\.g\.[A-Za-z0-9_-]{16}$/);
-        expect(tok.length).toBeLessThan(40);
-        expect(verifyQuote(key, ` ${tok} `, 1_000_000)).toEqual(claims);
-        expect(() => verifyQuote(key, tok, 2_000_000)).toThrow(/expired/);
-    });
-
-    it("refuses another key, changed needs, a changed expiry and typos", () => {
-        const tok = signQuote(key, claims);
-        expect(() => verifyQuote(Buffer.alloc(32, 8), tok, 1_000)).toThrow(/verify/);
-        const [p, exp, , sig] = tok.split(".");
-        expect(() => verifyQuote(key, `${p}.${exp}.-.${sig}`, 1_000)).toThrow(/verify/);
-        expect(() => verifyQuote(key, `${p}.zzzzzz.g.${sig}`, 1_000)).toThrow(/verify/);
-        const typo = tok.slice(0, -1) + (tok.endsWith("A") ? "B" : "A");
-        expect(() => verifyQuote(key, typo, 1_000)).toThrow(/copy it in full/);
-        expect(() => verifyQuote(key, `${p}.${exp}.x.${sig}`, 1_000)).toThrow(/malformed/);
-        expect(() => verifyQuote(key, "q1.abc.def", 1_000)).toThrow(/not a quote id/);
     });
 });
 

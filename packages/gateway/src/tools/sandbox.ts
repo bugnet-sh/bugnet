@@ -186,6 +186,7 @@ export async function buildQuote(
         ssh: args.needs?.includes("ssh") ?? false,
         preview: args.needs?.includes("preview") ?? false,
         gpu: wantGpu,
+        secrets: args.needs?.includes("secrets") ?? false,
     };
     const est = await deps.router.estimate({ requirements }, signal ? { signal } : {});
     const all = est.options.map(quoted);
@@ -207,7 +208,12 @@ export async function buildQuote(
     }
     const rec = recommend(sized, args.workload, args.expectedMinutes);
     const expiresAt = deps.now() + deps.config.limits.quote_ttl;
-    const quoteId = signQuote(deps.config.secrets.quoteKey, { requirements, expiresAt });
+    const quoteId = signQuote(deps.config.secrets.quoteKey, {
+        requirements,
+        github: false,
+        estimateId: null,
+        expiresAt,
+    });
     const lines = [...available]
         .sort((a, b) => a.priceMicros - b.priceMicros)
         .map(

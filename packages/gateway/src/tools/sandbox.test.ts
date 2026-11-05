@@ -89,7 +89,12 @@ describe("bugnet_quote", () => {
         expect(asked).toEqual(expect.objectContaining({ ssh: true, preview: false, gpu: true }));
         expect(r.structured.warnings[0]).toMatch(/No GPU package/);
         const claims = verifyQuote(deps.config.secrets.quoteKey, r.structured.quoteId, testNow);
-        expect(claims.requirements).toEqual({ ssh: true, preview: false, gpu: true });
+        expect(claims.requirements).toEqual({
+            ssh: true,
+            preview: false,
+            gpu: true,
+            secrets: false,
+        });
     });
 
     it("reports a rate limit with its RetryInfo delay", async () => {
@@ -194,7 +199,9 @@ describe("bugnet_start", () => {
     it("refuses a quote signed with another key and a package not on offer", async () => {
         const { client } = await setup(startRouter({ waits: [] }));
         const forged = signQuote(Buffer.alloc(32, 1), {
-            requirements: { ssh: false, preview: false, gpu: false },
+            requirements: { ssh: false, preview: false, gpu: false, secrets: false },
+            github: false,
+            estimateId: null,
             expiresAt: testNow + 60_000,
         });
         const r = await callTool(client, "bugnet_start", startArgs(forged));
