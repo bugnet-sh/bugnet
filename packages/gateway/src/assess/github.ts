@@ -220,6 +220,10 @@ function note(id: string, title: string): Finding {
     return { id, severity: "info", title };
 }
 
+export function githubLimited(): Finding {
+    return note("github_rate_limited", "GitHub rate limit reached, repo details were not checked");
+}
+
 export async function readGithub(
     env: GithubEnv,
     src: {
@@ -254,9 +258,7 @@ export async function readGithub(
             ...(env.token ? { originHeaders: { authorization: `Bearer ${env.token}` } } : {}),
         });
     const limited = () => {
-        snap.notes.push(
-            note("github_rate_limited", "GitHub rate limit reached, repo details were not checked"),
-        );
+        snap.notes.push(githubLimited());
         snap.complete = false;
     };
 

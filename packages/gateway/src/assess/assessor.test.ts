@@ -217,14 +217,70 @@ describe("assessor over GitHub", () => {
                 json: { message: "API rate limit exceeded" },
             },
         });
-        const a = createAssessor(config(), { fetch, now: () => now });
+        let t = now;
+        const a = createAssessor(config(), { fetch, now: () => t });
         const r = await a.assess({ source: "https://github.com/acme/tool" }, signal());
         expect(r.risk.level).toBe("unknown");
         expect(r.risk.findings).toMatchObject([{ id: "github_rate_limited", severity: "info" }]);
         expect(r.recommendation).toBe("sandbox_recommended");
         expect(r.summary).toMatch(/could not be checked \(GitHub rate limit reached/);
+        const paused = await a.assess({ source: "https://github.com/acme/other" }, signal());
+        expect(paused.risk.findings).toMatchObject([{ id: "github_rate_limited" }]);
+        expect(calls.length).toBe(1);
+        t += 61_000;
         await a.assess({ source: "https://github.com/acme/tool" }, signal());
         expect(calls.length).toBe(2);
+    });
+
+    it("pauses Hugging Face reads for a minute after a rate limit", async () => {
+        let t = now;
+        const { fetch, calls } = fakeFetch({
+            "https://huggingface.co/api/models/acme/a": { status: 429 },
+        });
+        const a = createAssessor(config(), { fetch, now: () => t });
+        await a.assess({ source: "huggingface.co/acme/a" }, signal());
+        const r = await a.assess({ source: "huggingface.co/acme/b" }, signal());
+        expect(r.risk.findings).toMatchObject([{ id: "hf_rate_limited" }]);
+        expect(calls.length).toBe(1);
+        t += 61_000;
+        await a.assess({ source: "huggingface.co/acme/b" }, signal());
+        expect(calls.length).toBe(2);
+    });
+
+    it("runs a bounded number of reads at once and turns the overflow away", async () => {
+        const release: (() => void)[] = [];
+        let active = 0;
+        let peak = 0;
+        const fetch: Fetcher = async (url) => {
+            active++;
+            peak = Math.max(peak, active);
+            await new Promise<void>((resolve) => release.push(resolve));
+            active--;
+            return { status: 404, url, headers: {}, body: new Uint8Array(), truncated: false };
+        };
+        const a = createAssessor(config(), {
+            fetch,
+            now: () => now,
+            maxConcurrent: 2,
+            maxQueued: 1,
+        });
+        const runs = ["a", "b", "c"].map((n) =>
+            a.assess({ source: `https://github.com/acme/${n}` }, signal()),
+        );
+        const busy = await a.assess({ source: "https://github.com/acme/d" }, signal());
+        expect(busy.risk.findings).toMatchObject([{ id: "assess_busy" }]);
+        expect(busy.recommendation).toBe("sandbox_recommended");
+        while (release.length > 0 || active > 0) {
+            release.shift()?.();
+            await new Promise((r) => setTimeout(r, 1));
+        }
+        const done = await Promise.all(runs);
+        expect(done.map((d) => d.risk.findings[0]?.id)).toEqual([
+            "github_not_found",
+            "github_not_found",
+            "github_not_found",
+        ]);
+        expect(peak).toBe(2);
     });
 
     it.each([

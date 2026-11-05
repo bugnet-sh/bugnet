@@ -2,24 +2,37 @@ import type { Config } from "../config.ts";
 import type { Assessment, AssessInput, Assessor, Finding } from "./assessor.ts";
 import { TtlCache } from "./cache.ts";
 import { createSafeFetcher, FetchRefused, type Fetcher } from "./fetch.ts";
-import { readGithub } from "./github.ts";
-import { analyseModel, readHuggingface } from "./huggingface.ts";
+import { createGate, type Gate } from "./gate.ts";
+import { githubLimited, readGithub } from "./github.ts";
+import { analyseModel, hfLimited, readHuggingface } from "./huggingface.ts";
 import { evidence, safePath, scanRepo, shift } from "./scan.ts";
 import { readScript, urlFindings } from "./script.ts";
 import { githubAlternative, parseSource, sourceName, sourceRef, type Source } from "./source.ts";
 import { combine, type SourceReport } from "./verdict.ts";
 
 export const cacheEntries = 500;
+// Each uncached read can hold a few MiB and several API calls, so a burst waits or is turned away
+export const maxConcurrentReads = 8;
+export const maxQueuedReads = 32;
+// After a rate limit the service is left alone this long, so a burst cannot keep draining it
+export const rateLimitPauseMs = 60_000;
 
 export interface AssessorOptions {
     fetch?: Fetcher;
     now?: () => number;
+    maxConcurrent?: number;
+    maxQueued?: number;
 }
 
 interface ReadEnv {
     fetch: Fetcher;
     config: Config;
     now: () => number;
+    pausedUntil: { github: number; huggingface: number };
+}
+
+function note(id: string, title: string): Finding {
+    return { id, severity: "info", title };
 }
 
 function emptyReport(src: Source): SourceReport {
@@ -73,6 +86,11 @@ async function readGithubSource(
     report: SourceReport,
     signal: AbortSignal,
 ): Promise<void> {
+    if (env.pausedUntil.github > env.now()) {
+        report.findings = [githubLimited()];
+        report.complete = false;
+        return;
+    }
     const a = env.config.assess;
     const snap = await readGithub(
         {
@@ -85,6 +103,9 @@ async function readGithubSource(
         src,
         signal,
     );
+    if (snap.notes.some((n) => n.id === "github_rate_limited")) {
+        env.pausedUntil.github = env.now() + rateLimitPauseMs;
+    }
     const scan = scanRepo(snap, env.now());
     report.complete = snap.complete;
     report.checked =
@@ -114,6 +135,13 @@ async function readHuggingfaceSource(
     report: SourceReport,
     signal: AbortSignal,
 ): Promise<void> {
+    report.categories.push("local_ai_model");
+    report.workload = "inference";
+    if (env.pausedUntil.huggingface > env.now()) {
+        report.findings = [hfLimited()];
+        report.complete = false;
+        return;
+    }
     const res = await readHuggingface(
         {
             fetch: env.fetch,
@@ -123,10 +151,11 @@ async function readHuggingfaceSource(
         src,
         signal,
     );
+    if (res.notes.some((n) => n.id === "hf_rate_limited")) {
+        env.pausedUntil.huggingface = env.now() + rateLimitPauseMs;
+    }
     report.complete = res.complete;
     report.findings = res.notes;
-    report.categories.push("local_ai_model");
-    report.workload = "inference";
     if (!res.model) return;
     const m = analyseModel(res.model, env.now());
     report.checked = true;
@@ -204,17 +233,44 @@ export async function readSource(
     };
 }
 
+async function gatedRead(
+    env: ReadEnv,
+    gate: Gate,
+    src: Source,
+    signal: AbortSignal,
+): Promise<SourceReport> {
+    if (src.kind === "none") return emptyReport(src);
+    try {
+        const report = await gate(() => readSource(env, src, signal), signal);
+        if (report) return report;
+        const busy = emptyReport(src);
+        busy.complete = false;
+        busy.findings.push(note("assess_busy", "The checker is busy, try again in a few seconds"));
+        return busy;
+    } catch (e) {
+        const failed = emptyReport(src);
+        const n = failureNote(e);
+        failed.findings.push(n.finding);
+        failed.complete = n.complete;
+        return failed;
+    }
+}
+
 export function createAssessor(config: Config, opts: AssessorOptions = {}): Assessor {
     const fetch = opts.fetch ?? createSafeFetcher({ timeoutMs: config.assess.fetch_timeout });
     const now = opts.now ?? Date.now;
     const cache = new TtlCache<SourceReport>(config.assess.cache_ttl, cacheEntries, now);
-    const env: ReadEnv = { fetch, config, now };
+    const gate = createGate(
+        opts.maxConcurrent ?? maxConcurrentReads,
+        opts.maxQueued ?? maxQueuedReads,
+    );
+    const env: ReadEnv = { fetch, config, now, pausedUntil: { github: 0, huggingface: 0 } };
     return {
         async assess(input: AssessInput, signal: AbortSignal): Promise<Assessment> {
             const src = parseSource(input.source);
             let report = src.kind === "none" ? undefined : cache.get(src.key);
             if (!report) {
-                report = await readSource(env, src, signal);
+                report = await gatedRead(env, gate, src, signal);
                 if (src.kind !== "none" && report.complete) cache.set(src.key, report);
                 if (src.kind === "none" && src.crafted) {
                     report.findings.push({

@@ -286,6 +286,14 @@ function notFound(): Finding {
     };
 }
 
+export function hfLimited(): Finding {
+    return {
+        id: "hf_rate_limited",
+        severity: "info",
+        title: "Hugging Face rate limit reached, the model was not checked",
+    };
+}
+
 export async function readHuggingface(
     env: HfEnv,
     src: { id: string; revision: string | null },
@@ -300,19 +308,7 @@ export async function readHuggingface(
     if (res.status === 401 || res.status === 404) {
         return { model: null, notes: [notFound()], complete: true };
     }
-    if (res.status === 429) {
-        return {
-            model: null,
-            notes: [
-                {
-                    id: "hf_rate_limited",
-                    severity: "info",
-                    title: "Hugging Face rate limit reached, the model was not checked",
-                },
-            ],
-            complete: false,
-        };
-    }
+    if (res.status === 429) return { model: null, notes: [hfLimited()], complete: false };
     if (res.status !== 200) {
         return {
             model: null,
