@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Assessment } from "../assess/assessor.ts";
 import { sortFindings } from "../assess/scan.ts";
-import { maxCommands, sentence } from "../assess/verdict.ts";
+import { maxCommands, refusedByPolicy, sentence, withoutSandboxClaim } from "../assess/verdict.ts";
 import { ok, withProgress, type Register } from "./common.ts";
 import { buildQuote, describeSize, sizeText, workloads, type BuiltQuote } from "./sandbox.ts";
 
@@ -105,11 +105,6 @@ export function renderAssessment(a: Assessment, quote: BuiltQuote | null): strin
     return lines.join("\n");
 }
 
-// The summary's closing sentence about what a Bugnet sandbox would do, false once none can start
-function withoutSandboxClaim(summary: string): string {
-    return summary.replace(/ [^.]*\bBugnet\b[^.]*\bsandbox\b[^.]*\.$/, "");
-}
-
 // For work no package can hold, so the summary never promises that a sandbox can run it
 export function tooLargeSummary(a: Assessment): string {
     const fit = a.fit.level === "does_not_fit" ? sortFindings(a.fit.findings)[0] : undefined;
@@ -204,10 +199,13 @@ export const registerAssessTool: Register = (server, deps) => {
             } catch (e) {
                 deps.log.warn("assess quote failed", { err: (e as Error).message });
             }
-            if (quote && !quote.structured.largeEnough) {
-                assessment = { ...assessment, summary: tooLargeSummary(assessment) };
-            } else if (quote && !quote.structured.recommended) {
-                assessment = { ...assessment, summary: unavailableSummary(assessment) };
+            // A summary that rules Bugnet out stays as it is, whatever the quote holds
+            if (quote && !refusedByPolicy(assessment.summary)) {
+                if (!quote.structured.largeEnough) {
+                    assessment = { ...assessment, summary: tooLargeSummary(assessment) };
+                } else if (!quote.structured.recommended) {
+                    assessment = { ...assessment, summary: unavailableSummary(assessment) };
+                }
             }
             return ok(renderAssessment(assessment, quote), {
                 assessment,

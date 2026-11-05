@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/client";
 import { InMemoryTransport, McpServer } from "@modelcontextprotocol/server";
 import { describe, expect, it } from "vitest";
 import type { Assessment, Assessor } from "../assess/assessor.ts";
+import { combine } from "../assess/verdict.ts";
 import { parseSettings, type Config } from "../config.ts";
 import { silentLog } from "../log.ts";
 import type { Payments } from "../payments/port.ts";
@@ -11,6 +12,7 @@ import {
     assessDescription,
     registerAssessTool,
     renderAssessment,
+    tooLargeSummary,
     unavailableSummary,
 } from "./assess.ts";
 import type { Deps } from "./common.ts";
@@ -35,7 +37,7 @@ function config(): Config {
 const assessment: Assessment = {
     recommendation: "sandbox_strongly_recommended",
     summary:
-        "Needs about 27.6 GiB of memory, this machine has 16 GiB. A Bugnet cloud sandbox can run it.",
+        "Needs about 27.6 GiB of memory, this machine has 16 GiB. A Bugnet cloud sandbox can run it on rented hardware instead.",
     categories: ["local_ai_model"],
     risk: {
         level: "low",
@@ -317,4 +319,40 @@ describe("unavailableSummary", () => {
             "No red flags found in acme/model (9.56 GiB of weights), but it installs an AI model. No Bugnet GPU sandbox is available right now, so Bugnet cannot run it yet.",
         );
     });
+});
+
+describe("summaries once no package fits or starts", () => {
+    const pipe = {
+        id: "pipe_to_shell",
+        severity: "high" as const,
+        title: "The installer pipes a remote script into a shell",
+    };
+    for (const name of ["install.sh", "vercel/next.js", "Qwen/Qwen2.5-7B"]) {
+        it(`keep whole sentences for ${name}`, () => {
+            const a = combine(
+                {},
+                {
+                    kind: "url",
+                    ref: name,
+                    name,
+                    checked: true,
+                    complete: true,
+                    facts: {},
+                    findings: [pipe],
+                    categories: [],
+                    gpu: false,
+                    cuda: false,
+                    minMemoryGiB: 64,
+                    minDiskGiB: null,
+                    workload: null,
+                },
+            );
+            expect(unavailableSummary(a)).toBe(
+                "The installer pipes a remote script into a shell. No Bugnet package can start right now, try again in a minute.",
+            );
+            expect(tooLargeSummary(a)).toMatch(
+                /^The installer pipes a remote script into a shell\. No Bugnet package is large enough/,
+            );
+        });
+    }
 });
