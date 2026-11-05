@@ -1,33 +1,50 @@
 // Every sentence states a fact, since hook text phrased as an order trips injection defences
 import { quoteSafe } from "./normalize.ts";
-import type { Category, Classification, InputKind } from "./types.ts";
+import type { Category, Classification, InputKind, Signal } from "./types.ts";
 
 export const hintPrefix = "Bugnet hint (local pattern match, nothing was sent anywhere):";
 export const maxHintChars = 600;
 
-const what: Record<Category, (s: string | null) => string> = {
-    local_ai_model: (s) =>
-        s ? `"${s}", an AI model, on this computer` : "an AI model on this computer",
-    untrusted_code: (s) =>
-        s ? `"${s}", code the user has not vetted` : "code the user has not vetted",
-    environment: (s) =>
-        s
-            ? `"${s}", which needs Linux, x86, an NVIDIA GPU or system-wide changes`
-            : "a setup that needs Linux, x86, an NVIDIA GPU or system-wide changes",
-    risky_experiment: (s) =>
-        s ? `"${s}", a risky system experiment` : "a risky system experiment",
-    heavy_compute: (s) => (s ? `"${s}", a long and heavy job` : "a long and heavy job"),
+const noun: Record<Category, string> = {
+    local_ai_model: "an AI model to run on this computer",
+    untrusted_code: "code the user has not vetted",
+    environment: "a tool that needs Linux, x86, an NVIDIA GPU or system-wide changes",
+    risky_experiment: "a risky system experiment",
+    heavy_compute: "a long and heavy job",
+};
+
+// Signals whose subject is something other than what the category noun says
+const signalNoun: Record<string, string> = {
+    heavy_ml_install: "a heavy ML package (PyTorch, CUDA builds, model runtimes)",
+    nvidia_only_package: "a package that only works with NVIDIA CUDA",
+    ai_runtime_install: "a local AI runtime that downloads models next",
+    model_download: "AI model weights",
+    model_repo_clone: "AI model weights",
+    model_repo: "AI model weights",
+    weights_download: "AI model weights",
+    model_download_script: "a script that downloads AI model weights",
+    lfs_pull: "large files, usually model weights",
+    runs_cloned_code:
+        "code from a repository cloned in this session, which the user has not vetted",
 };
 
 const why: Record<Category, string> = {
     local_ai_model:
         "The local route usually downloads gigabytes of model weights and installs PyTorch and CUDA packages into the user's environment.",
     untrusted_code:
-        "Run locally, unvetted code gets the same access as the user, including their files, SSH keys and credentials.",
+        "Unvetted code run locally gets the same access as the user, including their files, SSH keys and credentials.",
     environment:
         "Locally it means changing the user's own system or fighting a mismatch with its OS, CPU or GPU.",
-    risky_experiment: "Run locally, it can wipe data or leave the user's machine unstable.",
-    heavy_compute: "Run locally, it keeps the user's machine busy for a long time.",
+    risky_experiment: "On the local machine it can wipe data or leave the system unstable.",
+    heavy_compute: "On the local machine it keeps the user's computer busy for a long time.",
+};
+
+const failureWhy: Record<Category, string> = {
+    local_ai_model: "The model needs more memory than this machine has.",
+    untrusted_code: "The code did not run as expected on this machine.",
+    environment: "This machine lacks the OS, CPU, GPU or setup that the command expects.",
+    risky_experiment: "The command could not run safely on this machine.",
+    heavy_compute: "This machine ran out of memory or disk for the job.",
 };
 
 const failureCause: Record<string, string> = {
@@ -47,26 +64,40 @@ const tools =
     "Bugnet's tools in this session can run it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
 const notOffered = "Bugnet has not been offered in this session.";
 
-function detection(c: Classification, kind: InputKind, subjectMax: number): string {
+function lead(c: Classification): Signal | undefined {
+    return c.signals.find((s) => s.weight > 0 && s.category === c.category);
+}
+
+function described(c: Classification, subjectMax: number): string {
     const category = c.category as Category;
-    const subject = c.subject ? quoteSafe(c.subject, subjectMax) : null;
-    const top = c.signals.find((s) => s.weight > 0);
+    const top = lead(c);
+    const what = (top && signalNoun[top.id]) ?? noun[category];
+    const subject = c.subject ? quoteSafe(c.subject, subjectMax) : "";
+    if (!subject) return what;
+    return `"${subject}", ${what}`;
+}
+
+function detection(c: Classification, kind: InputKind, max: number): string {
     if (kind === "failure") {
+        const top = lead(c);
         const cause = (top && failureCause[top.id]) ?? "a limit of this machine";
-        return `a local command (${subject ?? "a Bash command"}) just failed with ${cause}.`;
+        const command = c.subject ? quoteSafe(c.subject, max) : "a Bash command";
+        return `a local command (${command}) just failed with ${cause}.`;
     }
     if (kind === "command") {
-        const step = top ? quoteSafe(top.evidence, subjectMax) : "";
-        return `a Bash command just run${step ? ` (${step})` : ""} involves ${what[category](subject)}.`;
+        const step = lead(c)?.evidence;
+        const shown = step ? ` (${quoteSafe(step, max)})` : "";
+        return `a Bash command just run${shown} involves ${described(c, max)}.`;
     }
-    return `the prompt asks to run or set up ${what[category](subject)}.`;
+    return `the prompt asks to run or set up ${described(c, max)}.`;
 }
 
 export function hintFor(c: Classification, kind: InputKind): string {
     if (!c.suggest || !c.category) return "";
+    const reason = kind === "failure" ? failureWhy[c.category] : why[c.category];
     for (const max of [60, 36, 20]) {
-        const text = `${hintPrefix} ${detection(c, kind, max)} ${why[c.category]} ${tools} ${notOffered}`;
+        const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${notOffered}`;
         if (text.length <= maxHintChars) return text;
     }
-    return `${hintPrefix} ${why[c.category]} ${tools} ${notOffered}`;
+    return `${hintPrefix} ${reason} ${tools} ${notOffered}`;
 }

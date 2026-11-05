@@ -20,15 +20,23 @@ export function clip(s: string): string {
 
 // Newlines survive because prompts are split into clauses on them, and the result is pure ASCII
 export function norm(s: string): string {
-    return clip(s)
-        .toLowerCase()
-        .normalize("NFKD")
-        .replace(/\p{M}+/gu, "")
-        .replace(/[ıßøæœłđþ]/g, (ch) => letterFolds[ch] ?? ch)
-        .replace(/[\p{Cf}]/gu, "")
-        .replace(/[\p{Pi}\p{Pf}]/gu, "'")
-        .replace(/\p{Pd}/gu, "-")
-        .replace(/[^\t\n\r -~]+/g, " ")
+    const c = clip(s);
+    if (/^[\t\n\r -~]*$/.test(c)) return collapse(c.toLowerCase());
+    return collapse(
+        c
+            .toLowerCase()
+            .normalize("NFKD")
+            .replace(/\p{M}+/gu, "")
+            .replace(/[ıßøæœłđþ]/g, (ch) => letterFolds[ch] ?? ch)
+            .replace(/[\p{Cf}]/gu, "")
+            .replace(/[\p{Pi}\p{Pf}]/gu, "'")
+            .replace(/\p{Pd}/gu, "-")
+            .replace(/[^\t\n\r -~]+/g, " "),
+    );
+}
+
+function collapse(s: string): string {
+    return s
         .replace(/[^\S\n]+/g, " ")
         .replace(/ ?\n[\s]*/g, "\n")
         .trim();

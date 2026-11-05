@@ -420,7 +420,7 @@ function clonedCode(seg: Segment, st: State): void {
     const step = projectStep(seg);
     if (!step) return;
     st.ranClonedCode = true;
-    const subject = st.clonedRepo ?? "a repository cloned in this session";
+    const subject = st.clonedRepo ?? undefined;
     const weight = st.cloned && st.clonedFamous ? 2 : 5;
     add(st, hit("runs_cloned_code", "untrusted_code", weight, step, subject));
     if (st.clonedRepo && find(L.aiName, spaced(st.clonedRepo))) {

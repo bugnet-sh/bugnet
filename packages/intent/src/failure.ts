@@ -57,7 +57,8 @@ export const signatures: Signature[] = [
     {
         id: "platform_unsupported",
         category: "environment",
-        re: /unsupported platform|platform (?:is )?not supported|not supported on (?:this platform|darwin|macos|mac os|windows|win32|arm64)|only (?:supported|works|runs|available) on linux|linux[- ]only|requires linux|ebadplatform|is not a supported wheel on this platform|does not match the detected host platform|(?:apt-get|apt|systemctl|modprobe|dpkg|yum|dnf|lsmod|ldconfig): command not found|is not supported on this (?:os|operating system)/,
+        // npm warns about optional packages for other platforms during ordinary installs
+        re: /(?:^|\n)(?!npm warn)[^\n]*?(?:unsupported platform|ebadplatform)|platform (?:is )?not supported|not supported on (?:this platform|darwin|macos|mac os|windows|win32|arm64)|only (?:supported|works|runs|available) on linux|only supports? linux|supports? only linux|linux[- ]only|requires linux|is not a supported wheel on this platform|does not match the detected host platform|(?:apt-get|apt|systemctl|modprobe|dpkg|yum|dnf|lsmod|ldconfig): command not found|is not supported on this (?:os|operating system)/,
     },
     {
         id: "docker_daemon",

@@ -21,9 +21,15 @@ export function find(re: RegExp, s: string): RegExpExecArray | null {
     return re.exec(s);
 }
 
+// An exec loop, because matchAll clones the pattern on every call and costs several times more
 export function findAll(re: RegExp, s: string): RegExpExecArray[] {
+    const out: RegExpExecArray[] = [];
     re.lastIndex = 0;
-    return [...s.matchAll(re)];
+    for (let m = re.exec(s); m !== null; m = re.exec(s)) {
+        out.push(m);
+        if (m[0] === "") re.lastIndex++;
+    }
+    return out;
 }
 
 /* Intent to run, install or try something */
@@ -216,9 +222,9 @@ export const poc = family(String.raw`
     vulnerabilidad\w*|schwachstelle\w*|sicherheitslu(?:e)?cke\w*
 `);
 
-export const receivedFile = family(String.raw`
-    [\w-]*\.(?:zip|rar|7z|exe|msi|scr|bat|cmd|ps1|vbs|jar|lnk|iso|dmg|pkg|app|apk|docm|xlsm|pptm|hta|pif)
-`);
+// File patterns start at the extension, which is several times faster than scanning each word
+export const receivedFile =
+    /\.(?:zip|rar|7z|exe|msi|scr|bat|cmd|ps1|vbs|jar|lnk|iso|dmg|pkg|app|apk|docm|xlsm|pptm|hta|pif)(?![a-z0-9_])/g;
 
 export const receivedContext = family(String.raw`
     attachment|attached|e-?mail(?:ed)?|got an? (?:email|message|dm)|sent me|dm'?d me
@@ -227,8 +233,10 @@ export const receivedContext = family(String.raw`
     macros?|makro\w*
 `);
 
-export const receivedStrong = family(String.raw`
-    [\w-]*\.(?:pdf|docx?|xlsx?|jpe?g|png|mp4|mp3|txt)\.(?:exe|scr|bat|cmd|js|vbs|lnk|com|pif)
+export const disguisedFile =
+    /\.(?:pdf|docx?|xlsx?|jpe?g|png|mp4|mp3|txt)\.(?:exe|scr|bat|cmd|js|vbs|lnk|com|pif)(?![a-z0-9_])/g;
+
+export const enableMacros = family(String.raw`
     enable (?:the )?(?:macros|content|editing)|habilitar (?:macros|contenido)|makros aktivieren|inhalt aktivieren
 `);
 
@@ -486,7 +494,7 @@ export const abuse = family(String.raw`
     cryptojack\w*|mining (?:pool|rig|script|software|bot)|minero|minerador|mineracao|madencilik|kripto kaz\w*
     minar (?:cripto|monero|bitcoin)|krypto[- ]?(?:minen|mining|schu(?:e)?rfen)
     booter|ip stresser|stresser|slowloris|hoic|loic|ddos|dos attack|syn flood|udp flood|http flood
-    hping3 [^\n]{0,40}?--flood|flood (?:the|a|their|his|her) (?:server|site|network|ip)
+    hping3 [^\n]{0,40}?--flood|flood(?:s|ing)? (?:the|a|their|his|her|this|that) (?:\w+ )?(?:server|site|website|network|ip|api|endpoint)
     masscan|zmap|scan the (?:whole |entire )?internet|internet[- ]wide scan|mass[- ]?scan\w*
     mass[- ]?(?:email|e-mail|dm|dms|sms|messag\w*|mail\w*)|bulk (?:sms|email|e-mail|dm|messag\w*|mail\w*)(?: sender| bot)?
     spam ?bot|spammer|auto[- ]?dm|toplu (?:sms|mail|mesaj)\w*|envio masivo|envios masivos|massenmail\w*|disparo em massa

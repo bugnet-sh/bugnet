@@ -35,9 +35,13 @@ const clauseBreak =
 const commandStart =
     /(?<![\w-])(?:curl|wget|iwr|irm|invoke-webrequest|sudo|git clone|docker run|dd|rm -rf|xattr)\s[^\n]*?(?=[.!?](?:\s|$)|\n|$)|`[^`\n]+`/g;
 
+// Words that every local failure signature contains one of, so most prompts skip them all
+const errorLike =
+    /cuda|nvidia|nvcc|libcud|memory|space|errno|quota|killed|kill|137|sigkill|alloc|externally|wheel|requirement|exec format|cpu type|binary file|instruction|architecture|platform|linux|command not found|docker/;
+
 function clauseStarts(t: string): number[] {
     const starts = [0];
-    for (const m of t.matchAll(clauseBreak)) starts.push((m.index as number) + m[0].length);
+    for (const m of findAll(clauseBreak, t)) starts.push(m.index + m[0].length);
     return starts;
 }
 
@@ -54,6 +58,16 @@ function blank(t: string, spans: RegExpExecArray[]): string {
         const at = m.index as number;
         out = out.slice(0, at) + " ".repeat(m[0].length) + out.slice(at + m[0].length);
     }
+    return out;
+}
+
+// Widens a match that starts at a file extension to the whole file name before it
+function named(t: string, m: RegExpExecArray | null): RegExpExecArray | null {
+    if (!m) return null;
+    let at = m.index;
+    while (at > 0 && /[\w-]/.test(t[at - 1] as string)) at--;
+    const out = [t.slice(at, m.index + m[0].length)] as unknown as RegExpExecArray;
+    out.index = at;
     return out;
 }
 
@@ -101,22 +115,6 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     const global: Hit[] = [];
     const put = (at: number, h: Hit) => located.push({ at, hit: h });
 
-    /* Clause-local signs of the user's own work */
-    const negatives: Located[] = [];
-    const negate = (re: RegExp, id: string, weight: number) => {
-        const seen = new Set<number>();
-        for (const m of findAll(re, bare)) {
-            const c = clauseOf(starts, m.index as number);
-            if (seen.has(c)) continue;
-            seen.add(c);
-            negatives.push({ at: m.index as number, hit: hit(id, null, weight, m[0]) });
-        }
-    };
-    negate(L.own, "own_project", -3);
-    negate(L.docs, "writing_docs", -5);
-    negate(L.tests, "writing_tests", -3);
-    negate(L.edit, "editing_code", -2);
-
     /* Heavy local AI */
     const names = findAll(L.aiName, t);
     if (find(L.aiContext, bare)) names.push(...findAll(L.aiWeakName, t));
@@ -159,7 +157,7 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
         put(script.index as number, hit("script_url", "untrusted_code", 4, script[0], script[0]));
     }
 
-    const file = find(L.receivedFile, bare);
+    const file = named(bare, find(L.receivedFile, bare));
     const fileContext = find(L.receivedContext, bare);
     const from = find(L.origin, bare);
     if (from) {
@@ -167,7 +165,7 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
         const w = doing && code ? 4 : doing || code ? 3 : 1;
         global.push(hit("origin", "untrusted_code", w, from[0]));
     }
-    const strongFile = find(L.receivedStrong, bare);
+    const strongFile = named(bare, find(L.disguisedFile, bare)) ?? find(L.enableMacros, bare);
     if (strongFile) {
         put(
             strongFile.index as number,
@@ -208,30 +206,26 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     if (away) global.push(hit("not_on_my_machine", null, 4, away[0]));
 
     /* Setups that do not fit this machine */
-    const nv = find(L.nvidiaOnly, bare);
-    const need = find(L.nvidiaNeed, bare);
+    const nv = mac ? find(L.nvidiaOnly, bare) : null;
+    const need = mac ? find(L.nvidiaNeed, bare) : null;
     const gap = find(L.hardwareGap, bare);
     if (mac && (need || (nv && gap))) {
         const m = (need ?? nv) as RegExpExecArray;
-        put(m.index, hit("needs_nvidia", "environment", act ? 4 : 3, m[0], m[0]));
+        put(m.index, hit("needs_nvidia", "environment", act ? 4 : 3, m[0]));
     } else if (mac && nv) {
-        put(nv.index, hit("mentions_nvidia", "environment", 2, nv[0], nv[0]));
+        put(nv.index, hit("mentions_nvidia", "environment", 2, nv[0]));
     }
     if (gap && (nv || ai || act)) put(gap.index, hit("hardware_gap", "environment", 2, gap[0]));
-    const linux = find(L.linuxOnly, bare);
-    if (linux && notLinux) {
-        put(
-            linux.index as number,
-            hit("needs_linux", "environment", act ? 4 : 3, linux[0], linux[0]),
-        );
+    const linux = notLinux ? find(L.linuxOnly, bare) : null;
+    if (linux) {
+        put(linux.index as number, hit("needs_linux", "environment", act ? 4 : 3, linux[0]));
     }
-    const x86 = find(L.x86Only, bare);
-    if (x86 && mac)
-        put(x86.index as number, hit("needs_x86", "environment", act ? 4 : 3, x86[0], x86[0]));
+    const x86 = mac ? find(L.x86Only, bare) : null;
+    if (x86) put(x86.index as number, hit("needs_x86", "environment", act ? 4 : 3, x86[0]));
     const driver = find(L.driverText, bare);
     if (driver && act)
-        put(driver.index as number, hit("driver_setup", "environment", 4, driver[0], driver[0]));
-    for (const s of signatures) {
+        put(driver.index as number, hit("driver_setup", "environment", 4, driver[0]));
+    for (const s of errorLike.test(t) ? signatures : []) {
         const m = s.re.exec(t);
         if (m) {
             put(m.index, hit(`pasted_${s.id}`, s.category, 3, m[0]));
@@ -304,6 +298,29 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
         }
     }
 
+    const stop = find(L.abuse, t);
+    const lan = find(L.lanScan, t);
+    if (located.length === 0 && !global.some((h) => h.weight > 0)) {
+        if (stop) return refuse([], hit("abuse", null, -10, stop[0]));
+        return lan ? refuse([], hit("lan_scan", null, -10, lan[0])) : none;
+    }
+
+    /* Clause-local signs of the user's own work */
+    const negatives: Located[] = [];
+    const negate = (re: RegExp, id: string, weight: number) => {
+        const seen = new Set<number>();
+        for (const m of findAll(re, bare)) {
+            const c = clauseOf(starts, m.index);
+            if (seen.has(c)) continue;
+            seen.add(c);
+            negatives.push({ at: m.index, hit: hit(id, null, weight, m[0]) });
+        }
+    };
+    negate(L.own, "own_project", -3);
+    negate(L.docs, "writing_docs", -5);
+    negate(L.tests, "writing_tests", -3);
+    negate(L.edit, "editing_code", -2);
+
     /* Whole-prompt signals against an offer */
     const question = find(L.concept, bare);
     if (question) global.push(hit("concept_question", null, act ? -2 : -5, question[0]));
@@ -350,9 +367,7 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
         kept.push(...e.negs);
     }
 
-    const stop = find(L.abuse, t);
     if (stop) return refuse(kept, hit("abuse", null, -10, stop[0]));
-    const lan = find(L.lanScan, t);
     if (lan) return refuse(kept, hit("lan_scan", null, -10, lan[0]));
     return finish(kept, points);
 }
