@@ -15,6 +15,7 @@ import { registerSandboxTools } from "./tools/sandbox.ts";
 import { registerSourceTool } from "./tools/source.ts";
 import { registerTransferTool } from "./tools/transfer.ts";
 import { registerSshTools } from "./tools/ssh.ts";
+import { registerSecretTools } from "./tools/secrets.ts";
 
 export const version = "0.1.0";
 
@@ -29,6 +30,7 @@ export const registrations: Register[] = [
     registerPreviewTool,
     registerTransferTool,
     registerSshTools,
+    registerSecretTools,
 ];
 
 export function buildMcpServer(deps: Deps, extra: Register[] = []): McpServer {
