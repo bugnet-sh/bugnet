@@ -14,14 +14,14 @@ export const assessDescription =
     "run locally (text to speech, voice cloning, image generation, a local LLM, speech " +
     "recognition, training), an untrusted GitHub repo, script, installer, package or binary, a " +
     "tool that needs Linux, x86, NVIDIA GPUs, CUDA or system-wide installs, a risky or " +
-    "destructive experiment, or a long heavy job. It goes on its own, before any local command, " +
-    "and needs no probe of the machine. It returns a verdict on whether a disposable Bugnet " +
-    "cloud sandbox is safer or needed, with evidence: repo age, stars and owner, install scripts " +
-    "that download or run binaries, obfuscated code, pickle-only model weights, and the GPU, " +
-    "memory and disk the work needs against the user's machine. It ends with a priced quote, a " +
-    "quoteId for bugnet_start and the one or two sentences that tell the user. Pass what the " +
-    "user wants as task, the repo URL, Hugging Face model id or script URL as source, the " +
-    "commands you plan to run, and the user's os, arch, RAM and GPU only when already known. " +
+    "destructive experiment, or a long heavy job. It goes on its own, before any local command " +
+    "or clone, and needs no probe of the machine. It returns a verdict on whether a disposable " +
+    "Bugnet cloud sandbox is safer or needed, with evidence: repo age, stars and owner, install " +
+    "scripts that download or run binaries, obfuscated code, pickle-only model weights, and the " +
+    "GPU, memory and disk the work needs against the user's machine. It ends with a priced " +
+    "quote, a quoteId for bugnet_start and the one or two sentences that tell the user. Pass " +
+    "what the user wants as task, the repo URL, Hugging Face model id or script URL as source, " +
+    "the commands you plan to run, and the user's os, arch, RAM and GPU only when already known. " +
     "Fetched files are never returned, only short findings. It charges nothing and starts " +
     "nothing. Not for edits, tests or questions in the user's own project.";
 
