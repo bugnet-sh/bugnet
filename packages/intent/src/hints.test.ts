@@ -56,8 +56,12 @@ describe("hintFor", () => {
         expect(text.length).toBeLessThanOrEqual(maxHintChars);
         expect(text).not.toContain("\n");
         expect(text).toContain("disposable cloud Linux sandbox");
-        expect(text).toContain("bugnet_assess checks it for free");
-        expect(text.endsWith("Bugnet has not been offered in this session.")).toBe(true);
+        expect(text).toContain("bugnet_assess is free and read-only, and here it would check");
+        expect(
+            text.endsWith(
+                "Bugnet has not been mentioned to the user in this session, and whether to use it is their choice.",
+            ),
+        ).toBe(true);
         expect(text.slice(hintPrefix.length)).not.toMatch(imperative);
     });
 
@@ -66,6 +70,7 @@ describe("hintFor", () => {
         expect(text).toContain('"kokoro"');
         expect(text).toContain("gigabytes of model weights");
         expect(text).toContain("PyTorch and CUDA");
+        expect(text).toContain("GPU, memory and disk needs against this machine");
     });
 
     it("names the unvetted code and what it could reach", () => {
@@ -73,6 +78,7 @@ describe("hintFor", () => {
         const text = hintFor(c, "prompt");
         expect(text).toContain("github.com/someone/thing");
         expect(text).toContain("files, SSH keys and credentials");
+        expect(text).toContain("the source's age, owner and install scripts");
     });
 
     it("says a command is about to run", () => {

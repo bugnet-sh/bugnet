@@ -7,7 +7,7 @@ import { silentLog } from "../log.ts";
 import type { Payments } from "../payments/port.ts";
 import type { RouterClient } from "../router.ts";
 import { verifyQuote } from "../quote.ts";
-import { assessDescription, registerAssessTool, unavailableSummary } from "./assess.ts";
+import { assessDescription, registerAssessTool, unavailableSummary, userLines } from "./assess.ts";
 import type { Deps } from "./common.ts";
 import { buildQuote } from "./sandbox.ts";
 
@@ -113,7 +113,7 @@ describe("bugnet_assess tool", () => {
         expect(t?.title).toBe("Check whether to use a Bugnet sandbox (free)");
         expect(t?.annotations).toMatchObject({ readOnlyHint: true, openWorldHint: true });
         expect(t?._meta?.["anthropic/alwaysLoad"]).toBe(true);
-        expect(assessDescription.length).toBeLessThan(900);
+        expect(assessDescription.length).toBeLessThan(1300);
         const first = assessDescription.split(". ")[0] as string;
         for (const word of [
             "untrusted",
@@ -171,7 +171,14 @@ describe("bugnet_assess tool", () => {
             /Recommended package: gpu-m, 4 vCPU \/ 32 GiB \/ 1 GPU, 30 min, \$0\.90 USDC/,
         );
         expect(text).toMatch(/quoteId \(valid 10 min\): q1\./);
-        expect(text.trim().endsWith("Ask the user before bugnet_start.")).toBe(true);
+        expect(text).toMatch(
+            /For the user, in one or two sentences before anything is fetched, installed or run locally:\nVerdict: a disposable Bugnet cloud sandbox is strongly recommended\. Needs about 27\.6 GiB/,
+        );
+        expect(text).toMatch(
+            /Price: \$0\.90 USDC for 30 min \(gpu-m, 4 vCPU \/ 32 GiB \/ 1 GPU\), paid per run on Solana/,
+        );
+        expect(text).toMatch(/Question: use the Bugnet sandbox, or their own computer\?/);
+        expect(text.trim().endsWith("Bugnet is not offered again for this task.")).toBe(true);
         expect(requirements).toMatchObject({ gpu: true });
         expect(seen.input).toMatchObject({
             task: "run flux",
@@ -213,6 +220,8 @@ describe("bugnet_assess tool", () => {
         expect(text).toMatch(
             /Warning: No package is large enough for about 770\.4 GiB of memory and 643 GiB of disk\./,
         );
+        expect(text).toMatch(/For the user: Needs about 770\.4 GiB of memory/);
+        expect(text).not.toMatch(/Question:/);
         const summary = r.structuredContent?.assessment.summary ?? "";
         expect(summary).toMatch(
             /^Needs about 770\.4 GiB of memory, this machine has 16 GiB\. No Bugnet package is large enough/,
@@ -263,7 +272,7 @@ describe("bugnet_assess tool", () => {
         expect(r.isError).toBeFalsy();
         const text = r.content.map((c) => c.text).join("\n");
         expect(text).toMatch(/No quote: prices are unavailable right now/);
-        expect(text).toMatch(/Ask the user before bugnet_start\.$/);
+        expect(text).toMatch(/Price: not available right now, bugnet_quote gives one later\./);
         expect(r.structuredContent?.quote).toBeNull();
         expect(r.structuredContent?.assessment.summary).toBe(assessment.summary);
     });
@@ -275,6 +284,23 @@ describe("bugnet_assess tool", () => {
             arguments: { commands: Array.from({ length: 21 }, () => "ls") },
         })) as Result;
         expect(r.isError).toBe(true);
+    });
+});
+
+describe("userLines", () => {
+    it("says there is no offer to make when the check found nothing", () => {
+        const fine: Assessment = {
+            ...assessment,
+            recommendation: "local_ok",
+            summary: "No risk signals found in acme/tool. Running it locally looks fine.",
+            categories: [],
+            risk: { level: "low", findings: [] },
+            fit: { level: "fits", findings: [] },
+        };
+        const text = userLines(fine, null).join("\n");
+        expect(text).toMatch(/^For the user: this check found nothing that calls for a sandbox\./);
+        expect(text).toMatch(/otherwise there is no offer to make/);
+        expect(text).not.toMatch(/Question:/);
     });
 });
 

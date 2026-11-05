@@ -2377,7 +2377,7 @@ function load(seg, st) {
     add(st, hit("stress_tool", "heavy_compute", 3, evidence(seg, 3), h));
     return;
   }
-  const tools2 = [
+  const tools = [
     "wrk",
     "wrk2",
     "ab",
@@ -2395,7 +2395,7 @@ function load(seg, st) {
     "drill",
     "gatling"
   ];
-  if (!tools2.includes(h)) return;
+  if (!tools.includes(h)) return;
   const target = seg.argv.find((a) => /^https?:\/\//i.test(a));
   if (target && isLocal(target)) return;
   let w = 3;
@@ -2715,7 +2715,7 @@ function classifyFailure(command, error, _ctx = {}) {
 
 // packages/intent/src/hints.ts
 var hintPrefix = "Bugnet hint (local pattern match, nothing was sent anywhere):";
-var maxHintChars = 600;
+var maxHintChars = 700;
 var noun = {
   local_ai_model: "an AI model to run on this computer",
   untrusted_code: "code the user has not vetted",
@@ -2743,7 +2743,7 @@ var signalWhy = {
 };
 var why = {
   local_ai_model: "The local route usually downloads gigabytes of model weights and installs PyTorch and CUDA packages into the user's environment.",
-  untrusted_code: "Unvetted code run locally gets the same access as the user, including their files, SSH keys and credentials.",
+  untrusted_code: "Unvetted code run locally, in any folder, gets the same access as the user, including their files, SSH keys and credentials.",
   environment: "Locally it means changing the user's own system or fighting a mismatch with its OS, CPU or GPU.",
   risky_experiment: "On the local machine it can wipe data or leave the system unstable.",
   heavy_compute: "On the local machine it keeps the user's computer busy for a long time."
@@ -2766,8 +2766,17 @@ var failureCause = {
   platform_unsupported: "a tool that does not support this operating system",
   docker_daemon: "no running Docker daemon on this machine"
 };
-var tools = "Bugnet's tools in this session can run it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
-var notOffered = "Bugnet has not been offered in this session.";
+var checks = {
+  local_ai_model: "the model's GPU, memory and disk needs against this machine",
+  untrusted_code: "the source's age, owner and install scripts for downloads, binaries or obfuscation",
+  environment: "the OS, CPU and GPU the work needs against this machine",
+  risky_experiment: "the commands for destructive or system-changing steps",
+  heavy_compute: "the CPU, memory, disk and hours the job needs"
+};
+function assessFact(category) {
+  return `bugnet_assess is free and read-only, and here it would check ${checks[category]} and price a disposable cloud Linux sandbox that keeps the work off this computer.`;
+}
+var notOffered = "Bugnet has not been mentioned to the user in this session, and whether to use it is their choice.";
 function lead(c) {
   return c.signals.find((s) => s.weight > 0 && s.category === c.category);
 }
@@ -2797,11 +2806,12 @@ function hintFor(c, kind) {
   if (!c.suggest || !c.category) return "";
   const top = lead(c);
   const reason = kind === "failure" ? failureWhy[c.category] : (top && signalWhy[top.id]) ?? why[c.category];
+  const tail = `${assessFact(c.category)} ${notOffered}`;
   for (const max of [60, 36, 20]) {
-    const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${notOffered}`;
+    const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tail}`;
     if (text.length <= maxHintChars) return text;
   }
-  return `${hintPrefix} ${reason} ${tools} ${notOffered}`;
+  return `${hintPrefix} ${reason} ${tail}`;
 }
 
 // packages/intent/src/prompt.ts

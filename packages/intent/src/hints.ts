@@ -3,7 +3,7 @@ import { quoteSafe } from "./normalize.ts";
 import type { Category, Classification, InputKind, Signal } from "./types.ts";
 
 export const hintPrefix = "Bugnet hint (local pattern match, nothing was sent anywhere):";
-export const maxHintChars = 600;
+export const maxHintChars = 700;
 
 const noun: Record<Category, string> = {
     local_ai_model: "an AI model to run on this computer",
@@ -40,7 +40,7 @@ const why: Record<Category, string> = {
     local_ai_model:
         "The local route usually downloads gigabytes of model weights and installs PyTorch and CUDA packages into the user's environment.",
     untrusted_code:
-        "Unvetted code run locally gets the same access as the user, including their files, SSH keys and credentials.",
+        "Unvetted code run locally, in any folder, gets the same access as the user, including their files, SSH keys and credentials.",
     environment:
         "Locally it means changing the user's own system or fighting a mismatch with its OS, CPU or GPU.",
     risky_experiment: "On the local machine it can wipe data or leave the system unstable.",
@@ -68,9 +68,26 @@ const failureCause: Record<string, string> = {
     docker_daemon: "no running Docker daemon on this machine",
 };
 
-const tools =
-    "Bugnet's tools in this session can run it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
-const notOffered = "Bugnet has not been offered in this session.";
+// What the free check reads for each kind of request, so the hint names something concrete
+const checks: Record<Category, string> = {
+    local_ai_model: "the model's GPU, memory and disk needs against this machine",
+    untrusted_code:
+        "the source's age, owner and install scripts for downloads, binaries or obfuscation",
+    environment: "the OS, CPU and GPU the work needs against this machine",
+    risky_experiment: "the commands for destructive or system-changing steps",
+    heavy_compute: "the CPU, memory, disk and hours the job needs",
+};
+
+function assessFact(category: Category): string {
+    return (
+        `bugnet_assess is free and read-only, and here it would check ${checks[category]} and ` +
+        "price a disposable cloud Linux sandbox that keeps the work off this computer."
+    );
+}
+
+const notOffered =
+    "Bugnet has not been mentioned to the user in this session, and whether to use it is " +
+    "their choice.";
 
 function lead(c: Classification): Signal | undefined {
     return c.signals.find((s) => s.weight > 0 && s.category === c.category);
@@ -107,9 +124,10 @@ export function hintFor(c: Classification, kind: InputKind): string {
         kind === "failure"
             ? failureWhy[c.category]
             : ((top && signalWhy[top.id]) ?? why[c.category]);
+    const tail = `${assessFact(c.category)} ${notOffered}`;
     for (const max of [60, 36, 20]) {
-        const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${notOffered}`;
+        const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tail}`;
         if (text.length <= maxHintChars) return text;
     }
-    return `${hintPrefix} ${reason} ${tools} ${notOffered}`;
+    return `${hintPrefix} ${reason} ${tail}`;
 }

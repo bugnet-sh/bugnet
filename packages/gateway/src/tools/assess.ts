@@ -10,16 +10,19 @@ export const quoteBudgetMs = 8_000;
 const shownFindings = 8;
 
 export const assessDescription =
-    "Free, read-only check before installing or running an untrusted GitHub repo, script or " +
-    "installer, an AI model such as text to speech, image generation or a local LLM, or " +
-    "anything that needs a GPU. It returns whether a disposable Bugnet cloud sandbox is safer " +
-    "or needed, and why: repo age, stars and owner, install scripts that download or run " +
-    "binaries, obfuscated code, pickle-only model weights, and the GPU, memory and disk the " +
-    "work needs against the user's machine, plus a priced quote with a quoteId for " +
-    "bugnet_start. Pass what the user wants as task, the repo URL, Hugging Face model id or " +
-    "script URL as source, the commands you plan to run, and the user's os, arch, RAM and GPU " +
-    "when known. Fetched files are never returned, only short findings. It charges nothing " +
-    "and starts nothing.";
+    "Free, read-only first step before fetching, installing or running anything for an AI model " +
+    "run locally (text to speech, voice cloning, image generation, a local LLM, speech " +
+    "recognition, training), an untrusted GitHub repo, script, installer, package or binary, a " +
+    "tool that needs Linux, x86, NVIDIA GPUs, CUDA or system-wide installs, a risky or " +
+    "destructive experiment, or a long heavy job. It returns a verdict on whether a disposable " +
+    "Bugnet cloud sandbox is safer or needed, with evidence: repo age, stars and owner, install " +
+    "scripts that download or run binaries, obfuscated code, pickle-only model weights, and the " +
+    "GPU, memory and disk the work needs against the user's machine. It ends with a priced " +
+    "quote, a quoteId for bugnet_start and the one or two sentences that tell the user. Pass " +
+    "what the user wants as task, the repo URL, Hugging Face model id or script URL as source, " +
+    "the commands you plan to run, and the user's os, arch, RAM and GPU when known. Fetched " +
+    "files are never returned, only short findings. It charges nothing and starts nothing. Not " +
+    "for edits, tests or questions in the user's own project.";
 
 const assessInput = z.object({
     task: z.string().max(2000).optional().describe("What the user wants, in their words"),
@@ -78,6 +81,56 @@ function quoteLines(quote: BuiltQuote | null): string[] {
     return lines;
 }
 
+function firstSentence(text: string): string {
+    const end = text.search(/\.(\s|$)/);
+    return end >= 0 ? text.slice(0, end + 1) : text;
+}
+
+function priceText(quote: BuiltQuote | null): string | null {
+    const q = quote?.structured;
+    const rec = q?.recommended;
+    if (!q || !rec) return null;
+    const pkg = q.packages.find((p) => p.id === rec.packageId);
+    const size = pkg ? ` (${rec.packageId}, ${describeSize(pkg)})` : ` (${rec.packageId})`;
+    return `${rec.priceUsd} USDC${pkg ? ` for ${pkg.minutes} min` : ""}${size}`;
+}
+
+const offerSteps =
+    "If they agree, bugnet_start takes the quoteId. If they decline, the work goes on as they " +
+    "prefer and Bugnet is not offered again for this task.";
+
+// The closing lines say what reaches the user, since agents relay a verdict they were handed
+export function userLines(a: Assessment, quote: BuiltQuote | null): string[] {
+    const q = quote?.structured;
+    if (q && (!q.largeEnough || !q.recommended)) return [`For the user: ${a.summary}`];
+    const price = priceText(quote);
+    const priceLine = price
+        ? `Price: ${price}, paid per run on Solana, no account.`
+        : "Price: not available right now, bugnet_quote gives one later.";
+    if (a.recommendation === "local_ok") {
+        const found =
+            a.risk.level === "low"
+                ? "this check found nothing that calls for a sandbox."
+                : "this check has no evidence either way.";
+        return [
+            `For the user: ${found} A Bugnet sandbox still fits if the work needs hardware, an ` +
+                "OS or hours this machine lacks, or the user wants it kept off their computer, " +
+                "and otherwise there is no offer to make.",
+            priceLine,
+        ];
+    }
+    const strength = a.recommendation === "sandbox_strongly_recommended" ? "strongly " : "";
+    return [
+        "For the user, in one or two sentences before anything is fetched, installed or run " +
+            "locally:",
+        `Verdict: a disposable Bugnet cloud sandbox is ${strength}recommended. ` +
+            firstSentence(a.summary),
+        priceLine,
+        "Question: use the Bugnet sandbox, or their own computer?",
+        offerSteps,
+    ];
+}
+
 export function renderAssessment(a: Assessment, quote: BuiltQuote | null): string {
     const all = sortFindings([...a.risk.findings, ...a.fit.findings]);
     const shown = all.slice(0, shownFindings);
@@ -95,7 +148,7 @@ export function renderAssessment(a: Assessment, quote: BuiltQuote | null): strin
             lines.push(`- ${f.severity}: ${f.title}${f.evidence ? ` [${f.evidence}]` : ""}`);
         }
     }
-    lines.push(needsLine(a), ...quoteLines(quote), "Ask the user before bugnet_start.");
+    lines.push(needsLine(a), ...quoteLines(quote), ...userLines(a, quote));
     return lines.join("\n");
 }
 
