@@ -224,6 +224,24 @@ describe("assessor over GitHub", () => {
         expect(calls.length).toBe(2);
     });
 
+    it("does not call a repo checked when none of its files could be read", async () => {
+        const routes = githubRoutes(mainstream());
+        for (const url of Object.keys(routes)) {
+            if (url.startsWith("https://raw.githubusercontent.com/")) {
+                routes[url] = { status: 429, text: "slow down" };
+            }
+        }
+        const { fetch, calls } = fakeFetch(routes);
+        const a = createAssessor(config(), { fetch, now: () => now });
+        const r = await a.assess({ source: "https://github.com/pallets/flasky" }, signal());
+        expect(r.recommendation).toBe("sandbox_recommended");
+        expect(r.risk.findings[0]).toMatchObject({ id: "files_unread", severity: "info" });
+        expect(r.summary).toMatch(/could not be checked \(\d of \d repo files could not be read\)/);
+        const before = calls.length;
+        await a.assess({ source: "https://github.com/pallets/flasky" }, signal());
+        expect(calls.length).toBe(before * 2);
+    });
+
     it("notes a missing repo and keeps going", async () => {
         const { fetch } = fakeFetch({});
         const a = createAssessor(config(), { fetch, now: () => now });

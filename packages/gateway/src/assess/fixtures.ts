@@ -128,6 +128,7 @@ export function mainstream(): RepoSnapshot {
             ".github/workflows/release.yml",
         ),
         treeTruncated: false,
+        picked: 0,
         files: [
             file("package.json", mainstreamPackage),
             file("setup.py", mainstreamSetup),
@@ -190,6 +191,7 @@ export function malicious(): RepoSnapshot {
             "Setup.zip",
         ),
         treeTruncated: false,
+        picked: 0,
         files: [
             file("package.json", maliciousPackage),
             file("setup.py", maliciousSetup),

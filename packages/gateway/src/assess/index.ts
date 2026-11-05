@@ -84,7 +84,8 @@ async function readGithubSource(
     );
     const scan = scanRepo(snap, env.now());
     report.complete = snap.complete;
-    report.checked = snap.info !== null && snap.tree.length > 0;
+    report.checked =
+        snap.info !== null && snap.tree.length > 0 && (snap.picked === 0 || snap.files.length > 0);
     report.facts = scan.facts;
     report.findings = scan.findings;
     if (snap.info) report.name = `${snap.info.owner}/${snap.info.repo}`;

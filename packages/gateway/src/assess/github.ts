@@ -36,6 +36,8 @@ export interface RepoSnapshot {
     ownerType: string | null;
     tree: TreeEntry[];
     treeTruncated: boolean;
+    // How many files were chosen for reading, so an empty files list can be told apart from failures
+    picked: number;
     files: RepoFile[];
     notes: Finding[];
     complete: boolean;
@@ -162,6 +164,7 @@ export async function readGithub(
         ownerType: null,
         tree: [],
         treeTruncated: false,
+        picked: 0,
         files: [],
         notes: [],
         complete: true,
@@ -253,6 +256,7 @@ export async function readGithub(
 
     const raw = env.raw.replace(/\/$/, "");
     const paths = pickFiles(snap.tree, src.path);
+    snap.picked = paths.length;
     const reads = await Promise.allSettled(
         paths.map((path) =>
             env.fetch(
@@ -275,5 +279,11 @@ export async function readGithub(
             snap.complete = false;
         }
     });
+    const unread = paths.length - snap.files.length;
+    if (unread > 0) {
+        snap.notes.push(
+            note("files_unread", `${unread} of ${paths.length} repo files could not be read`),
+        );
+    }
     return snap;
 }
