@@ -48,6 +48,7 @@ const settingsSchema = z
         tools: z
             .object({
                 require_user_approval: z.boolean().default(true),
+                confirm_transfers: z.boolean().default(true),
             })
             .strict()
             .prefault({}),
