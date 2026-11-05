@@ -87,7 +87,8 @@ function placementView(p: Placement | undefined, now: number): PlacementView {
         ...(p?.terminationReason
             ? { terminationReason: terminationText(p.terminationReason) }
             : {}),
-        ...(p && aliasShape.test(p.sshAlias) ? { sshAlias: p.sshAlias } : {}),
+        // Names the key file for bugnet_ssh before the key exists
+        ...(p && !ended(p.state) && aliasShape.test(p.sshAlias) ? { sshAlias: p.sshAlias } : {}),
         ...(source ? { source } : {}),
     };
 }
