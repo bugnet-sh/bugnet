@@ -1,5 +1,5 @@
 /**
- * The bridge's MCP server: the remote gateway's tools passed through, plus bugnet_secret_from_env.
+ * The bridge's MCP server, the remote gateway's tools passed through plus bugnet_secret_from_env.
  *
  * Tool calls go to the gateway with their arguments and _meta unchanged, x402 payments included.
  * Input requests from the gateway come back to the local client as they are, and its answers go

@@ -41,7 +41,7 @@ const settingsSchema = z
     .object({
         gateway_url: secureUrl.default("https://mcp.bugnet.sh/mcp"),
         secrets_url: secureUrl.default("https://secrets.bugnet.sh"),
-        connect_timeout: duration.prefault("10s"),
+        connect_timeout: duration.prefault("5s"),
         call_timeout: duration.prefault("5m"),
         secrets_timeout: duration.prefault("30s"),
     })

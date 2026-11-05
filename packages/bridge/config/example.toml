@@ -4,6 +4,6 @@
 
 gateway_url = "https://mcp.bugnet.sh/mcp"   # remote Bugnet MCP gateway, https or loopback http
 secrets_url = "https://secrets.bugnet.sh"   # secrets route that takes sealed values, https or loopback http
-connect_timeout = "10s"                     # longest wait to reach the gateway and list its tools
+connect_timeout = "5s"                      # longest wait to reach the gateway and list its tools, under Codex's 10 s start-up limit
 call_timeout = "5m"                         # longest wait for one tool call, reset by progress
 secrets_timeout = "30s"                     # longest wait for one call to the secrets route

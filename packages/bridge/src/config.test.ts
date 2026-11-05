@@ -20,7 +20,7 @@ describe("bridge settings", () => {
         expect(parseSettings("")).toEqual({
             gateway_url: "https://mcp.bugnet.sh/mcp",
             secrets_url: "https://secrets.bugnet.sh",
-            connect_timeout: 10_000,
+            connect_timeout: 5_000,
             call_timeout: 300_000,
             secrets_timeout: 30_000,
         });

@@ -1,7 +1,7 @@
-// Command interop opens boxes that the TypeScript sealer made, the way the egress proxy will.
+// Command interop opens boxes that the TypeScript sealer made, the way the egress proxy will
 //
 // It reads one JSON document on stdin with a box key pair and cases, and exits non-zero on the
-// first case whose box does not open, or opens to a payload other than the one expected.
+// first case whose box does not open, or opens to a payload other than the one expected
 package main
 
 import (
