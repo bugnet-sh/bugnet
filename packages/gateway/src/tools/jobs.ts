@@ -4,7 +4,7 @@ import { JobState } from "../gen/bugnet/router/v1/router_pb.ts";
 import { GatewayError } from "../router.ts";
 import { tail, untrustedLabel } from "../sanitize.ts";
 import {
-    failure,
+    sandboxFailure,
     handlePattern,
     ok,
     toolUseId,
@@ -153,7 +153,7 @@ export const registerJobTools: Register = (server, deps) => {
                     truncated: res.truncated || out.truncated || err.truncated,
                 });
             } catch (e) {
-                return failure(e, "exec");
+                return sandboxFailure(deps, args.handle, e, "exec");
             }
         },
     );
@@ -238,7 +238,7 @@ export const registerJobTools: Register = (server, deps) => {
                     truncated: skipped || out.truncated || err.truncated,
                 });
             } catch (e) {
-                return failure(e, "job");
+                return sandboxFailure(deps, args.handle, e, "job");
             }
         },
     );
@@ -262,7 +262,7 @@ export const registerJobTools: Register = (server, deps) => {
                 const state = jobStateName[res.state];
                 return ok(`Job ${args.jobId} is ${state}.`, { jobId: args.jobId, state });
             } catch (e) {
-                return failure(e, "cancel");
+                return sandboxFailure(deps, args.handle, e, "cancel");
             }
         },
     );

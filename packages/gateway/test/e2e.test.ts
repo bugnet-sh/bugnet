@@ -123,6 +123,9 @@ describe.skipIf(!url)("gateway end to end", () => {
         expect((s.structuredContent as { state: string }).state).toBe("ended");
         const r = await call("bugnet_exec", { handle, cmd: "true" });
         expect(r.isError).toBe(true);
+        expect(text(r)).toMatch(/has ended/);
+        const unknown = await call("bugnet_exec", { handle: "sbx_" + "a".repeat(26), cmd: "true" });
+        expect(text(unknown)).toMatch(/no sandbox has this handle/);
         handle = "";
     });
 });

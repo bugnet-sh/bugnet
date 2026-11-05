@@ -2,7 +2,7 @@ import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { z } from "zod";
 import { GatewayError } from "../router.ts";
 import { cleanText, looksLikeText, untrustedLabel } from "../sanitize.ts";
-import { failure, handlePattern, ok, type Register } from "./common.ts";
+import { handlePattern, ok, sandboxFailure, type Register } from "./common.ts";
 
 const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
 const pathInput = z.string().min(1).max(4096);
@@ -48,7 +48,7 @@ export const registerFileTools: Register = (server, deps) => {
                     .join("\n");
                 return ok(text, { entries, truncated: res.truncated || more > 0 });
             } catch (e) {
-                return failure(e, "list files");
+                return sandboxFailure(deps, args.handle, e, "list files");
             }
         },
     );
@@ -95,7 +95,7 @@ export const registerFileTools: Register = (server, deps) => {
                     nextOffset: res.eof ? null : next,
                 });
             } catch (e) {
-                return failure(e, "read file");
+                return sandboxFailure(deps, args.handle, e, "read file");
             }
         },
     );
@@ -139,7 +139,7 @@ export const registerFileTools: Register = (server, deps) => {
                 const size = Number(res.size);
                 return ok(`Wrote ${size} bytes to ${args.path}.`, { path: args.path, size });
             } catch (e) {
-                return failure(e, "write file");
+                return sandboxFailure(deps, args.handle, e, "write file");
             }
         },
     );

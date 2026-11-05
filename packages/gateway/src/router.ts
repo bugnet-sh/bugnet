@@ -25,6 +25,7 @@ export function createRouterClient(baseUrl: string, internalToken: string): Rout
 
 export type GatewayErrorKind =
     | "not_found"
+    | "expired"
     | "not_ready"
     | "invalid"
     | "rate_limited"
@@ -104,9 +105,16 @@ export function fromRouter(err: unknown, what: string): GatewayError {
         case Code.NotFound:
             return new GatewayError(
                 "not_found",
-                `${what}: the handle is unknown or the sandbox has expired. Quote and start a new one`,
+                `${what}: no sandbox has this handle. Check it was copied in full, or quote and ` +
+                    "start a new one",
             );
         case Code.FailedPrecondition:
+            if (errorReason(err) === "EXCEEDS_LIFETIME") {
+                return new GatewayError(
+                    "invalid",
+                    `${what}: that would pass the longest time a sandbox can run`,
+                );
+            }
             return new GatewayError("not_ready", `${what}: ${safeMessage(err)}`);
         case Code.InvalidArgument:
             return new GatewayError("invalid", `${what}: ${safeMessage(err)}`);
