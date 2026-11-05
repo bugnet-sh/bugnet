@@ -8,11 +8,14 @@
 import { readFileSync } from "node:fs";
 import { parse } from "smol-toml";
 import { z } from "zod";
+import { parseCidr } from "./ratelimit.ts";
 
 const duration = z
     .string()
     .regex(/^\d+(ms|s|m|h)$/, "a duration such as 500ms, 30s, 10m or 1h")
     .transform(parseDuration);
+
+const cidr = z.string().refine((s) => parseCidr(s) !== null, "a CIDR range such as 10.0.0.0/8");
 
 const settingsSchema = z
     .object({
@@ -42,6 +45,11 @@ const settingsSchema = z
                 read_file_max_bytes: z.int().min(1).max(262144).default(262144),
                 write_file_max_bytes: z.int().min(1).max(262144).default(262144),
                 quote_ttl: duration.prefault("10m"),
+                quotes_per_minute: z.int().min(1).max(100_000).default(12),
+                quote_burst: z.int().min(1).max(100_000).default(10),
+                shared_ranges: z.array(cidr).max(100).default(["160.79.104.0/21"]),
+                shared_quotes_per_minute: z.int().min(1).max(1_000_000).default(120),
+                shared_quote_burst: z.int().min(1).max(1_000_000).default(40),
             })
             .strict()
             .prefault({}),

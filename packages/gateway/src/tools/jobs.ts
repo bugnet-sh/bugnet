@@ -43,6 +43,13 @@ export function secretLooking(env: Record<string, string>): string | null {
     return null;
 }
 
+export const oomText = "The command ran out of memory, quote again for a larger package";
+
+function oomLine(oomKilled: boolean, peakMemoryMib: number): string {
+    if (!oomKilled) return "";
+    return `${oomText}${peakMemoryMib > 0 ? `. Its peak memory was ${peakMemoryMib} MiB` : ""}.`;
+}
+
 function outputBlock(label: string, text: string, truncated: boolean): string {
     if (!text) return "";
     return `${label}${truncated ? " (last part)" : ""}:\n${text}`;
@@ -139,6 +146,7 @@ export const registerJobTools: Register = (server, deps) => {
                       `(jobId ${res.jobId}, cursor ${res.cursor}).`;
                 const text = [
                     head,
+                    oomLine(res.oomKilled, 0),
                     res.truncated ? "Earlier output was dropped from the stream." : "",
                     out.text || err.text ? untrustedLabel : "",
                     outputBlock("stdout", out.text, out.truncated),
@@ -154,6 +162,7 @@ export const registerJobTools: Register = (server, deps) => {
                     stderr: err.text,
                     cursor: res.cursor,
                     truncated: res.truncated || out.truncated || err.truncated,
+                    ...(res.oomKilled ? { oomKilled: true } : {}),
                 });
             } catch (e) {
                 return sandboxFailure(deps, args.handle, e, "exec");
@@ -184,7 +193,7 @@ export const registerJobTools: Register = (server, deps) => {
                     stderr: [],
                 };
                 let cursor = args.cursor ?? "";
-                let exit: { code: number } | null = null;
+                let exit: { code: number; oomKilled: boolean; peakMemoryMib: number } | null = null;
                 let skipped = false;
                 await withProgress(ctx, "following the command", async (signal) => {
                     const stop = AbortSignal.any([signal, AbortSignal.timeout(Math.max(wait, 1))]);
@@ -205,7 +214,11 @@ export const registerJobTools: Register = (server, deps) => {
                                 const which = fr.value.stream === 2 ? "stderr" : "stdout";
                                 chunks[which].push(fr.value.data);
                             } else if (fr.case === "exit") {
-                                exit = { code: fr.value.exitCode };
+                                exit = {
+                                    code: fr.value.exitCode,
+                                    oomKilled: fr.value.oomKilled,
+                                    peakMemoryMib: fr.value.peakMemoryMib,
+                                };
                                 break;
                             } else if (fr.case === "skip") {
                                 skipped = true;
@@ -218,12 +231,17 @@ export const registerJobTools: Register = (server, deps) => {
                 const join = (parts: Uint8Array[]) => tail(Buffer.concat(parts), cap);
                 const out = join(chunks.stdout);
                 const err = join(chunks.stderr);
-                const finished = exit as { code: number } | null;
+                const finished = exit as {
+                    code: number;
+                    oomKilled: boolean;
+                    peakMemoryMib: number;
+                } | null;
                 const state = finished ? "exited" : "running";
                 const text = [
                     finished
                         ? `Command exited with code ${finished.code}.`
                         : `Command still running. Next cursor: ${cursor}.`,
+                    finished ? oomLine(finished.oomKilled, finished.peakMemoryMib) : "",
                     skipped ? "Some output was skipped, the full log stays in the sandbox." : "",
                     out.text || err.text ? untrustedLabel : "No new output.",
                     outputBlock("stdout", out.text, out.truncated),
@@ -239,6 +257,10 @@ export const registerJobTools: Register = (server, deps) => {
                     stderr: err.text,
                     cursor,
                     truncated: skipped || out.truncated || err.truncated,
+                    ...(finished?.oomKilled ? { oomKilled: true } : {}),
+                    ...(finished && finished.peakMemoryMib > 0
+                        ? { peakMemoryMib: finished.peakMemoryMib }
+                        : {}),
                 });
             } catch (e) {
                 return sandboxFailure(deps, args.handle, e, "job");

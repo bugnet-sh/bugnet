@@ -21,6 +21,11 @@ output_tail_bytes = 8192                # stdout and stderr kept per stream per 
 read_file_max_bytes = 262144            # bugnet_read_file chunk limit, router maximum 256 KiB
 write_file_max_bytes = 262144           # bugnet_write_file limit, router maximum 256 KiB
 quote_ttl = "10m"                       # how long a quoteId can start a sandbox
+quotes_per_minute = 12                  # quotes and assessments per client address a minute
+quote_burst = 10                        # quotes and assessments one address may ask for at once
+shared_ranges = ["160.79.104.0/21"]     # CIDR ranges many users share, claude.ai's by default
+shared_quotes_per_minute = 120          # the per-minute rate for each address in shared_ranges
+shared_quote_burst = 40                 # the burst for each address in shared_ranges
 
 [tools]
 require_user_approval = true            # paid tools ask the client for a person's approval, off only for unattended test gateways

@@ -8,8 +8,8 @@ import {
     type Placement,
 } from "../gen/bugnet/router/v1/router_pb.ts";
 import { extensionsFor } from "./extend.ts";
-import { signQuote, verifyQuote, QuoteError, type QuotedPackage } from "../quote.ts";
-import { GatewayError, fromRouter } from "../router.ts";
+import { verifyQuote, QuoteError, type QuoteClaims } from "../quote.ts";
+import { GatewayError, errorReason, fromRouter } from "../router.ts";
 import type { OrderResult } from "../payments/port.ts";
 import {
     approvalMeta,
@@ -25,9 +25,10 @@ import {
     type Deps,
     type Register,
 } from "./common.ts";
+import { describeSize, quoted } from "./quote.ts";
+import { fetchAfterStart, sentence, sourceView, type SourceView } from "./source.ts";
 
-export const workloads = ["tests", "build", "script", "serve", "inference", "other"] as const;
-export const needs = ["ssh", "preview", "secrets", "gpu"] as const;
+export { describeSize } from "./quote.ts";
 
 export const stateName: Record<PlacementState, string> = {
     [PlacementState.UNSPECIFIED]: "unknown",
@@ -38,52 +39,26 @@ export const stateName: Record<PlacementState, string> = {
     [PlacementState.FAILED]: "failed",
 };
 
+// The codes in Placement.termination_reason, in plain words that never name a provider
+const terminationWords: Record<string, string> = {
+    stop: "stopped with bugnet_stop",
+    deadline: "ended at its deadline",
+    abuse: "ended for a terms violation",
+    control_lost: "ended because Bugnet lost contact with it",
+    provider_failed: "ended by the provider",
+    sandbox_exited: "the sandbox stopped from inside, for example by a shutdown or a crash",
+    wallet_blocked: "ended because the paying wallet is blocked",
+    operator: "ended by a Bugnet operator",
+};
+
+export function terminationText(code: string): string {
+    return Object.hasOwn(terminationWords, code) ? (terminationWords[code] as string) : "ended";
+}
+
+const aliasShape = /^[a-z0-9-]{1,40}$/;
+
 function ended(s: PlacementState): boolean {
     return s === PlacementState.TERMINATED || s === PlacementState.FAILED;
-}
-
-export function describeSize(p: { vcpu: number; memoryMib: number; gpuCount: number }): string {
-    const mem =
-        p.memoryMib >= 1024 ? `${Math.round(p.memoryMib / 1024)} GiB` : `${p.memoryMib} MiB`;
-    return `${p.vcpu} vCPU / ${mem}${p.gpuCount > 0 ? ` / ${p.gpuCount} GPU` : ""}`;
-}
-
-function quoted(o: PackageOption): QuotedPackage {
-    const r = o.resources;
-    return {
-        id: o.packageId,
-        priceMicros: Number(o.priceMicros),
-        minutes: o.minutes,
-        vcpu: r?.vcpu ?? 0,
-        memoryMib: r?.memoryMib ?? 0,
-        diskGib: r?.diskGib ?? 0,
-        gpuCount: r?.gpuCount ?? 0,
-    };
-}
-
-// Interim choice until the router's estimator recommends a package from the source itself
-export function recommend(
-    pkgs: QuotedPackage[],
-    workload: (typeof workloads)[number],
-    expectedMinutes: number | undefined,
-): { pkg: QuotedPackage; why: string } | null {
-    if (pkgs.length === 0) return null;
-    const heavy = workload === "inference" || workload === "build" || workload === "serve";
-    const minutes = expectedMinutes ?? (heavy ? 20 : 10);
-    const byPrice = [...pkgs].sort((a, b) => a.priceMicros - b.priceMicros);
-    const longEnough = byPrice.filter((p) => p.minutes >= minutes);
-    const pool = longEnough.length > 0 ? longEnough : byPrice;
-    if (heavy) {
-        const biggest = Math.max(...pool.map((p) => p.memoryMib));
-        const pkg = pool.find((p) => p.memoryMib === biggest) as QuotedPackage;
-        return { pkg, why: `${workload} work wants the most memory on offer` };
-    }
-    const pkg = pool[0] as QuotedPackage;
-    const why =
-        longEnough.length > 0
-            ? `cheapest package that lasts ${minutes} min`
-            : `no package lasts ${minutes} min, extend it when needed`;
-    return { pkg, why };
 }
 
 interface PlacementView {
@@ -93,11 +68,15 @@ interface PlacementView {
     timeLeft: string;
     failureReason?: string;
     refundable?: boolean;
+    terminationReason?: string;
+    sshAlias?: string;
+    source?: SourceView;
     [key: string]: unknown;
 }
 
 function placementView(p: Placement | undefined, now: number): PlacementView {
     const deadline = p?.deadline ? timestampDate(p.deadline) : undefined;
+    const source = sourceView(p?.bootstrap);
     return {
         state: p ? stateName[p.state] : "unknown",
         packageId: p?.packageId ?? "",
@@ -105,20 +84,21 @@ function placementView(p: Placement | undefined, now: number): PlacementView {
         timeLeft: p && ended(p.state) ? "none, the sandbox has ended" : timeLeft(deadline, now),
         ...(p?.failureReason ? { failureReason: p.failureReason } : {}),
         ...(p?.state === PlacementState.FAILED ? { refundable: p.refundable } : {}),
+        ...(p?.terminationReason
+            ? { terminationReason: terminationText(p.terminationReason) }
+            : {}),
+        ...(p && aliasShape.test(p.sshAlias) ? { sshAlias: p.sshAlias } : {}),
+        ...(source ? { source } : {}),
     };
 }
 
-const quoteInput = z.object({
-    source: z
-        .string()
-        .max(500)
-        .optional()
-        .describe("GitHub URL (optionally with a ref), Hugging Face model id, script URL, or omit"),
-    workload: z.enum(workloads).default("other"),
-    entryCommand: z.string().max(1000).optional(),
-    expectedMinutes: z.number().int().min(1).max(1440).optional(),
-    needs: z.array(z.enum(needs)).max(4).optional(),
-});
+function sshLine(alias: string | undefined): string {
+    if (!alias) return "";
+    return (
+        `SSH alias ${alias}. bugnet_ssh takes the public key of ` +
+        `ssh-keygen -t ed25519 -N "" -f ~/.ssh/bugnet_${alias}.`
+    );
+}
 
 const startInput = z.object({
     quoteId: z.string().max(200).describe("quoteId from bugnet_quote or bugnet_assess"),
@@ -137,112 +117,6 @@ const startInput = z.object({
 });
 
 const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
-
-export interface QuoteRequest {
-    source?: string | undefined;
-    workload: (typeof workloads)[number];
-    expectedMinutes?: number | undefined;
-    needs?: (typeof needs)[number][] | undefined;
-    minMemoryGiB?: number | null | undefined;
-    minDiskGiB?: number | null | undefined;
-}
-
-export interface BuiltQuote {
-    text: string;
-    structured: {
-        quoteId: string;
-        expiresAt: string;
-        packages: (QuotedPackage & { priceUsd: string })[];
-        recommended: { packageId: string; priceUsd: string; why: string } | null;
-        // False when the work states a memory or disk need that no package on offer meets
-        largeEnough: boolean;
-        warnings: string[];
-    };
-}
-
-// A zero size means the router did not report it, so it cannot rule a package out
-function meetsSize(p: QuotedPackage, memoryGiB: number | null, diskGiB: number | null): boolean {
-    const memory = memoryGiB === null || p.memoryMib === 0 || p.memoryMib >= memoryGiB * 1024;
-    const disk = diskGiB === null || p.diskGib === 0 || p.diskGib >= diskGiB;
-    return memory && disk;
-}
-
-export function sizeText(memoryGiB: number | null, diskGiB: number | null): string {
-    const parts = [
-        memoryGiB !== null ? `${memoryGiB} GiB of memory` : "",
-        diskGiB !== null ? `${diskGiB} GiB of disk` : "",
-    ].filter(Boolean);
-    return `about ${parts.join(" and ")}`;
-}
-
-// Prices the packages that can start now and signs them into a quoteId bugnet_start accepts
-export async function buildQuote(
-    deps: Deps,
-    args: QuoteRequest,
-    signal?: AbortSignal,
-): Promise<BuiltQuote> {
-    const wantGpu = args.needs?.includes("gpu") ?? false;
-    const requirements = {
-        ssh: args.needs?.includes("ssh") ?? false,
-        preview: args.needs?.includes("preview") ?? false,
-        gpu: wantGpu,
-    };
-    const est = await deps.router.estimate({ requirements }, signal ? { signal } : {});
-    const all = est.options.map(quoted);
-    const available = est.options.filter((o) => o.available).map(quoted);
-    const warnings: string[] = [];
-    if (wantGpu && !available.some((p) => p.gpuCount > 0)) {
-        warnings.push("No GPU package is available right now, GPU work cannot start");
-    }
-    if (args.needs?.includes("secrets")) {
-        warnings.push("Secrets go in with bugnet_secret_link or the bridge, never in arguments");
-    }
-    const memoryGiB = args.minMemoryGiB ?? null;
-    const diskGiB = args.minDiskGiB ?? null;
-    const kind = wantGpu ? available.filter((p) => p.gpuCount > 0) : available;
-    const sized = kind.filter((p) => meetsSize(p, memoryGiB, diskGiB));
-    const largeEnough = kind.length === 0 || sized.length > 0;
-    if (!largeEnough) {
-        warnings.push(`No package is large enough for ${sizeText(memoryGiB, diskGiB)}`);
-    }
-    const rec = recommend(sized, args.workload, args.expectedMinutes);
-    const expiresAt = deps.now() + deps.config.limits.quote_ttl;
-    const quoteId = signQuote(deps.config.secrets.quoteKey, { requirements, expiresAt });
-    const lines = [...available]
-        .sort((a, b) => a.priceMicros - b.priceMicros)
-        .map(
-            (p) =>
-                `- ${p.id}: ${describeSize(p)}, ${p.minutes} min, ${usd(p.priceMicros)} USDC` +
-                (rec?.pkg.id === p.id ? " (recommended)" : ""),
-        );
-    const unavailable = all.length - available.length;
-    const text = [
-        available.length > 0
-            ? "Bugnet packages, paid per run in USDC on Solana:"
-            : "No package can start right now. Try again in a minute.",
-        ...lines,
-        rec ? `Recommended: ${rec.pkg.id} because ${rec.why}.` : "",
-        unavailable > 0 ? `${unavailable} more packages are unavailable now.` : "",
-        ...warnings.map((w) => `Warning: ${w}.`),
-        `quoteId (valid 10 min): ${quoteId}`,
-        "Tell the user the price and get their go-ahead before bugnet_start.",
-    ]
-        .filter(Boolean)
-        .join("\n");
-    return {
-        text,
-        structured: {
-            quoteId,
-            expiresAt: new Date(expiresAt).toISOString(),
-            packages: available.map((p) => ({ ...p, priceUsd: usd(p.priceMicros) })),
-            recommended: rec
-                ? { packageId: rec.pkg.id, priceUsd: usd(rec.pkg.priceMicros), why: rec.why }
-                : null,
-            largeEnough,
-            warnings,
-        },
-    };
-}
 
 export function paymentRequiredResult(r: Extract<OrderResult, { status: "payment_required" }>) {
     const guide = [
@@ -285,28 +159,61 @@ async function waitReady(
     return p;
 }
 
-export const registerSandboxTools: Register = (server, deps) => {
-    server.registerTool(
-        "bugnet_quote",
-        {
-            title: "Quote a Bugnet sandbox (free)",
-            description:
-                "Free price quote for a Bugnet cloud sandbox: packages, prices, the recommended " +
-                "one and why. Always quote and tell the user the price before bugnet_start. " +
-                "The quoteId is valid for 10 minutes.",
-            inputSchema: quoteInput,
-            annotations: { readOnlyHint: true, openWorldHint: false },
-        },
-        async (args, ctx) => {
-            try {
-                const q = await buildQuote(deps, args, ctx.mcpReq.signal);
-                return ok(q.text, q.structured);
-            } catch (e) {
-                return failure(e, "quote");
-            }
-        },
-    );
+function refusal(packageId: string, o: PackageOption, open?: string[]): GatewayError {
+    const why =
+        o.unavailableReason === "no_candidate"
+            ? "is busy now, try again soon"
+            : o.unavailableReason === "feature_unavailable"
+              ? "is not open yet for these needs"
+              : "cannot start right now";
+    const others = open && open.length > 0 ? `. The packages open now are ${open.join(", ")}` : "";
+    return new GatewayError("invalid", `package ${packageId} ${why}${others}`);
+}
 
+// Routers before PricePackage answer Unimplemented, and Estimate still prices the package for them
+async function priceForStart(
+    deps: Deps,
+    packageId: string,
+    claims: QuoteClaims,
+): Promise<PackageOption> {
+    const requirements = claims.requirements;
+    let option: PackageOption | undefined;
+    try {
+        const res = await deps.router.pricePackage(
+            { packageId, requirements },
+            { signal: AbortSignal.timeout(15_000) },
+        );
+        option = res.option;
+    } catch (e) {
+        if (!(e instanceof ConnectError)) throw e;
+        if (e.code === Code.InvalidArgument && errorReason(e) === null) {
+            throw new GatewayError(
+                "invalid",
+                `package ${packageId} is not on offer, bugnet_quote lists the packages`,
+            );
+        }
+        if (e.code !== Code.Unimplemented) throw e;
+        const est = await deps.router.estimate(
+            { requirements },
+            { signal: AbortSignal.timeout(15_000) },
+        );
+        option = est.options.find((o) => o.packageId === packageId);
+        if (option && !option.available) {
+            const open = est.options.filter((o) => o.available).map((o) => o.packageId);
+            throw refusal(packageId, option, open);
+        }
+    }
+    if (!option) {
+        throw new GatewayError(
+            "invalid",
+            `package ${packageId} is not on offer, bugnet_quote lists the packages`,
+        );
+    }
+    if (!option.available) throw refusal(packageId, option);
+    return option;
+}
+
+export const registerSandboxTools: Register = (server, deps) => {
     server.registerTool(
         "bugnet_start",
         {
@@ -314,7 +221,8 @@ export const registerSandboxTools: Register = (server, deps) => {
             description:
                 "Starts a cloud sandbox from a quote and charges the package price in USDC. " +
                 "Only call it after the user agreed to the price. Returns the sandbox handle, " +
-                "the only key to the sandbox, or a payment step to complete first.",
+                "the only key to the sandbox, or a payment step to complete first. When the " +
+                "quote named a GitHub repo, the ready sandbox has it at ~/src/<repo>.",
             inputSchema: startInput,
             annotations: {
                 readOnlyHint: false,
@@ -326,30 +234,14 @@ export const registerSandboxTools: Register = (server, deps) => {
         },
         async (args, ctx) => {
             try {
-                let claims;
+                let claims: QuoteClaims;
                 try {
                     claims = verifyQuote(deps.config.secrets.quoteKey, args.quoteId, deps.now());
                 } catch (e) {
                     if (e instanceof QuoteError) throw new GatewayError("invalid", e.message);
                     throw e;
                 }
-                const est = await deps.router.estimate(
-                    { requirements: claims.requirements },
-                    { signal: AbortSignal.timeout(15_000) },
-                );
-                const option = est.options.find((o) => o.packageId === args.packageId);
-                if (!option?.available) {
-                    const open = est.options.filter((o) => o.available).map((o) => o.packageId);
-                    throw new GatewayError(
-                        "invalid",
-                        `package ${args.packageId} ` +
-                            (option ? "cannot start right now" : "is not on offer") +
-                            (open.length > 0
-                                ? `, the packages open now are ${open.join(", ")}`
-                                : ""),
-                    );
-                }
-                const pkg = quoted(option);
+                const pkg = quoted(await priceForStart(deps, args.packageId, claims));
                 const priced = Number.parseFloat(args.confirmPriceUsd.replace(/^\$/, ""));
                 if (!Number.isFinite(priced) || Math.abs(priced * 1e6 - pkg.priceMicros) > 0.5) {
                     throw new GatewayError(
@@ -380,6 +272,7 @@ export const registerSandboxTools: Register = (server, deps) => {
                     created = await deps.router.createPlacement({
                         orderToken: order.orderToken,
                         requirements: claims.requirements,
+                        estimateId: claims.estimateId ?? "",
                     });
                 } catch (e) {
                     const err = fromRouter(e, "start");
@@ -402,12 +295,13 @@ export const registerSandboxTools: Register = (server, deps) => {
                     handle: handleTag(handle),
                     state: p ? stateName[p.state] : "unknown",
                 });
+                const ready = p?.state === PlacementState.READY;
                 const view = placementView(p, deps.now());
+                if (ready && claims.github) view.source = await fetchAfterStart(deps, handle);
                 const meta =
                     order.paymentResponse !== undefined
                         ? { "x402/payment-response": order.paymentResponse }
                         : undefined;
-                const ready = p?.state === PlacementState.READY;
                 const text = [
                     `Sandbox ${view.state}. handle: ${handle}`,
                     ready ? `Time left: ${view.timeLeft} (deadline ${view.deadline}).` : "",
@@ -417,6 +311,8 @@ export const registerSandboxTools: Register = (server, deps) => {
                     p?.state === PlacementState.FAILED
                         ? `It failed to start${p.refundable ? ", the payment will be refunded" : ""}.`
                         : "",
+                    view.source ? sentence(view.source.note) : "",
+                    sshLine(view.sshAlias),
                     "Keep the handle, it is the only key to this sandbox. Commands run as root " +
                         "or as a user with passwordless sudo: use $HOME, prefix system changes with sudo.",
                 ]
@@ -434,10 +330,10 @@ export const registerSandboxTools: Register = (server, deps) => {
         {
             title: "Bugnet sandbox status",
             description:
-                "State, deadline, time left and extension prices of a sandbox. Everything is " +
-                "deleted at the deadline, so download results first, or extend with " +
-                "bugnet_extend once the user agrees. waitSeconds waits for the state to change, " +
-                "for example while it is starting.",
+                "State, deadline, time left and extension prices of a sandbox, why it ended, " +
+                "its SSH alias and where its repo is. Everything is deleted at the deadline, " +
+                "so download results first, or extend with bugnet_extend once the user agrees. " +
+                "waitSeconds waits for the state to change, for example while it is starting.",
             inputSchema: z.object({
                 handle: handleInput,
                 waitSeconds: z.number().int().min(0).max(45).optional(),
@@ -467,6 +363,9 @@ export const registerSandboxTools: Register = (server, deps) => {
                         (view.deadline ? ` (deadline ${view.deadline})` : "") +
                         (view.failureReason ? `, reason ${view.failureReason}` : "") +
                         ".",
+                    view.terminationReason ? sentence(view.terminationReason) : "",
+                    view.source && !(p && ended(p.state)) ? sentence(view.source.note) : "",
+                    ready ? sshLine(view.sshAlias) : "",
                     offer.length > 0
                         ? "Extend with bugnet_extend: " +
                           offer

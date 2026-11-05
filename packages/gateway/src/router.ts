@@ -458,11 +458,14 @@ export function fromRouter(err: unknown, what: string): GatewayError {
 const providerNames = /\b(koyeb|boat|e2b|boxd|instabox|daytona)\b/gi;
 
 // Router wording cut to one line, with any provider name scrubbed because callers never learn it
-export function safeMessage(err: ConnectError): string {
-    const first = err.rawMessage.split("\n")[0] ?? "";
-    const text = first
+export function routerText(text: string): string {
+    const first = text.split("\n")[0] ?? "";
+    return first
         .replace(/\b(api|saga|jobs|streams|placement): /g, "")
         .replace(providerNames, "provider")
         .slice(0, 200);
-    return text || "refused";
+}
+
+export function safeMessage(err: ConnectError): string {
+    return routerText(err.rawMessage) || "refused";
 }
