@@ -33,3 +33,18 @@ fetch_timeout = "4s"                    # per upstream request
 cache_ttl = "10m"                       # how long one replica reuses an assessment
 max_file_bytes = 262144                 # largest file read for scanning
 scan_urls = true                        # fetch and scan script URLs agents pass to bugnet_assess
+
+[front]
+tls_addr = ""                           # host:port of the TLS front, such as 127.0.0.1:8444 behind HAProxy, empty turns it off
+proxy_protocol = true                   # every TLS front connection opens with a PROXY v2 header, as HAProxy send-proxy-v2 sends
+proxy_timeout = "3s"                    # deadline for that header, the spec asks for 3 s or more
+proxy_max_bytes = 536                   # largest PROXY header accepted, TLVs included, 52 to 65551
+handshake_timeout = "10s"               # deadline for the TLS handshake after the header
+cert_file = ""                          # PEM certificate chain, reread on SIGHUP, or leave empty and use ACME
+key_file = ""                           # PEM private key of cert_file
+acme_directory = ""                     # ACME directory URL, empty turns ACME off, such as https://acme-v02.api.letsencrypt.org/directory
+acme_accept_terms = false               # true accepts the CA's subscriber agreement, which ACME needs
+acme_email = ""                         # contact address for the ACME account, optional
+acme_domains = []                       # names on the certificate, public_url's host when empty
+acme_dir = ""                           # directory for the account key and the certificate, kept across restarts
+acme_renew_before = "720h"              # renew this long before the certificate expires
