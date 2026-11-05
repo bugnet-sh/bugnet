@@ -1,7 +1,7 @@
 // packages/intent/src/hook.ts
 import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join as join2, resolve } from "node:path";
 
 // packages/intent/src/lexicon.ts
 function family(src) {
@@ -2766,10 +2766,112 @@ var failureCause = {
   platform_unsupported: "a tool that does not support this operating system",
   docker_daemon: "no running Docker daemon on this machine"
 };
-var tools = "Bugnet's tools in this session can run it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
+var gpuSignals = /^(?:pasted_)?(?:needs_nvidia|mentions_nvidia|nvidia_only_package|cuda_\w+|gpu_\w+|hardware_gap|cuda_missing)$/;
+var osSignals = /^(?:pasted_)?(?:needs_linux|needs_x86|kernel_module|exec_format|platform_unsupported)$/;
+var tools = "Bugnet's tools in this session can run it in a disposable cloud Linux sandbox, paid per run, and bugnet_assess checks it for free";
 var notOffered = "Bugnet has not been offered in this session.";
 function lead(c) {
   return c.signals.find((s) => s.weight > 0 && s.category === c.category);
+}
+var osLabel = {
+  macos: "macOS",
+  linux: "Linux",
+  windows: "Windows"
+};
+function machineName(f) {
+  return f.os === "macos" ? "this Mac" : "this computer";
+}
+function gpuFact(f) {
+  if (f.nvidia === null) return null;
+  if (f.nvidia) return "an NVIDIA driver";
+  return f.os === "macos" ? "no NVIDIA GPU" : "no NVIDIA driver";
+}
+function machineSummary(f, cores = false) {
+  const parts = [f.os === "macos" ? f.arch : `${osLabel[f.os]} ${f.arch}`];
+  if (f.ramGiB !== null) parts.push(`${f.ramGiB} GiB RAM`);
+  if (cores && f.cores !== null) parts.push(`${f.cores} cores`);
+  if (f.freeDiskGiB !== null) parts.push(`${f.freeDiskGiB} GiB free disk`);
+  const gpu = gpuFact(f);
+  if (gpu) parts.push(gpu);
+  return parts.join(", ");
+}
+function onThis(f) {
+  return `On ${machineName(f)} (${machineSummary(f)})`;
+}
+function localInput(f) {
+  const parts = [`os ${f.os}`, `arch ${f.arch}`];
+  if (f.ramGiB !== null) parts.push(`ramGiB ${f.ramGiB}`);
+  if (f.nvidia === false) parts.push("gpu none");
+  return parts.join(", ");
+}
+function list(items) {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+var weights = "weights take from under 1 GB for speech models to tens of GB for image, video and LLMs";
+function consequences(c, f) {
+  const text = consequence(c, f);
+  return Array.isArray(text) ? text : [text];
+}
+function consequence(c, f) {
+  const category = c.category;
+  const top = lead(c)?.id ?? "";
+  if (category === "local_ai_model") {
+    const cuda = f.nvidia === false ? "CUDA-only code runs on CPU or fails, and " : "";
+    return [
+      `${onThis(f)}, ${cuda}${weights}, plus PyTorch in the user's own Python.`,
+      `${onThis(f)}, ${cuda}model weights and PyTorch add gigabytes.`
+    ];
+  }
+  if (category === "untrusted_code") {
+    const reach = (dirs) => {
+      const home = dirs.map((d) => `~/${d}`);
+      return home.length > 0 ? `${list(home)}, which exist here` : "the whole home folder";
+    };
+    const run = `Run on ${machineName(f)}, it gets this user's access, including`;
+    const scratch = "and a scratch folder or virtualenv does not limit what it can read";
+    return [
+      `${run} ${reach(f.secrets)}, ${scratch}.`,
+      `${run} ${reach(f.secrets.slice(0, 2))}, ${scratch}.`
+    ];
+  }
+  if (category === "environment") {
+    if (gpuSignals.test(top)) {
+      if (f.os === "macos")
+        return `${onThis(f)}, CUDA code cannot run at all, since macOS has no CUDA.`;
+      if (f.nvidia === false)
+        return `${onThis(f)}, CUDA code cannot run without an NVIDIA GPU and its driver.`;
+      if (f.nvidia)
+        return `${onThis(f)}, CUDA toolkit and driver changes apply to the whole system.`;
+    }
+    if (osSignals.test(top) && f.os !== "linux") {
+      const x86 = f.arch === "arm64" ? ", where x86 binaries run only under emulation" : "";
+      const via = f.os === "windows" ? "WSL or a virtual machine" : "a virtual machine or container";
+      return `${onThis(f)}, Linux-only tools need ${via}${x86}.`;
+    }
+    return `${onThis(f)}, system-wide installs change the system for every project and are hard to undo.`;
+  }
+  if (category === "risky_experiment") {
+    const data = f.usedDiskGiB !== null ? ` with ${f.usedDiskGiB} GiB of files` : "";
+    return `Run on ${machineName(f)}, a mistake reaches its own disk${data} and its running system, while a broken sandbox is simply deleted.`;
+  }
+  const size = [
+    f.cores !== null ? `${f.cores} cores` : "",
+    f.ramGiB !== null ? `${f.ramGiB} GiB RAM` : ""
+  ].filter(Boolean);
+  const has = size.length > 0 ? `${machineName(f)}'s ${list(size)}` : machineName(f);
+  return `A multi-hour job keeps ${has} busy for that whole time.`;
+}
+function failureReason(c, f) {
+  const base = failureWhy[c.category];
+  if (!f) return base;
+  const parts = [
+    f.ramGiB !== null ? `${f.ramGiB} GiB RAM` : "",
+    f.freeDiskGiB !== null ? `${f.freeDiskGiB} GiB free disk` : "",
+    gpuFact(f) ?? ""
+  ].filter(Boolean);
+  const name = f.os === "macos" ? "This Mac" : `This ${osLabel[f.os]} ${f.arch} computer`;
+  return parts.length > 0 ? `${base} ${name} has ${list(parts)}.` : base;
 }
 function described(c, subjectMax) {
   const category = c.category;
@@ -2793,15 +2895,27 @@ function detection(c, kind, max) {
   }
   return `the prompt asks to run or set up ${described(c, max)}.`;
 }
-function hintFor(c, kind) {
+function hintFor(c, kind, facts) {
   if (!c.suggest || !c.category) return "";
   const top = lead(c);
-  const reason = kind === "failure" ? failureWhy[c.category] : (top && signalWhy[top.id]) ?? why[c.category];
-  for (const max of [60, 36, 20]) {
-    const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${notOffered}`;
-    if (text.length <= maxHintChars) return text;
+  const reasons = kind === "failure" ? [failureReason(c, facts)] : top && signalWhy[top.id] ? [signalWhy[top.id]] : facts ? consequences(c, facts) : [why[c.category]];
+  const offer = (reason2) => {
+    if (!facts) return `${tools}.`;
+    if (reason2.includes(machineSummary(facts)))
+      return `${tools}, with those facts as its local input.`;
+    return `${tools} (local: ${localInput(facts)}).`;
+  };
+  for (const reason2 of reasons) {
+    for (const tail of [offer(reason2), `${tools}.`]) {
+      for (const max of [60, 36, 20]) {
+        const text = `${hintPrefix} ${detection(c, kind, max)} ${reason2} ${tail} ${notOffered}`;
+        if (text.length <= maxHintChars) return text;
+      }
+    }
   }
-  return `${hintPrefix} ${reason} ${tools} ${notOffered}`;
+  const reason = reasons[reasons.length - 1];
+  const short = `${hintPrefix} ${reason} ${offer(reason)} ${notOffered}`;
+  return short.length <= maxHintChars ? short : `${hintPrefix} ${reason} ${tools}. ${notOffered}`;
 }
 
 // packages/intent/src/prompt.ts
@@ -2931,8 +3045,8 @@ function classifyPrompt(text, ctx = {}) {
       if (big) put(at, hit("large_model", "local_ai_model", 2, big[0]));
       const video = find(videoName, t);
       if (video) put(at, hit("video_model", "local_ai_model", 1, video[0]));
-      const weights = find(weightsCue, bare);
-      if (weights) put(at, hit("model_weights", "local_ai_model", 1, weights[0]));
+      const weights2 = find(weightsCue, bare);
+      if (weights2) put(at, hit("model_weights", "local_ai_model", 1, weights2[0]));
     }
   }
   let externalRepo = false;
@@ -3219,17 +3333,53 @@ function perItemSeconds(m) {
   return count * Number(m[3]) * unit;
 }
 
+// packages/intent/src/machine.ts
+import { existsSync, statfsSync } from "node:fs";
+import { cpus, homedir, totalmem } from "node:os";
+import { join } from "node:path";
+var secretDirs = [".ssh", ".aws", ".config/gcloud", ".kube", ".config/gh", ".docker", ".npmrc"];
+var gib = (bytes) => Math.round(bytes / 2 ** 30);
+function tryOr(f, fallback) {
+  try {
+    return f();
+  } catch {
+    return fallback;
+  }
+}
+function osName(platform) {
+  if (platform === "darwin") return "macos";
+  if (platform === "win32") return "windows";
+  return "linux";
+}
+function gatherFacts(platform, arch, dir, home = tryOr(homedir, "")) {
+  const os = osName(platform);
+  const disk = tryOr(() => statfsSync(dir), null) ?? tryOr(() => statfsSync(home), null);
+  const free = disk ? disk.bavail * disk.bsize : null;
+  const total = disk ? disk.blocks * disk.bsize : null;
+  const nvidia = os === "macos" ? false : os === "linux" ? tryOr(() => existsSync("/proc/driver/nvidia/version"), null) : null;
+  return {
+    os,
+    arch: arch === "arm64" ? "arm64" : "x64",
+    ramGiB: tryOr(() => gib(totalmem()), null),
+    cores: tryOr(() => cpus().length || null, null),
+    freeDiskGiB: free !== null ? gib(free) : null,
+    usedDiskGiB: free !== null && total !== null ? gib(total - free) : null,
+    nvidia,
+    secrets: home ? secretDirs.filter((d) => tryOr(() => existsSync(join(home, d)), false)) : []
+  };
+}
+
 // packages/intent/src/hook.ts
 var maxHintsPerSession = 2;
 var stateTtlMs = 2 * 24 * 3600 * 1e3;
 function envFrom(env) {
   const raw = (env.BUGNET_HINTS ?? env.CLAUDE_PLUGIN_OPTION_HINTS ?? "normal").toLowerCase();
   const hints = raw === "off" || raw === "quiet" ? raw : "normal";
-  const base = env.CLAUDE_PLUGIN_DATA || join(tmpdir(), "bugnet-plugin");
-  return { hints, stateDir: join(base, "hints"), platform: process.platform, arch: process.arch };
+  const base = env.CLAUDE_PLUGIN_DATA || join2(tmpdir(), "bugnet-plugin");
+  return { hints, stateDir: join2(base, "hints"), platform: process.platform, arch: process.arch };
 }
 function stateFile(env, session) {
-  return join(env.stateDir, `${session.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 100)}.json`);
+  return join2(env.stateDir, `${session.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 100)}.json`);
 }
 function loadState(env, session) {
   try {
@@ -3252,7 +3402,7 @@ function saveState(env, session, state) {
 function prune(env, now) {
   if (Math.random() > 0.05) return;
   for (const f of readdirSync(env.stateDir)) {
-    const p = join(env.stateDir, f);
+    const p = join2(env.stateDir, f);
     if (now - statSync(p).mtimeMs > stateTtlMs) rmSync(p, { force: true });
   }
 }
@@ -3271,11 +3421,6 @@ function clonedAt(state, cwd, command) {
     if (c) return c;
   }
   return null;
-}
-function osOf(env) {
-  if (env.platform === "darwin") return "macos";
-  if (env.platform === "win32") return "windows";
-  return "linux";
 }
 function mentionsBugnet(text) {
   return /bugnet/i.test(text);
@@ -3312,7 +3457,7 @@ function runHook(mode, input, env, now = Date.now()) {
   if (env.hints === "quiet" && mode !== "failure") return null;
   const dir = mode === "prompt" ? null : clonedAt(state, cwd, command);
   const ctx = {
-    os: osOf(env),
+    os: osName(env.platform),
     arch: env.arch === "arm64" ? "arm64" : "x64",
     clonedThisSession: dir !== null,
     ...dir && state.clonedRepos[dir] ? { clonedRepo: state.clonedRepos[dir] } : {}
@@ -3332,7 +3477,8 @@ function runHook(mode, input, env, now = Date.now()) {
   if (!c.suggest || !c.category) return null;
   const key = c.category;
   if (state.hinted.includes(key)) return null;
-  const text = hintFor(c, mode);
+  const facts = env.facts ?? gatherFacts(env.platform, env.arch, cwd);
+  const text = hintFor(c, mode, facts);
   if (!text) return null;
   state.hinted.push(key);
   saveState(env, session, state);

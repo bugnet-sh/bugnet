@@ -11,15 +11,15 @@ const shownFindings = 8;
 
 export const assessDescription =
     "Free, read-only check before installing or running an untrusted GitHub repo, script or " +
-    "installer, an AI model such as text to speech, image generation or a local LLM, or " +
-    "anything that needs a GPU. It returns whether a disposable Bugnet cloud sandbox is safer " +
-    "or needed, and why: repo age, stars and owner, install scripts that download or run " +
-    "binaries, obfuscated code, pickle-only model weights, and the GPU, memory and disk the " +
-    "work needs against the user's machine, plus a priced quote with a quoteId for " +
-    "bugnet_start. Pass what the user wants as task, the repo URL, Hugging Face model id or " +
-    "script URL as source, the commands you plan to run, and the user's os, arch, RAM and GPU " +
-    "when known. Fetched files are never returned, only short findings. It charges nothing " +
-    "and starts nothing.";
+    "installer, an AI model such as text to speech, image generation or a local LLM, anything " +
+    "that needs a GPU or Linux, a destructive experiment or a multi-hour job. It returns " +
+    "whether a disposable Bugnet cloud sandbox is safer or needed, with concrete reasons to " +
+    "tell the user: repo age, stars and owner, install scripts that download or run binaries, " +
+    "obfuscated code, pickle-only model weights, and the GPU, memory and disk the work needs " +
+    "against the user's machine, plus a priced quote with a quoteId for bugnet_start. Pass " +
+    "what the user wants as task, the repo URL, Hugging Face model id or script URL as source, " +
+    "the commands you plan to run, and the user's os, arch, RAM and GPU when known. Fetched " +
+    "files are never returned, only short findings. It charges nothing and starts nothing.";
 
 const assessInput = z.object({
     task: z.string().max(2000).optional().describe("What the user wants, in their words"),

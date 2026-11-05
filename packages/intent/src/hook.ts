@@ -7,7 +7,9 @@
  * session and whether Bugnet was already used. Everything is computed on this machine; nothing is
  * sent anywhere.
  *
- * A hint is one factual paragraph added to the agent's context. At most one hint per category and
+ * A hint is one factual paragraph added to the agent's context, naming what the hook read about this
+ * computer (OS, CPU, memory, free disk, NVIDIA driver, credential folders) without running any
+ * program. At most one hint per category and
  * two per session are given, none once a Bugnet tool has been used, and BUGNET_HINTS=off turns
  * them all off (quiet keeps only failure hints). Any error exits 0 with no output.
  */
@@ -16,6 +18,7 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { clonesIn } from "./command.ts";
 import { classifyCommand, classifyFailure, classifyPrompt, hintFor } from "./index.ts";
+import { gatherFacts, osName, type MachineFacts } from "./machine.ts";
 import { clip } from "./normalize.ts";
 import type { Classification, SessionContext } from "./types.ts";
 
@@ -44,6 +47,8 @@ export interface Env {
     stateDir: string;
     platform: NodeJS.Platform;
     arch: string;
+    // Fixed facts for tests, read from this computer when absent
+    facts?: MachineFacts;
 }
 
 const maxHintsPerSession = 2;
@@ -109,12 +114,6 @@ function clonedAt(state: State, cwd: string, command: string): string | null {
     return null;
 }
 
-function osOf(env: Env): SessionContext["os"] {
-    if (env.platform === "darwin") return "macos";
-    if (env.platform === "win32") return "windows";
-    return "linux";
-}
-
 function mentionsBugnet(text: string): boolean {
     return /bugnet/i.test(text);
 }
@@ -155,7 +154,7 @@ export function runHook(mode: Mode, input: HookInput, env: Env, now = Date.now()
 
     const dir = mode === "prompt" ? null : clonedAt(state, cwd, command);
     const ctx: SessionContext = {
-        os: osOf(env),
+        os: osName(env.platform),
         arch: env.arch === "arm64" ? "arm64" : "x64",
         clonedThisSession: dir !== null,
         ...(dir && state.clonedRepos[dir] ? { clonedRepo: state.clonedRepos[dir] } : {}),
@@ -175,7 +174,8 @@ export function runHook(mode: Mode, input: HookInput, env: Env, now = Date.now()
     if (!c.suggest || !c.category) return null;
     const key = c.category;
     if (state.hinted.includes(key)) return null;
-    const text = hintFor(c, mode);
+    const facts = env.facts ?? gatherFacts(env.platform, env.arch, cwd);
+    const text = hintFor(c, mode, facts);
     if (!text) return null;
     state.hinted.push(key);
     saveState(env, session, state);
