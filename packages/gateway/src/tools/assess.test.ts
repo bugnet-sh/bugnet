@@ -9,6 +9,7 @@ import type { RouterClient } from "../router.ts";
 import { verifyQuote } from "../quote.ts";
 import { assessDescription, registerAssessTool } from "./assess.ts";
 import type { Deps } from "./common.ts";
+import { buildQuote } from "./sandbox.ts";
 
 const now = Date.parse("2026-11-05T12:00:00Z");
 
@@ -216,6 +217,37 @@ describe("bugnet_assess tool", () => {
         expect(summary).toMatch(
             /^Needs about 770\.4 GiB of memory, this machine has 16 GiB\. No Bugnet package is large enough/,
         );
+    });
+
+    it("gives the router call a signal that aborts when the quote budget runs out", async () => {
+        let seen: AbortSignal | undefined;
+        const { client, deps } = await connect({
+            estimate: (async (_req: unknown, opts?: { signal?: AbortSignal }) => {
+                seen = opts?.signal;
+                return { options: [option("cpu-s", 50_000n, 0, 4096)] };
+            }) as unknown as RouterClient["estimate"],
+        });
+        await client.callTool({ name: "bugnet_assess", arguments: { source: "acme/model" } });
+        expect(seen).toBeInstanceOf(AbortSignal);
+        expect(seen?.aborted).toBe(false);
+        const stop = new AbortController();
+        const hang = buildQuote(
+            {
+                ...deps,
+                router: {
+                    estimate: ((_req: unknown, opts?: { signal?: AbortSignal }) =>
+                        new Promise((_resolve, reject) => {
+                            opts?.signal?.addEventListener("abort", () =>
+                                reject(new Error("aborted")),
+                            );
+                        })) as unknown as RouterClient["estimate"],
+                } as RouterClient,
+            },
+            { workload: "other" },
+            stop.signal,
+        );
+        stop.abort();
+        await expect(hang).rejects.toThrow("aborted");
     });
 
     it("still returns the assessment when the router is down", async () => {

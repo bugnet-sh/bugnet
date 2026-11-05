@@ -173,14 +173,18 @@ export function sizeText(memoryGiB: number | null, diskGiB: number | null): stri
 }
 
 // Prices the packages that can start now and signs them into a quoteId bugnet_start accepts
-export async function buildQuote(deps: Deps, args: QuoteRequest): Promise<BuiltQuote> {
+export async function buildQuote(
+    deps: Deps,
+    args: QuoteRequest,
+    signal?: AbortSignal,
+): Promise<BuiltQuote> {
     const wantGpu = args.needs?.includes("gpu") ?? false;
     const requirements = {
         ssh: args.needs?.includes("ssh") ?? false,
         preview: args.needs?.includes("preview") ?? false,
         gpu: wantGpu,
     };
-    const est = await deps.router.estimate({ requirements });
+    const est = await deps.router.estimate({ requirements }, signal ? { signal } : {});
     const all = est.options.map(quoted);
     const available = est.options.filter((o) => o.available).map(quoted);
     const warnings: string[] = [];
@@ -295,9 +299,9 @@ export const registerSandboxTools: Register = (server, deps) => {
             inputSchema: quoteInput,
             annotations: { readOnlyHint: true, openWorldHint: false },
         },
-        async (args) => {
+        async (args, ctx) => {
             try {
-                const q = await buildQuote(deps, args);
+                const q = await buildQuote(deps, args, ctx.mcpReq.signal);
                 return ok(q.text, q.structured);
             } catch (e) {
                 return failure(e, "quote");

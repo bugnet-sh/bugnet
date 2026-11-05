@@ -160,16 +160,24 @@ export const registerAssessTool: Register = (server, deps) => {
                 };
             }
             let quote: BuiltQuote | null = null;
+            const quoteSignal = AbortSignal.any([
+                ctx.mcpReq.signal,
+                AbortSignal.timeout(quoteBudgetMs),
+            ]);
             try {
                 quote = await within(
-                    buildQuote(deps, {
-                        source: args.source,
-                        workload: assessment.needs.workload,
-                        expectedMinutes: args.expectedMinutes,
-                        needs: assessment.needs.gpu ? ["gpu"] : [],
-                        minMemoryGiB: assessment.needs.minMemoryGiB,
-                        minDiskGiB: assessment.needs.minDiskGiB,
-                    }),
+                    buildQuote(
+                        deps,
+                        {
+                            source: args.source,
+                            workload: assessment.needs.workload,
+                            expectedMinutes: args.expectedMinutes,
+                            needs: assessment.needs.gpu ? ["gpu"] : [],
+                            minMemoryGiB: assessment.needs.minMemoryGiB,
+                            minDiskGiB: assessment.needs.minDiskGiB,
+                        },
+                        quoteSignal,
+                    ),
                     quoteBudgetMs,
                 );
             } catch (e) {
