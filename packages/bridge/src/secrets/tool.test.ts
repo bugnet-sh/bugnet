@@ -1,0 +1,489 @@
+import { Code } from "@connectrpc/connect";
+import { PlacementState } from "@bugnet/gateway/gen";
+import { placement, routerError, type RouterImpl } from "@bugnet/gateway/testing";
+import { toBase64Url } from "@bugnet/seal";
+import type { ElicitResult } from "@modelcontextprotocol/client";
+import { isInputRequiredResult, type ServerContext } from "@modelcontextprotocol/server";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+    connectBridge,
+    fakeGateway,
+    fakeSecretsRoute,
+    grantRouter,
+    testBinding,
+    testGrant,
+    testHandle,
+    testNow,
+    testSources,
+    type BridgeSetup,
+    type ConnectedBridge,
+    type FakeSecretsRoute,
+} from "../testing/harness.ts";
+import { silentLog } from "../log.ts";
+import type { RemoteTools } from "../remote.ts";
+import type { SourceDeps } from "./sources.ts";
+import { secretFromEnv, secretFromEnvName, type SecretToolDeps } from "./tool.ts";
+
+const value = "hf_TopSecretValue_0123456789abcdef";
+const accept = (): ElicitResult => ({ action: "accept", content: {} });
+
+interface Rig {
+    bridge: ConnectedBridge;
+    route: FakeSecretsRoute;
+    grants: number;
+    envReads: string[];
+}
+
+const open: (() => Promise<void>)[] = [];
+
+afterEach(async () => {
+    for (const close of open.splice(0)) await close();
+});
+
+// A real gateway on a fake router, a fake secrets route and the bridge between them and a client
+async function rig(
+    setup: Omit<BridgeSetup, "gateway" | "secretsUrl"> = {},
+    impl: RouterImpl = grantRouter,
+    env: Record<string, string> = { HF_TOKEN: value },
+): Promise<Rig> {
+    const counted: Rig = { grants: 0, envReads: [] } as unknown as Rig;
+    const router: RouterImpl = {
+        ...impl,
+        createSecretPutGrant: (req, ctx) => {
+            counted.grants += 1;
+            if (!impl.createSecretPutGrant) throw routerError(Code.Unimplemented);
+            return impl.createSecretPutGrant(req, ctx);
+        },
+    };
+    const gateway = await fakeGateway(router);
+    const route = await fakeSecretsRoute();
+    const watched = new Proxy(env, {
+        get(target, key) {
+            if (typeof key === "string") counted.envReads.push(key);
+            return Reflect.get(target, key);
+        },
+    });
+    const bridge = await connectBridge({
+        gateway: gateway.url,
+        secretsUrl: route.url,
+        sources: testSources({ env: watched }),
+        ...setup,
+    });
+    open.push(bridge.close, gateway.close, route.close);
+    return Object.assign(counted, { bridge, route });
+}
+
+interface Stored {
+    message: string;
+    name: string;
+    hosts: string[];
+    headerNames: string[];
+    state: string;
+    replaced: boolean;
+}
+
+async function call(r: Rig, args: Record<string, unknown>, toolUseId?: string) {
+    const res = await r.bridge.client.callTool({
+        name: secretFromEnvName,
+        arguments: args,
+        ...(toolUseId ? { _meta: { "claudecode/toolUseId": toolUseId } } : {}),
+    });
+    const blocks = (res.content ?? []) as { text?: string }[];
+    return {
+        isError: res.isError === true,
+        text: blocks.map((b) => b.text ?? "").join("\n"),
+        structured: res.structuredContent as Stored | undefined,
+        raw: JSON.stringify(res),
+    };
+}
+
+const hf = (over: Record<string, unknown> = {}) => ({
+    handle: testHandle,
+    name: "HF_TOKEN",
+    source: { type: "env", variable: "HF_TOKEN" },
+    hosts: ["huggingface.co"],
+    ...over,
+});
+
+function neverLeaks(r: Rig, ...also: string[]) {
+    const seen = [...r.bridge.lines, ...r.bridge.prompts, ...also].join("\n");
+    expect(seen).not.toContain(value);
+    expect(seen).not.toContain(testHandle);
+    for (const req of r.route.requests) {
+        expect(req.body).not.toContain(value);
+        expect(req.body).not.toContain(testHandle);
+        expect(req.path).not.toContain(testHandle);
+    }
+}
+
+describe.each(["legacy", "modern"] as const)("bugnet_secret_from_env, %s client", (era) => {
+    it("asks the user, then stores the sealed value for the canonical hosts", async () => {
+        const r = await rig({ era, elicit: accept });
+        const res = await call(r, hf({ hosts: ["HuggingFace.co."] }), "toolu_secret_1");
+        expect(res.isError).toBe(false);
+        const message =
+            "HF_TOKEN is stored for huggingface.co, state ACTIVE. In the sandbox $HF_TOKEN holds " +
+            "a placeholder that Bugnet's egress proxy swaps for the value only on HTTPS requests " +
+            "to those hosts.";
+        expect(res.structured).toEqual({
+            message,
+            name: "HF_TOKEN",
+            hosts: ["huggingface.co"],
+            headerNames: [],
+            state: "ACTIVE",
+            replaced: false,
+        });
+        expect(r.bridge.prompts).toEqual([
+            [
+                "Add a secret to your Bugnet sandbox?",
+                "",
+                "Sandbox: handle ending uvwxyz",
+                "Name: HF_TOKEN",
+                "Read from: environment variable HF_TOKEN",
+                "Sent only to: huggingface.co",
+                "In headers: Authorization",
+                "",
+                "Bugnet's egress proxy puts the value into requests to these hosts, and it " +
+                    "decrypts all traffic to them, bodies included. Accept only if that is fine " +
+                    "for these hosts.",
+            ].join("\n"),
+        ]);
+        expect(r.route.opened).toHaveLength(1);
+        const put = r.route.opened[0]!;
+        expect(put.payload).toEqual({
+            v: 1,
+            binding: testBinding,
+            name: "HF_TOKEN",
+            hosts: ["huggingface.co"],
+            headers: [],
+            fetchOnly: false,
+            value,
+        });
+        expect(put.body.idempotencyKey).toBe("toolu_secret_1");
+        expect(r.route.requests.map((q) => `${q.method} ${q.path}`)).toEqual([
+            "GET /v1/sealing-key",
+            "PUT /v1/secrets/HF_TOKEN",
+        ]);
+        for (const q of r.route.requests) {
+            expect(q.headers.authorization).toBe(`Bearer ${testGrant}`);
+            expect(q.headers.origin).toBeUndefined();
+            expect(q.headers["sec-fetch-site"]).toBeUndefined();
+        }
+        expect(r.grants).toBe(1);
+        neverLeaks(r, res.raw);
+    });
+
+    it("reads nothing and sends nothing when the user declines", async () => {
+        const r = await rig({ era, elicit: () => ({ action: "decline" }) });
+        const res = await call(r, hf());
+        expect(res).toMatchObject({
+            isError: true,
+            text: "secret: the user did not confirm, so nothing was read or sent.",
+        });
+        expect(r.envReads).not.toContain("HF_TOKEN");
+        expect(r.grants).toBe(0);
+        expect(r.route.requests).toEqual([]);
+    });
+
+    it("treats a dismissed prompt as a no", async () => {
+        const r = await rig({ era, elicit: () => ({ action: "cancel" }) });
+        const res = await call(r, hf());
+        expect(res.text).toMatch(/did not confirm/);
+        expect(r.grants).toBe(0);
+    });
+});
+
+describe("a client that cannot ask the user", () => {
+    it("stores a secret for its preset hosts without a prompt", async () => {
+        const r = await rig({}, grantRouter, { GITHUB_TOKEN: value });
+        const res = await call(
+            r,
+            hf({
+                name: "GITHUB_TOKEN",
+                source: { type: "env", variable: "GITHUB_TOKEN" },
+                hosts: ["api.github.com", "github.com"],
+            }),
+        );
+        expect(res.isError).toBe(false);
+        expect(r.route.opened[0]?.payload.hosts).toEqual(["api.github.com", "github.com"]);
+        expect(r.bridge.prompts).toEqual([]);
+    });
+
+    it("refuses hosts outside the preset and names the usual ones", async () => {
+        const r = await rig();
+        const res = await call(r, hf({ hosts: ["huggingface.co", "evil.example"] }));
+        expect(res.text).toBe(
+            "secret: this client cannot ask the user to confirm, so the bridge sends HF_TOKEN " +
+                "only to huggingface.co. bugnet_secret_link gives the user a page to add it " +
+                "instead.",
+        );
+        expect(r.envReads).not.toContain("HF_TOKEN");
+        expect(r.grants).toBe(0);
+    });
+
+    it("refuses a name without a preset, and a header outside it", async () => {
+        const r = await rig({}, grantRouter, { MY_KEY: value, HF_TOKEN: value });
+        const custom = await call(
+            r,
+            hf({ name: "MY_KEY", source: { type: "env", variable: "MY_KEY" } }),
+        );
+        expect(custom.text).toMatch(/sends only known secrets to their usual hosts/);
+        const header = await call(r, hf({ headerNames: ["X-Leak"] }));
+        expect(header.text).toMatch(/cannot ask the user to confirm/);
+        expect(r.grants).toBe(0);
+    });
+});
+
+describe("the confirmation prompt", () => {
+    it("warns about hosts that are not the secret's usual ones", async () => {
+        const r = await rig({ elicit: accept });
+        await call(r, hf({ hosts: ["models.example"] }));
+        expect(r.bridge.prompts[0]).toMatch(
+            /\n\nThese are not the usual hosts of HF_TOKEN, which are huggingface\.co\.$/,
+        );
+        expect(r.route.opened[0]?.payload.hosts).toEqual(["models.example"]);
+    });
+
+    it("uses a service's usual headers when none are given", async () => {
+        const r = await rig({ elicit: accept }, grantRouter, { ANTHROPIC_API_KEY: value });
+        const res = await call(
+            r,
+            hf({
+                name: "ANTHROPIC_API_KEY",
+                source: { type: "env", variable: "ANTHROPIC_API_KEY" },
+                hosts: ["api.anthropic.com"],
+            }),
+        );
+        expect(res.structured?.headerNames).toEqual(["x-api-key"]);
+        expect(r.bridge.prompts[0]).toContain("In headers: Authorization, x-api-key");
+        expect(r.bridge.prompts[0]).not.toMatch(/not the usual hosts/);
+        expect(r.route.opened[0]?.payload.headers).toEqual(["x-api-key"]);
+    });
+
+    it("checks the source before asking, and flags a name with no preset", async () => {
+        const r = await rig({
+            elicit: accept,
+            sources: testSources({ cwd: new URL(".", import.meta.url).pathname }),
+        });
+        await call(r, hf({ name: "OWN", source: { type: "dotenv", path: "none.env", key: "K" } }));
+        expect(r.bridge.prompts).toEqual([]);
+        const res = await call(
+            r,
+            hf({ name: "OWN", source: { type: "env", variable: "OWN" }, hosts: ["a.example"] }),
+        );
+        expect(r.bridge.prompts[0]).toMatch(/OWN is not a known service's secret/);
+        expect(res.text).toBe("secret: OWN is not set in the environment the bridge runs in.");
+    });
+});
+
+describe("arguments", () => {
+    it("refuses a value passed as an argument without repeating it", async () => {
+        const r = await rig({ elicit: accept });
+        const res = await call(r, hf({ value }));
+        expect(res.isError).toBe(true);
+        expect(res.text).toMatch(
+            /^secret: unknown argument value\. The value is never an argument/,
+        );
+        expect(res.raw).not.toContain(value);
+        expect(r.bridge.prompts).toEqual([]);
+    });
+
+    it("refuses a host with a scheme and a malformed handle before asking", async () => {
+        const r = await rig({ elicit: accept });
+        const scheme = await call(r, hf({ hosts: ["https://huggingface.co"] }));
+        expect(scheme.text).toMatch(/is not a bare host name/);
+        const handle = await call(r, hf({ handle: "sbx_x" }));
+        expect(handle.text).toMatch(/^secret: handle is not valid/);
+        expect(r.bridge.prompts).toEqual([]);
+        expect(r.grants).toBe(0);
+    });
+
+    it("refuses a .env file outside the working and home folders before asking", async () => {
+        const r = await rig({ elicit: accept });
+        const res = await call(r, hf({ source: { type: "dotenv", path: "/etc/hosts", key: "K" } }));
+        expect(res.text).toMatch(/is outside the working folder and the home folder/);
+        expect(r.bridge.prompts).toEqual([]);
+    });
+
+    it("refuses a value over 64 KiB and sends nothing", async () => {
+        const r = await rig({ elicit: accept }, grantRouter, { HF_TOKEN: "x".repeat(65537) });
+        const res = await call(r, hf());
+        expect(res.text).toBe("secret: HF_TOKEN is over 64 KiB.");
+        expect(r.grants).toBe(0);
+        expect(r.route.requests).toEqual([]);
+    });
+});
+
+describe("put grant refusals from the gateway", () => {
+    const refusing = (err: Error): RouterImpl => ({
+        createSecretPutGrant() {
+            throw err;
+        },
+        getPlacement: () => ({ placement: placement(PlacementState.TERMINATED) }),
+    });
+
+    it("says the feature is not open yet while the router answers Unimplemented", async () => {
+        const r = await rig({ elicit: accept }, {});
+        const res = await call(r, hf());
+        expect(res.text).toBe("secret: not open yet, the other Bugnet tools work as usual.");
+        expect(r.route.requests).toEqual([]);
+    });
+
+    it("passes on FEATURE_UNAVAILABLE", async () => {
+        const err = routerError(Code.FailedPrecondition, "FEATURE_UNAVAILABLE");
+        const r = await rig({ elicit: accept }, refusing(err));
+        const res = await call(r, hf());
+        expect(res.text).toBe(
+            "secret: not open on this sandbox yet, the other Bugnet tools work as usual.",
+        );
+    });
+
+    it("reports NOT_READY on an ended sandbox as expired", async () => {
+        const err = routerError(Code.FailedPrecondition, "NOT_READY");
+        const r = await rig({ elicit: accept }, refusing(err));
+        const res = await call(r, hf());
+        expect(res.text).toMatch(
+            /^secret: this sandbox has ended and everything in it was deleted/,
+        );
+    });
+
+    it("passes on the RetryInfo delay of RATE_LIMITED", async () => {
+        const err = routerError(Code.ResourceExhausted, "RATE_LIMITED", { retryAfterMs: 4000 });
+        const r = await rig({ elicit: accept }, refusing(err));
+        const res = await call(r, hf());
+        expect(res.text).toBe("secret: too many requests for now. Retry after 4 s.");
+    });
+
+    it("passes on an InvalidArgument refusal", async () => {
+        const err = routerError(Code.InvalidArgument, undefined, { message: "bad handle" });
+        const r = await rig({ elicit: accept }, refusing(err));
+        const res = await call(r, hf());
+        expect(res.text).toBe("secret: bad handle.");
+        neverLeaks(r, res.raw);
+    });
+});
+
+describe("secrets route refusals", () => {
+    it("refuses when no listed key is pinned, and sends no box", async () => {
+        const r = await rig({ elicit: accept });
+        r.route.keys.splice(0, 1, {
+            keyId: "dev-only-1",
+            publicKey: toBase64Url(new Uint8Array(32).fill(3)),
+            binding: testBinding,
+        });
+        const res = await call(r, hf());
+        expect(res.text).toMatch(/^secret: no listed sealing key is one this build pins/);
+        expect(r.route.requests.map((q) => q.method)).toEqual(["GET"]);
+    });
+
+    it("seals again to the current key after KEY_UNKNOWN", async () => {
+        const r = await rig({ elicit: accept });
+        r.route.canned.push({ method: "PUT", status: 400, error: "key_unknown" });
+        const res = await call(r, hf(), "toolu_rot");
+        expect(res.isError).toBe(false);
+        expect(r.route.requests.map((q) => q.method)).toEqual(["GET", "PUT", "GET", "PUT"]);
+        expect(r.route.opened.map((o) => o.body.idempotencyKey)).toEqual(["toolu_rot.1"]);
+    });
+
+    it("retries a put whose answer was lost with the same body", async () => {
+        const r = await rig({ elicit: accept });
+        r.route.canned.push({ method: "PUT", status: 0, error: "drop" });
+        const res = await call(r, hf(), "toolu_lost");
+        expect(res.isError).toBe(false);
+        const puts = r.route.requests.filter((q) => q.method === "PUT");
+        expect(puts).toHaveLength(2);
+        expect(puts[0]?.body).toBe(puts[1]?.body);
+    });
+
+    it("waits out a 429 with its Retry-After", async () => {
+        const r = await rig({ elicit: accept });
+        r.route.canned.push({ status: 429, error: "rate_limited", retryAfter: "7" });
+        const res = await call(r, hf());
+        expect(res.text).toBe("secret: too many requests for now. Retry after 7 s.");
+    });
+
+    it("explains an expired put grant", async () => {
+        const r = await rig({ elicit: accept });
+        r.route.canned.push({ status: 401, error: "put_grant_invalid" });
+        const res = await call(r, hf());
+        expect(res.text).toBe(
+            "secret: the put grant expired, a new bugnet_secret_from_env call gets a new one.",
+        );
+        neverLeaks(r, res.raw);
+    });
+});
+
+describe("the confirmation binds the shown arguments", () => {
+    const sources: SourceDeps = testSources({ env: { HF_TOKEN: value } });
+
+    function deps(calls: unknown[]): SecretToolDeps {
+        const remote: RemoteTools = {
+            instructions: () => undefined,
+            listTools: async () => [],
+            callTool: async (params) => {
+                calls.push(params);
+                return {
+                    content: [{ type: "text", text: "secret grant: stop here." }],
+                    isError: true,
+                };
+            },
+        };
+        return {
+            remote,
+            route: { baseUrl: "http://127.0.0.1:9", timeoutMs: 1000 },
+            pinned: [],
+            sources,
+            log: silentLog,
+            now: () => testNow,
+            clientCapabilities: () => ({ elicitation: {} }),
+        };
+    }
+
+    function ctx(inputResponses?: Record<string, unknown>, state?: string): ServerContext {
+        return {
+            mcpReq: {
+                _meta: {},
+                inputResponses,
+                requestState: () => state,
+                signal: new AbortController().signal,
+            },
+        } as unknown as ServerContext;
+    }
+
+    const accepted = { confirm: { action: "accept", content: {} } };
+
+    it("goes on only with the bridge's own state for the same arguments", async () => {
+        const calls: unknown[] = [];
+        const first = await secretFromEnv(hf(), ctx(), deps(calls));
+        expect(isInputRequiredResult(first)).toBe(true);
+        const state = (first as { requestState: string }).requestState;
+        expect(state).toMatch(/^c1\.\d+\.[0-9a-f]{64}$/);
+
+        const forged = await secretFromEnv(hf(), ctx(accepted, "c1.1.00"), deps(calls));
+        expect(isInputRequiredResult(forged)).toBe(true);
+        const missing = await secretFromEnv(hf(), ctx(accepted), deps(calls));
+        expect(isInputRequiredResult(missing)).toBe(true);
+        const widened = await secretFromEnv(
+            hf({ hosts: ["huggingface.co", "evil.example"] }),
+            ctx(accepted, state),
+            deps(calls),
+        );
+        expect(isInputRequiredResult(widened)).toBe(true);
+        expect(calls).toEqual([]);
+
+        const done = await secretFromEnv(hf(), ctx(accepted, state), deps(calls));
+        expect(isInputRequiredResult(done)).toBe(false);
+        expect(calls).toHaveLength(1);
+    });
+
+    it("asks again once a confirmation is older than 10 minutes", async () => {
+        const calls: unknown[] = [];
+        const d = deps(calls);
+        const first = await secretFromEnv(hf(), ctx(), d);
+        const state = (first as { requestState: string }).requestState;
+        const later = { ...d, now: () => testNow + 11 * 60_000 };
+        const stale = await secretFromEnv(hf(), ctx(accepted, state), later);
+        expect(isInputRequiredResult(stale)).toBe(true);
+        expect(calls).toEqual([]);
+    });
+});

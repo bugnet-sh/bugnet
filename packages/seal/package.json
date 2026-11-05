@@ -1,0 +1,17 @@
+{
+    "name": "@bugnet/seal",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": "./src/index.ts",
+        "./testing": "./src/testing/development-key.ts"
+    },
+    "scripts": {
+        "typecheck": "tsc -p .",
+        "interop": "vitest run --root ../.. packages/seal/src/interop.test.ts"
+    },
+    "dependencies": {
+        "libsodium-wrappers": "0.8.4"
+    }
+}
