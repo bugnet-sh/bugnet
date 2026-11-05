@@ -16,6 +16,7 @@ the contract Payments implements in
 | --------------------------------- | ---------------------------------------------------------------------------------------- |
 | `packages/gateway`                | The MCP server: tools, router client, quotes, the Payments port, `bugnet_assess`         |
 | `packages/intent`                 | Intent detection rules shared by the plugin's hooks and `bugnet_assess`, no dependencies |
+| `packages/secret-page`            | The secret entry page, a static bundle for the secrets route, see its README             |
 | `plugin`                          | The Claude Code plugin: MCP server entry, `run-in-sandbox` skill, hint hooks             |
 | `.claude-plugin/marketplace.json` | Lets this repository install as a plugin marketplace                                     |
 | `integrations`                    | Rules for clients without hooks (Cursor, Codex)                                          |
