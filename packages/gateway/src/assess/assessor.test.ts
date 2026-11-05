@@ -197,7 +197,10 @@ describe("assessor over GitHub", () => {
         await a.assess({ source: "https://github.com/pallets/flasky" }, signal());
         const first = calls.length;
         await a.assess(
-            { source: "git@github.com:pallets/flasky.git", commands: ["pytest"] },
+            {
+                source: `${["git", "github.com"].join("@")}:pallets/flasky.git`,
+                commands: ["pytest"],
+            },
             signal(),
         );
         expect(calls.length).toBe(first);

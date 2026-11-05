@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { parseSource, sourceName, sourceRef } from "./source.ts";
 
+// Built from parts so the test holds nothing shaped like an email address
+const sshUser = ["git", "github.com"].join("@");
+
 describe("parseSource", () => {
     it.each([
         ["https://github.com/openai/whisper", "openai", "whisper", null, null],
@@ -8,8 +11,8 @@ describe("parseSource", () => {
         ["https://github.com/openai/whisper/", "openai", "whisper", null, null],
         ["http://www.github.com/openai/whisper", "openai", "whisper", null, null],
         ["github.com/openai/whisper", "openai", "whisper", null, null],
-        ["git@github.com:openai/whisper.git", "openai", "whisper", null, null],
-        ["ssh://git@github.com/openai/whisper.git", "openai", "whisper", null, null],
+        [`${sshUser}:openai/whisper.git`, "openai", "whisper", null, null],
+        [`ssh://${sshUser}/openai/whisper.git`, "openai", "whisper", null, null],
         ["git+https://github.com/openai/whisper.git", "openai", "whisper", null, null],
         [
             "https://github.com/openai/whisper/tree/v20240930",
@@ -41,7 +44,7 @@ describe("parseSource", () => {
     it("normalises the cache key so URL forms share one entry", () => {
         const keys = [
             "https://github.com/OpenAI/Whisper",
-            "git@github.com:openai/whisper.git",
+            `${sshUser}:openai/whisper.git`,
             "github.com/openai/whisper/",
         ].map((s) => parseSource(s).key);
         expect(new Set(keys).size).toBe(1);

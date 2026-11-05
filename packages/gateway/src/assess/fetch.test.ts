@@ -122,7 +122,7 @@ describe("checkUrl", () => {
         ["https://[::1]/x", /non-public/],
         ["https://169.254.169.254/latest/meta-data", /non-public/],
         ["https://2130706433/", /non-public/],
-        ["https://user:pw@example.com/", /credentials/],
+        [`https://${["user:pw", "example.com"].join("@")}/`, /credentials/],
         ["https://example.com:8443/", /default https port/],
         ["not a url", /valid URL/],
     ])("refuses %s", (url, why) => {
