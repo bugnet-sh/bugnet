@@ -72,6 +72,24 @@ const settingsSchema = z
             })
             .strict()
             .prefault({}),
+        front: z
+            .object({
+                tls_addr: z.string().default(""),
+                proxy_protocol: z.boolean().default(true),
+                proxy_timeout: duration.prefault("3s"),
+                proxy_max_bytes: z.int().min(52).max(65551).default(536),
+                handshake_timeout: duration.prefault("10s"),
+                cert_file: z.string().default(""),
+                key_file: z.string().default(""),
+                acme_directory: z.url().or(z.literal("")).default(""),
+                acme_accept_terms: z.boolean().default(false),
+                acme_email: z.string().default(""),
+                acme_domains: z.array(z.string()).default([]),
+                acme_dir: z.string().default(""),
+                acme_renew_before: duration.prefault("720h"),
+            })
+            .strict()
+            .prefault({}),
     })
     .strict();
 
@@ -163,6 +181,63 @@ function isLoopback(url: string): boolean {
     return host === "localhost" || host === "::1" || host === "[::1]" || /^127\./.test(host);
 }
 
+export function hostPort(addr: string, setting: string): { host: string; port: number } {
+    const m = /^(\[[0-9a-fA-F:.]+\]|[^:[\]\s]*):(\d{1,5})$/.exec(addr);
+    const port = Number(m?.[2]);
+    if (!m || port > 65535) {
+        throw new ConfigError(`${setting}: ${JSON.stringify(addr)} is not host:port`);
+    }
+    return { host: (m[1] as string).replace(/^\[|\]$/g, ""), port };
+}
+
+const dnsName = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}$/;
+
+// The names on the ACME certificate, the public URL's host unless set
+export function acmeDomains(s: Settings): string[] {
+    if (s.front.acme_domains.length > 0) return s.front.acme_domains;
+    return [new URL(s.public_url).hostname];
+}
+
+function checkFront(s: Settings): void {
+    const f = s.front;
+    const acme = f.acme_directory !== "";
+    if (!f.tls_addr) {
+        if (acme || f.cert_file || f.key_file) {
+            throw new ConfigError("front.cert_file, key_file and acme_directory need tls_addr");
+        }
+        return;
+    }
+    const { host } = hostPort(f.tls_addr, "front.tls_addr");
+    if (Boolean(f.cert_file) !== Boolean(f.key_file)) {
+        throw new ConfigError("front.cert_file and front.key_file go together");
+    }
+    if (acme === Boolean(f.cert_file)) {
+        throw new ConfigError(
+            "front.tls_addr needs either cert_file and key_file or acme_directory",
+        );
+    }
+    if (acme) {
+        if (!f.acme_accept_terms) {
+            throw new ConfigError(
+                "front.acme_directory needs acme_accept_terms = true, the CA's subscriber agreement",
+            );
+        }
+        if (!f.acme_dir) throw new ConfigError("front.acme_directory needs front.acme_dir");
+        for (const d of acmeDomains(s)) {
+            if (!dnsName.test(d)) {
+                throw new ConfigError(`front.acme_domains: ${JSON.stringify(d)} is no DNS name`);
+            }
+        }
+    }
+    // A PROXY header means a proxy relays strangers, which dev payments must never serve
+    const loopback = host === "localhost" || host === "::1" || /^127\./.test(host);
+    if (s.payments.mode === "dev" && (f.proxy_protocol || !loopback)) {
+        throw new ConfigError(
+            "payments.mode dev needs a loopback front.tls_addr, no proxy_protocol",
+        );
+    }
+}
+
 export function checkSettings(s: Settings): void {
     const listenHost = s.listen_addr.slice(0, s.listen_addr.lastIndexOf(":"));
     if (s.payments.mode === "dev") {
@@ -172,6 +247,7 @@ export function checkSettings(s: Settings): void {
             throw new ConfigError("payments.mode dev needs a loopback listen_addr and public_url");
         }
     }
+    checkFront(s);
     if (s.payments.mode === "http" && !s.payments.url) {
         throw new ConfigError("payments.mode http needs payments.url");
     }

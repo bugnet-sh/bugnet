@@ -1,4 +1,5 @@
 import { ConfigError, loadConfig, type Config } from "./config.ts";
+import { startTlsFront } from "./front/index.ts";
 import { jsonLog } from "./log.ts";
 import { DevPayments } from "./payments/dev.ts";
 import { HttpPayments } from "./payments/http.ts";
@@ -33,12 +34,18 @@ try {
         now: Date.now,
     };
     const http = await startHttp(deps);
+    const front = config.front.tls_addr ? await startTlsFront(config, http, log) : undefined;
     log.info("listening", {
         addr: config.listen_addr,
+        tls: config.front.tls_addr || undefined,
         payments: config.payments.mode,
         router: config.router.url,
     });
-    const stop = () => http.close(() => process.exit(0));
+    if (front) process.on("SIGHUP", () => front.reload());
+    const stop = () => {
+        const closing = [new Promise((r) => http.close(r)), front?.close()];
+        void Promise.all(closing).then(() => process.exit(0));
+    };
     process.on("SIGTERM", stop);
     process.on("SIGINT", stop);
 } catch (e) {

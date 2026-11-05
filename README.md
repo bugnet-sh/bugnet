@@ -75,6 +75,15 @@ Give `GITHUB_TOKEN` and `HF_TOKEN` read access to public data only. `bugnet_asse
 caller for free and reports private repos and models as missing, and a token without private access
 keeps them hidden even if that check is ever missed.
 
+## Public front
+
+On the VPS, HAProxy passes `mcp.bugnet.sh`'s raw TLS to `front.tls_addr` (`127.0.0.1:8444`) with
+`send-proxy-v2`. The gateway reads the PROXY v2 header for the client's address, terminates TLS 1.2
+or 1.3 with HTTP/1.1, and serves the same `/mcp` and `/healthz` as the plain listener, which stays
+for local runs. The certificate comes either from `cert_file` and `key_file`, reread on `SIGHUP`, or
+from ACME: with `acme_directory` set, the gateway orders it by TLS-ALPN-01 through HAProxy's SNI
+split, keeps the account key and the certificate in `acme_dir`, and renews 30 days before expiry.
+
 ## The plugin
 
 `plugin/` is a Claude Code plugin named `bugnet` whose MCP server is `sandbox`, so tools appear as
