@@ -1,0 +1,10 @@
+{
+    "gatewayUrl": "http://127.0.0.1:8787/mcp",
+    "pluginDir": "../../plugin",
+    "model": "sonnet",
+    "concurrency": 4,
+    "perRun": { "maxBudgetUsd": 0.4, "timeoutSeconds": 150 },
+    "budgetUsd": 12,
+    "sample": { "suggest": 20, "no": 20 },
+    "arms": ["baseline", "mcp", "plugin"]
+}

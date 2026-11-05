@@ -1,0 +1,293 @@
+/**
+ * Live judge for intent detection: real Claude Code sessions on labelled prompts.
+ *
+ * Each prompt runs in a fresh empty directory under `claude -p`, cut off from the user's own
+ * settings, memory, CLAUDE.md and connectors, once per arm: "baseline" without Bugnet, "mcp" with
+ * only the Bugnet MCP server (instructions and tools), and "plugin" with the Claude Code plugin
+ * (server, skill and hint hooks). Shell commands are denied, so nothing runs on this machine, but
+ * attempts are recorded. Free Bugnet tools (assess, quote) are allowed, paid ones are not.
+ *
+ * A run "offers" Bugnet when, before its first shell command, it calls or searches for a Bugnet
+ * tool or its text mentions Bugnet (baseline: any sandbox, VM or container suggestion). Offers
+ * made only after a denied shell command are reported as late, since the denial itself can push
+ * the agent toward alternatives. "local_first" means a local install or run was tried before any
+ * offer. Settings come from eval/agent/config.json.
+ *
+ * Usage: tsx eval/agent/run.ts [--split dev|test] [--arms mcp,plugin] [--limit N] [--model M]
+ */
+import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+type Arm = "baseline" | "mcp" | "plugin";
+
+interface Config {
+    gatewayUrl: string;
+    pluginDir: string;
+    model: string;
+    concurrency: number;
+    perRun: { maxBudgetUsd: number; timeoutSeconds: number };
+    budgetUsd: number;
+    sample: { suggest: number; no: number };
+    arms: Arm[];
+}
+
+interface Item {
+    id: string;
+    kind: "prompt" | "command";
+    text: string;
+    label: "suggest" | "no";
+    borderline: boolean;
+    category: string;
+}
+
+interface RunResult {
+    id: string;
+    arm: Arm;
+    label: Item["label"];
+    category: string;
+    // Offered Bugnet before any shell command, the only offers that count
+    offered: boolean;
+    // Mentioned only after a denied shell command, reported but not counted
+    offeredLate: boolean;
+    called: string[];
+    mentioned: boolean;
+    localFirst: boolean;
+    bashAttempts: string[];
+    hookHints: number;
+    costUsd: number;
+    turns: number;
+    error: string | null;
+    finalText: string;
+}
+
+const here = dirname(fileURLToPath(import.meta.url));
+const argv = process.argv.slice(2);
+const opt = (name: string) => {
+    const i = argv.indexOf(name);
+    return i >= 0 ? argv[i + 1] : undefined;
+};
+const cfg = JSON.parse(readFileSync(join(here, "config.json"), "utf8")) as Config;
+const split = opt("--split") === "test" ? "test" : "dev";
+const arms = (opt("--arms")?.split(",") as Arm[] | undefined) ?? cfg.arms;
+const limit = opt("--limit") ? Number(opt("--limit")) : Infinity;
+cfg.model = opt("--model") ?? cfg.model;
+const pluginDir = resolve(here, cfg.pluginDir);
+
+// A stable order by hash, so a sample is the same on every run and spread across lenses
+const rank = (id: string) => createHash("sha256").update(id).digest("hex");
+
+function sample(): Item[] {
+    const dir = join(here, "../intent");
+    const items = readdirSync(dir)
+        .filter((f) => f.endsWith(`.${split}.jsonl`))
+        .flatMap((f) =>
+            readFileSync(join(dir, f), "utf8")
+                .split("\n")
+                .filter((l) => l.trim())
+                .map((l) => JSON.parse(l) as Item),
+        )
+        .filter((i) => i.kind === "prompt" && !i.borderline)
+        .sort((a, b) => rank(a.id).localeCompare(rank(b.id)));
+    const pick = (label: Item["label"], n: number) =>
+        items.filter((i) => i.label === label).slice(0, n);
+    return [...pick("suggest", cfg.sample.suggest), ...pick("no", cfg.sample.no)].slice(0, limit);
+}
+
+const freeTools = ["bugnet_assess", "bugnet_quote"];
+
+function argsFor(arm: Arm, prompt: string): string[] {
+    const allowed = ["Read", "Glob", "Grep", "Skill"];
+    const a = [
+        "-p",
+        prompt,
+        "--setting-sources",
+        "project",
+        "--model",
+        cfg.model,
+        "--permission-mode",
+        "dontAsk",
+        "--disallowedTools",
+        "WebFetch",
+        "WebSearch",
+        "--max-budget-usd",
+        String(cfg.perRun.maxBudgetUsd),
+        "--no-session-persistence",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--include-hook-events",
+    ];
+    if (arm === "baseline") a.push("--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}');
+    if (arm === "mcp") {
+        const servers = { mcpServers: { bugnet: { type: "http", url: cfg.gatewayUrl } } };
+        a.push("--strict-mcp-config", "--mcp-config", JSON.stringify(servers));
+        allowed.push(...freeTools.map((t) => `mcp__bugnet__${t}`));
+    }
+    if (arm === "plugin") {
+        a.push("--plugin-dir", pluginDir);
+        allowed.push(...freeTools.map((t) => `mcp__plugin_bugnet_sandbox__${t}`));
+    }
+    a.push("--allowedTools", ...allowed);
+    return a;
+}
+
+const installOrRun =
+    /\b(pip3?|uv|conda|npm|pnpm|yarn|bun|cargo|go|brew|apt(-get)?|docker|git clone|curl|wget|python3?|node|ollama|huggingface-cli|hf)\b/;
+
+function score(item: Item, arm: Arm, lines: string[]): Omit<RunResult, "error"> {
+    const events = lines.flatMap((l) => {
+        try {
+            return [JSON.parse(l) as Record<string, unknown>];
+        } catch {
+            return [];
+        }
+    });
+    const mentions = (text: string) =>
+        arm === "baseline"
+            ? /\b(sandbox|virtual machine|VM|container|docker|isolated)\b/i.test(text)
+            : /\bbugnet\b/i.test(text);
+    const called: string[] = [];
+    const bashAttempts: string[] = [];
+    let offeredBeforeBash = false;
+    let mentioned = false;
+    let localFirst = false;
+    let hookHints = 0;
+    for (const e of events) {
+        if (e.type === "system" && e.subtype === "hook_response") {
+            if (String(e.output ?? "").includes("additionalContext")) hookHints++;
+        }
+        if (e.type !== "assistant" || e.parent_tool_use_id) continue;
+        type Block = { type: string; name?: string; input?: unknown; text?: string };
+        const content = (e.message as { content?: Block[] })?.content ?? [];
+        for (const c of content) {
+            if (c.type === "text" && mentions(c.text ?? "")) {
+                mentioned = true;
+                if (bashAttempts.length === 0) offeredBeforeBash = true;
+            }
+            if (c.type !== "tool_use" || !c.name) continue;
+            const searched =
+                c.name === "ToolSearch" && /bugnet|sandbox/i.test(JSON.stringify(c.input ?? ""));
+            if (/bugnet/i.test(c.name) || searched) {
+                called.push(searched ? "ToolSearch" : c.name.replace(/^mcp__.*__/, ""));
+                if (bashAttempts.length === 0) offeredBeforeBash = true;
+            }
+            if (c.name === "Bash") {
+                const cmd = String((c.input as { command?: string })?.command ?? "");
+                bashAttempts.push(cmd.slice(0, 200));
+                if (!offeredBeforeBash && installOrRun.test(cmd)) localFirst = true;
+            }
+        }
+    }
+    const result = events.find((e) => e.type === "result") as
+        { result?: string; total_cost_usd?: number; num_turns?: number } | undefined;
+    const finalText = result?.result ?? "";
+    if (mentions(finalText)) {
+        mentioned = true;
+        if (bashAttempts.length === 0) offeredBeforeBash = true;
+    }
+    return {
+        id: item.id,
+        arm,
+        label: item.label,
+        category: item.category,
+        offered: offeredBeforeBash,
+        offeredLate: mentioned && !offeredBeforeBash,
+        called,
+        mentioned,
+        localFirst,
+        bashAttempts,
+        hookHints,
+        costUsd: result?.total_cost_usd ?? 0,
+        turns: result?.num_turns ?? 0,
+        finalText: finalText.slice(0, 1500),
+    };
+}
+
+function runOne(item: Item, arm: Arm): Promise<RunResult> {
+    const cwd = mkdtempSync(join(tmpdir(), "cc-eval-"));
+    const env = {
+        ...process.env,
+        CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+        CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
+        ENABLE_CLAUDEAI_MCP_SERVERS: "false",
+        DISABLE_AUTOUPDATER: "1",
+        BUGNET_MCP_URL: cfg.gatewayUrl,
+        BUGNET_HINTS: "normal",
+        CLAUDE_PLUGIN_DATA: join(cwd, ".plugin-data"),
+    };
+    return new Promise((done) => {
+        const child = spawn("claude", argsFor(arm, item.text), { cwd, env });
+        let out = "";
+        let err = "";
+        child.stdout.on("data", (d) => (out += d));
+        child.stderr.on("data", (d) => (err += d));
+        const timer = setTimeout(() => child.kill("SIGINT"), cfg.perRun.timeoutSeconds * 1000);
+        child.on("close", (code) => {
+            clearTimeout(timer);
+            const s = score(item, arm, out.split("\n"));
+            const error = code === 0 ? null : `exit ${code}: ${err.slice(0, 200)}`;
+            done({ ...s, error });
+        });
+    });
+}
+
+async function pool<T>(jobs: (() => Promise<T>)[], n: number, stop: () => boolean): Promise<T[]> {
+    const out: T[] = [];
+    let next = 0;
+    const worker = async () => {
+        while (next < jobs.length && !stop()) {
+            const job = jobs[next++] as () => Promise<T>;
+            out.push(await job());
+        }
+    };
+    await Promise.all(Array.from({ length: n }, worker));
+    return out;
+}
+
+const items = sample();
+let spent = 0;
+const jobs = items.flatMap((item) =>
+    arms.map((arm) => async () => {
+        const r = await runOne(item, arm);
+        spent += r.costUsd;
+        const mark = r.offered === (r.label === "suggest") ? "ok  " : "MISS";
+        console.log(
+            `${mark} ${arm.padEnd(8)} ${r.id.padEnd(24)} ${r.label.padEnd(7)} offered=${r.offered} ` +
+                `called=${r.called.join("+") || "-"} localFirst=${r.localFirst} hints=${r.hookHints} ` +
+                `$${r.costUsd.toFixed(3)}${r.error ? ` ERROR ${r.error}` : ""}`,
+        );
+        return r;
+    }),
+);
+console.log(`${items.length} prompts x ${arms.length} arms on ${split}, model ${cfg.model}`);
+const results = await pool(jobs, cfg.concurrency, () => spent >= cfg.budgetUsd);
+
+const pct = (a: number, b: number) => (b === 0 ? "n/a" : `${((a / b) * 100).toFixed(0)}%`);
+console.log(
+    "\narm       recall(suggest)  false-offer(no)  late(suggest)  local-first(suggest)  errors  cost",
+);
+for (const arm of arms) {
+    const rs = results.filter((r) => r.arm === arm);
+    const pos = rs.filter((r) => r.label === "suggest");
+    const neg = rs.filter((r) => r.label === "no");
+    const cost = rs.reduce((s, r) => s + r.costUsd, 0);
+    console.log(
+        `${arm.padEnd(9)} ${pct(pos.filter((r) => r.offered).length, pos.length).padStart(15)}  ` +
+            `${pct(neg.filter((r) => r.offered).length, neg.length).padStart(15)}  ` +
+            `${pct(pos.filter((r) => r.offeredLate).length, pos.length).padStart(13)}  ` +
+            `${pct(pos.filter((r) => r.localFirst).length, pos.length).padStart(20)}  ` +
+            `${String(rs.filter((r) => r.error).length).padStart(6)}  $${cost.toFixed(2)}`,
+    );
+}
+if (spent >= cfg.budgetUsd) console.log(`stopped at the $${cfg.budgetUsd} budget`);
+
+const outDir = join(here, "results");
+mkdirSync(outDir, { recursive: true });
+const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+const file = join(outDir, `${stamp}-${split}-${cfg.model}.json`);
+writeFileSync(file, JSON.stringify({ split, model: cfg.model, arms, results }, null, 4));
+console.log(`results in ${file}`);
