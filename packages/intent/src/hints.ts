@@ -71,7 +71,7 @@ const failureCause: Record<string, string> = {
 const tools =
     "Bugnet's tools in this session can run it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
 const skill =
-    "The bugnet:run-in-sandbox skill holds the steps for telling the user, who sees text replies but not tool calls.";
+    "The bugnet:run-in-sandbox skill holds the steps for telling the user before any shell command.";
 const notOffered = "Bugnet has not been offered in this session.";
 
 function lead(c: Classification): Signal | undefined {
