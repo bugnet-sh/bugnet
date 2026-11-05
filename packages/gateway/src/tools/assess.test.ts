@@ -346,6 +346,20 @@ describe("bugnet_assess with the router's estimator", () => {
         expect(text).toMatch(/^Warning: The model is gated\.$/m);
     });
 
+    it("keeps the assessor's sizing for what the router's floor leaves unknown", async () => {
+        const { client } = await connect({
+            estimate: () =>
+                floored({
+                    floor: { resources: { vcpu: 2, memoryMib: 0, diskGib: 0 }, minutes: 10 },
+                }),
+        });
+        const r = (await client.callTool({
+            name: "bugnet_assess",
+            arguments: { source: "black-forest-labs/FLUX.1-schnell" },
+        })) as Result;
+        expect(r.structuredContent?.assessment.needs).toEqual(assessment.needs);
+    });
+
     it("says no package is large enough from the router's floor", async () => {
         const { client } = await connect({
             estimate: () =>

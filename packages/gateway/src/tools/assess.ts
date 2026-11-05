@@ -161,9 +161,9 @@ export function unavailableSummary(a: Assessment): string {
 export function sizedByRouter(a: Assessment, floor: QuoteFloor): Assessment {
     const needs = {
         ...a.needs,
-        gpu: floor.gpu === "required",
-        minMemoryGiB: floor.memoryGiB > 0 ? floor.memoryGiB : null,
-        minDiskGiB: floor.diskGiB > 0 ? floor.diskGiB : null,
+        gpu: floor.gpu === "unknown" ? a.needs.gpu : floor.gpu === "required",
+        minMemoryGiB: floor.memoryGiB > 0 ? floor.memoryGiB : a.needs.minMemoryGiB,
+        minDiskGiB: floor.diskGiB > 0 ? floor.diskGiB : a.needs.minDiskGiB,
     };
     return { ...a, needs };
 }

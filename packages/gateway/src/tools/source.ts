@@ -98,7 +98,7 @@ export async function fetchAfterStart(deps: Deps, handle: string): Promise<Sourc
     try {
         const res = await deps.router.fetchSource(
             { handle },
-            { signal: AbortSignal.timeout(10_000) },
+            { signal: AbortSignal.timeout(5_000) },
         );
         const view = sourceView(res.bootstrap);
         if (view) return view;
