@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="referrer" content="no-referrer" />
+        <meta name="robots" content="noindex, nofollow" />
+        <meta name="color-scheme" content="light dark" />
+        <title>Add a secret to your Bugnet sandbox</title>
+        <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
+        <link rel="stylesheet" href="/assets/page.css" integrity="__PAGE_CSS_INTEGRITY__" />
+        <script src="/assets/page.js" integrity="__PAGE_JS_INTEGRITY__" defer></script>
+    </head>
+    <body>
+        <main>
+            <p class="brand">Bugnet</p>
+            <h1>Add a secret to your sandbox</h1>
+
+            <p id="dev-build" class="banner" hidden>
+                Development build. It seals to a test key whose private half is public, so never
+                enter a real secret here.
+            </p>
+
+            <noscript>
+                <p class="banner">
+                    This page needs JavaScript, because it seals your secret in this browser before
+                    anything is sent.
+                </p>
+            </noscript>
+
+            <p id="loading" class="quiet" role="status">Checking the link…</p>
+
+            <section id="problem" class="panel problem" tabindex="-1" hidden>
+                <h2 id="problem-title">This link cannot be used</h2>
+                <p id="problem-text"></p>
+                <p class="code-line">Code: <span id="problem-code" class="data"></span></p>
+                <button type="button" id="retry" class="secondary" hidden>Try again</button>
+            </section>
+
+            <section id="check" class="panel" aria-labelledby="check-title" hidden>
+                <h2 id="check-title">First, check the pairing code</h2>
+                <p id="pairing-code" class="pairing" aria-describedby="pairing-hint"></p>
+                <p id="pairing-hint">
+                    It must match the code your agent showed in the chat. If it does not, close this
+                    page and type nothing.
+                </p>
+                <ul class="facts">
+                    <li>Source: <span id="source" class="data"></span></li>
+                    <li>Sandbox created: <time id="created"></time></li>
+                    <li>Link valid until: <time id="expires"></time></li>
+                </ul>
+            </section>
+
+            <form id="form" class="panel" aria-labelledby="form-title" novalidate hidden>
+                <h2 id="form-title">Then, add the secret</h2>
+
+                <div class="field">
+                    <label for="name">Name</label>
+                    <p class="hint" id="name-hint">
+                        The environment variable that code in the sandbox reads, such as
+                        <span class="data nowrap">HF_TOKEN</span>.
+                    </p>
+                    <input
+                        id="name"
+                        name="name"
+                        type="text"
+                        list="known-names"
+                        maxlength="64"
+                        autocomplete="off"
+                        autocapitalize="characters"
+                        spellcheck="false"
+                        aria-describedby="name-hint name-error"
+                    />
+                    <datalist id="known-names"></datalist>
+                    <p class="error" id="name-error" hidden></p>
+                </div>
+
+                <div class="field">
+                    <label for="value">Value</label>
+                    <p class="hint" id="value-hint">
+                        Prefer a fine-grained token that expires soon and has the least scope the
+                        task needs. A token used in the sandbox can create credentials that outlive
+                        it.
+                    </p>
+                    <div class="value-row">
+                        <input
+                            id="value"
+                            name="value"
+                            type="password"
+                            autocomplete="off"
+                            autocapitalize="off"
+                            spellcheck="false"
+                            aria-describedby="value-hint value-note value-error"
+                        />
+                        <button
+                            type="button"
+                            id="show-value"
+                            class="secondary"
+                            aria-controls="value"
+                            aria-pressed="false"
+                        >
+                            Show
+                        </button>
+                    </div>
+                    <p class="note" id="value-note" hidden></p>
+                    <p class="error" id="value-error" hidden></p>
+                </div>
+
+                <div class="field">
+                    <label for="hosts">Hosts</label>
+                    <p class="hint" id="hosts-hint">
+                        The only hosts the value is sent to, one per line. Known names fill in their
+                        service's hosts. Type any other host yourself.
+                    </p>
+                    <textarea
+                        id="hosts"
+                        name="hosts"
+                        rows="3"
+                        autocomplete="off"
+                        autocapitalize="off"
+                        spellcheck="false"
+                        aria-describedby="hosts-hint host-list hosts-error"
+                    ></textarea>
+                    <p class="error" id="hosts-error" hidden></p>
+                    <div id="host-list" class="host-list" hidden>
+                        <p>The value will be sent only to</p>
+                        <ul id="host-items"></ul>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label for="headers">Extra header names (optional)</label>
+                    <p class="hint" id="headers-hint">
+                        The value always goes in the Authorization header. Add another header only
+                        if the service reads the token there, such as
+                        <span class="data nowrap">x-api-key</span>.
+                    </p>
+                    <input
+                        id="headers"
+                        name="headers"
+                        type="text"
+                        autocomplete="off"
+                        autocapitalize="off"
+                        spellcheck="false"
+                        aria-describedby="headers-hint headers-error"
+                    />
+                    <p class="error" id="headers-error" hidden></p>
+                </div>
+
+                <div class="field" id="sandbox-use-field" hidden>
+                    <div class="tick">
+                        <input
+                            id="sandbox-use"
+                            type="checkbox"
+                            aria-describedby="sandbox-use-hint"
+                        />
+                        <label for="sandbox-use">
+                            Also let code in the sandbox use this token (needed for git push)
+                        </label>
+                    </div>
+                    <p class="hint" id="sandbox-use-hint">
+                        Unticked, only Bugnet uses it, to download a private repository, and the
+                        sandbox gets no variable. Tick it if the agent runs git, gh or the GitHub
+                        API in the sandbox.
+                    </p>
+                </div>
+
+                <div class="caution">
+                    <h3>Before you send</h3>
+                    <ul>
+                        <li>
+                            Bugnet's egress proxy decrypts all traffic between the sandbox and these
+                            hosts, request and response bodies included. Add a secret only for hosts
+                            where that is acceptable to you.
+                        </li>
+                        <li>
+                            This browser seals the value so that only the proxy can open it. It is
+                            sent once and deleted when the sandbox ends.
+                        </li>
+                    </ul>
+                </div>
+
+                <div id="form-problem" class="problem-inline" tabindex="-1" hidden>
+                    <p id="form-problem-text"></p>
+                    <p class="code-line">Code: <span id="form-problem-code" class="data"></span></p>
+                </div>
+
+                <button type="submit" id="submit">Seal and send</button>
+                <p id="form-status" class="quiet" role="status"></p>
+            </form>
+
+            <section id="done" class="panel done" tabindex="-1" aria-labelledby="done-title" hidden>
+                <h2 id="done-title">Secret saved</h2>
+                <p id="done-text"></p>
+                <ul class="facts">
+                    <li>Name: <span id="done-name" class="data"></span></li>
+                    <li>Sent only to: <span id="done-hosts" class="data"></span></li>
+                    <li id="done-headers-line" hidden>
+                        Also in headers: <span id="done-headers" class="data"></span>
+                    </li>
+                </ul>
+                <p>You can close this page. The link no longer works.</p>
+            </section>
+
+            <p class="foot">
+                Bugnet never asks for a secret in the chat. This page sets no cookies and sends
+                nothing anywhere but Bugnet.
+            </p>
+        </main>
+    </body>
+</html>
