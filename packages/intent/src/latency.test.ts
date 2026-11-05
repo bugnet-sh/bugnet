@@ -144,6 +144,10 @@ describe("latency", () => {
         ["a long run of digits after a private prefix", "192.168." + "1".repeat(50_000)],
         ["one setup verb repeated without spaces", repeated("install")],
         ["one Turkish setup verb repeated without spaces", repeated("kurmana")],
+        [
+            "a large written script run many times",
+            `cat > a.sh <<'A'\n${"echo hi; ls -la\n".repeat(750)}A\n${"bash a.sh\n".repeat(1000)}`,
+        ],
     ])("classifies %s in under 50 ms", (_name, text) => {
         mixed(50);
         const ctx = { os: "macos", arch: "arm64" } as const;

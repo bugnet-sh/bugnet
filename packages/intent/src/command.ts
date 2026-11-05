@@ -456,6 +456,8 @@ function ranFile(seg: Segment): string | undefined {
 // A script that cat, tee, echo or printf writes and a later step runs is read as what it holds
 function withWritten(segs: Segment[]): Segment[] {
     const written = new Map<string, string>();
+    // Each script is read once, however many times the command runs it
+    const read = new Set<string>();
     const out: Segment[] = [];
     for (const seg of segs) {
         const tee = seg.head === "tee" ? seg.argv.slice(1).find((a) => !a.startsWith("-")) : null;
@@ -465,9 +467,14 @@ function withWritten(segs: Segment[]): Segment[] {
             : /^(?:echo|printf)$/.test(seg.head)
               ? seg.argv.slice(1).join(" ")
               : null;
-        if (target && text) written.set(pathKey(target), text);
+        if (target && text) {
+            written.set(pathKey(target), text);
+            read.delete(pathKey(target));
+        }
         const run = ranFile(seg);
-        const body = run && !target ? written.get(pathKey(run)) : undefined;
+        const key = run && !target ? pathKey(run) : "";
+        const body = key && !read.has(key) ? written.get(key) : undefined;
+        if (body !== undefined) read.add(key);
         if (body === undefined) {
             out.push(seg);
         } else if (scriptHosts.test(seg.head)) {
