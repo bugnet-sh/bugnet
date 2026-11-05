@@ -15,6 +15,13 @@ export const maxRedirects = 3;
 
 export class FetchRefused extends Error {
     readonly code = "EBUGNETREFUSED";
+    // Kept out of the message, since a redirect lets the source pick it
+    readonly host: string | undefined;
+
+    constructor(message: string, host?: string) {
+        super(message);
+        this.host = host;
+    }
 }
 
 export interface FetchOptions {
@@ -149,8 +156,8 @@ export function isPublicAddress(ip: string): boolean {
 const systemResolve: Resolve = (hostname, options, callback) =>
     dnsLookup(hostname, options, callback);
 
-function refused(message: string): FetchRefused {
-    return new FetchRefused(message);
+function refused(message: string, host?: string): FetchRefused {
+    return new FetchRefused(message, host);
 }
 
 // Refuses the whole name when any address is internal, so a mixed answer cannot be raced
@@ -166,7 +173,7 @@ export function guardedLookup(resolve: Resolve = systemResolve): LookupFunction 
             }
             const first = addresses[0];
             if (!first || addresses.some((a) => !isPublicAddress(a.address))) {
-                callback(refused(`${hostname} resolves to a non-public address`), "");
+                callback(refused("the host resolves to a non-public address", hostname), "");
                 return;
             }
             if (options.all) callback(null, addresses);
@@ -182,12 +189,15 @@ export function checkUrl(raw: string): URL {
     } catch {
         throw refused("not a valid URL");
     }
-    if (url.protocol !== "https:") throw refused("only https URLs are fetched");
-    if (url.username || url.password) throw refused("URLs with credentials are not fetched");
-    if (url.port && url.port !== "443") throw refused("only the default https port is fetched");
     const host = url.hostname.replace(/^\[|\]$/g, "");
-    if (isIP(host) && !isPublicAddress(host))
-        throw refused("the URL points at a non-public address");
+    if (url.protocol !== "https:") throw refused("only https URLs are fetched", host);
+    if (url.username || url.password) throw refused("URLs with credentials are not fetched", host);
+    if (url.port && url.port !== "443") {
+        throw refused("only the default https port is fetched", host);
+    }
+    if (isIP(host) && !isPublicAddress(host)) {
+        throw refused("the URL points at a non-public address", host);
+    }
     url.hash = "";
     return url;
 }

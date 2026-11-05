@@ -453,7 +453,11 @@ describe("assessor over script URLs and commands", () => {
         });
         const r = await a.assess({ source: "https://metadata.example/latest/meta-data" }, signal());
         expect(r.risk.findings).toMatchObject([
-            { id: "source_refused", title: expect.stringMatching(/non-public address/) },
+            {
+                id: "source_refused",
+                title: "Not fetched, the host resolves to a non-public address",
+                evidence: "metadata.example",
+            },
         ]);
     });
 

@@ -4,7 +4,7 @@ import { TtlCache } from "./cache.ts";
 import { createSafeFetcher, FetchRefused, type Fetcher } from "./fetch.ts";
 import { readGithub } from "./github.ts";
 import { analyseModel, readHuggingface } from "./huggingface.ts";
-import { evidence, scanRepo, shift } from "./scan.ts";
+import { evidence, safePath, scanRepo, shift } from "./scan.ts";
 import { readScript, urlFindings } from "./script.ts";
 import { parseSource, sourceName, sourceRef, type Source } from "./source.ts";
 import { combine, type SourceReport } from "./verdict.ts";
@@ -42,10 +42,13 @@ function emptyReport(src: Source): SourceReport {
 
 function failureNote(e: unknown): { finding: Finding; complete: boolean } {
     if (e instanceof FetchRefused) {
-        return {
-            finding: { id: "source_refused", severity: "info", title: `Not fetched, ${e.message}` },
-            complete: true,
+        const finding: Finding = {
+            id: "source_refused",
+            severity: "info",
+            title: `Not fetched, ${e.message}`,
         };
+        if (e.host) finding.evidence = safePath(e.host);
+        return { finding, complete: true };
     }
     const name = (e as { name?: unknown } | null)?.name;
     if (name === "AbortError" || name === "TimeoutError") {
