@@ -2767,6 +2767,7 @@ var failureCause = {
   docker_daemon: "no running Docker daemon on this machine"
 };
 var tools = "Bugnet's tools in this session can run it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
+var skill = "The bugnet:run-in-sandbox skill holds the steps for telling the user, who sees text replies but not tool calls.";
 var notOffered = "Bugnet has not been offered in this session.";
 function lead(c) {
   return c.signals.find((s) => s.weight > 0 && s.category === c.category);
@@ -2798,10 +2799,10 @@ function hintFor(c, kind) {
   const top = lead(c);
   const reason = kind === "failure" ? failureWhy[c.category] : (top && signalWhy[top.id]) ?? why[c.category];
   for (const max of [60, 36, 20]) {
-    const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${notOffered}`;
+    const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${skill} ${notOffered}`;
     if (text.length <= maxHintChars) return text;
   }
-  return `${hintPrefix} ${reason} ${tools} ${notOffered}`;
+  return `${hintPrefix} ${reason} ${tools} ${skill} ${notOffered}`;
 }
 
 // packages/intent/src/prompt.ts
