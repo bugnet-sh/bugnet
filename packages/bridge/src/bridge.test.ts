@@ -116,6 +116,8 @@ describe.each(["legacy", "modern"] as const)("the bridge, %s client", (era) => {
         expect(mine.tools.slice(0, -1)).toEqual(expected);
         expect(mine.tools.at(-1)?.name).toBe("bugnet_secret_from_env");
         expect(mine.tools.at(-1)?.description?.length).toBeLessThan(600);
+        // A \p class in a pattern means something else to a validator without the u flag
+        expect(JSON.stringify(mine.tools.at(-1)?.inputSchema)).not.toMatch(/\\\\p/);
     });
 
     it("forwards the gateway's instructions", async () => {

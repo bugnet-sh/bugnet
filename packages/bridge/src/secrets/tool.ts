@@ -46,7 +46,8 @@ export const secretFromEnvName = "bugnet_secret_from_env";
 export const putGrantToolName = "bugnet_secret_put_grant";
 
 const grantPattern = /^bnsp_[A-Za-z0-9_-]{16,200}$/;
-const printable = /^[^\p{Cc}\p{Cf}]+$/u;
+// A refinement, since \p classes in a JSON Schema pattern read differently without the u flag
+const isPrintable = (s: string) => /^[^\p{Cc}\p{Cf}]+$/u.test(s);
 const confirmTtlMs = 10 * 60_000;
 
 const sourceSchema = z.discriminatedUnion("type", [
@@ -66,7 +67,7 @@ const sourceSchema = z.discriminatedUnion("type", [
                 .string()
                 .min(1)
                 .max(1024)
-                .regex(printable)
+                .refine(isPrintable, "printable characters only")
                 .describe(".env file in the working folder or the home folder"),
             key: z.string().regex(/^[\w.-]{1,128}$/),
         })
@@ -74,8 +75,13 @@ const sourceSchema = z.discriminatedUnion("type", [
     z
         .object({
             type: z.literal("keychain"),
-            service: z.string().min(1).max(256).regex(printable),
-            account: z.string().min(1).max(256).regex(printable).optional(),
+            service: z.string().min(1).max(256).refine(isPrintable, "printable characters only"),
+            account: z
+                .string()
+                .min(1)
+                .max(256)
+                .refine(isPrintable, "printable characters only")
+                .optional(),
         })
         .strict(),
 ]);
