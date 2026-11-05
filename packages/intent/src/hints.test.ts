@@ -57,7 +57,8 @@ describe("hintFor", () => {
         expect(text).not.toContain("\n");
         expect(text).toContain("disposable cloud Linux sandbox");
         expect(text).toContain("bugnet_assess checks it for free");
-        expect(text).toContain("The bugnet:run-in-sandbox skill holds the steps");
+        expect(text).toContain("bugnet:run-in-sandbox skill");
+        expect(text).toContain("holds the steps for telling the user before any shell command");
         expect(text.endsWith("Bugnet has not been offered in this session.")).toBe(true);
         expect(text.slice(hintPrefix.length)).not.toMatch(imperative);
     });
