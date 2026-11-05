@@ -709,11 +709,11 @@ export function lookalike(info: RepoInfo, ownerCreatedAt: string | null, now: nu
     const age = (now - Date.parse(info.createdAt)) / day;
     const ownerAge = ownerCreatedAt ? (now - Date.parse(ownerCreatedAt)) / day : Infinity;
     const young = !(age >= 180) || ownerAge < 180;
-    if (!young && info.stars >= 100) return [];
+    if (!young && (info.stars >= 100 || match.generic)) return [];
     return [
         {
             id: "lookalike_name",
-            severity: info.fork ? "medium" : "high",
+            severity: info.fork || match.generic ? "medium" : "high",
             title: `Named like the popular ${match.owners[0]}/${match.repo} but owned by ${info.owner}`,
             evidence: evidence(
                 `${info.owner}/${info.repo}: ${info.stars} stars, created ${info.createdAt.slice(0, 10)}${info.fork ? ", a fork" : ""}`,

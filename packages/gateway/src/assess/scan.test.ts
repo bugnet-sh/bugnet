@@ -380,6 +380,19 @@ describe("repo rules", () => {
         expect(lookalike(info({ repo: "whisperx-tools", stars: 1 }), null, now)).toEqual([]);
     });
 
+    it("lookalike_name leaves an old repo with a plain shared name alone", () => {
+        const old = { stars: 3, createdAt: daysAgo(800) };
+        for (const repo of ["piper", "TTS", "bark", "whisper", "transformers", "kokoro"]) {
+            expect(lookalike(info({ owner: "alice", repo, ...old }), daysAgo(3000), now)).toEqual(
+                [],
+            );
+        }
+        const fresh = info({ owner: "alice", repo: "piper", stars: 3, createdAt: daysAgo(10) });
+        expect(lookalike(fresh, daysAgo(3000), now)).toMatchObject([{ severity: "medium" }]);
+        const webui = info({ owner: "alice", repo: "stable-diffusion-webui", ...old });
+        expect(lookalike(webui, daysAgo(3000), now)).toMatchObject([{ severity: "high" }]);
+    });
+
     it("lure_terms flags cracks and cheats but not cheat sheets", () => {
         const lure = repoFindings(
             info({ repo: "valorant-aimbot", description: "free undetected" }),
