@@ -264,12 +264,15 @@ export function analyseModel(m: HfModel, now: number): ModelReport {
 
     const weightsGiB = weightsBytes !== null ? weightsBytes / GiB : null;
     const effectiveParams = parameters ?? (weightsBytes !== null ? weightsBytes / 2 : 0);
+    // llama.cpp runs GGUF quantisations on the CPU or Metal, so size alone does not call for a GPU
+    const gguf = !m.safetensors && m.files.some((f) => /\.gguf$/i.test(f.name));
+    const totalGiB = totalBytes > 0 ? Math.ceil(totalBytes / GiB) + 1 : null;
     return {
         facts,
         findings,
-        gpu: generation.has(m.pipelineTag ?? "") || effectiveParams > 3e9,
+        gpu: generation.has(m.pipelineTag ?? "") || (!gguf && effectiveParams > 3e9),
         minMemoryGiB: weightsGiB !== null ? ceilTenth(weightsGiB * 1.2 + 1) : null,
-        minDiskGiB: totalBytes > 0 ? Math.ceil(totalBytes / GiB) + 1 : null,
+        minDiskGiB: weightsGiB !== null ? Math.max(1, Math.ceil(weightsGiB * 1.2)) : totalGiB,
     };
 }
 

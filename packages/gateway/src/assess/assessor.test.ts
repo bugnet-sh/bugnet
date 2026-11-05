@@ -412,7 +412,7 @@ describe("assessor over Hugging Face", () => {
         expect(r.needs).toMatchObject({
             gpu: false,
             minMemoryGiB: 1.4,
-            minDiskGiB: 2,
+            minDiskGiB: 1,
             workload: "inference",
         });
         expect(r.source.facts).toMatchObject({ parameters: "82M", pipelineTag: "text-to-speech" });

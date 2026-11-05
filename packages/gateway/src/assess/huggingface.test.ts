@@ -142,7 +142,7 @@ describe("size maths", () => {
         });
     });
 
-    it("needs weights times 1.2 plus 1 GiB of memory and the total file size on disk", () => {
+    it("needs weights times 1.2 plus 1 GiB of memory and weights times 1.2 on disk", () => {
         const r = analyseModel(
             model({
                 safetensors: { BF16: 8_030_261_248 },
@@ -153,7 +153,7 @@ describe("size maths", () => {
         const weightsGiB = (8_030_261_248 * 2) / GiB;
         expect(r.minMemoryGiB).toBe(Math.ceil((weightsGiB * 1.2 + 1) * 10) / 10);
         expect(r.minMemoryGiB).toBe(19);
-        expect(r.minDiskGiB).toBe(17);
+        expect(r.minDiskGiB).toBe(18);
         expect(r.gpu).toBe(true);
         expect(r.facts).toMatchObject({ parameters: "8B", weightsGiB: 14.96 });
     });
@@ -166,6 +166,25 @@ describe("size maths", () => {
         expect(small("text-generation", 7e9)).toBe(true);
         expect(small("text-generation", 1.5e9)).toBe(false);
         expect(small("automatic-speech-recognition", 1.54e9)).toBe(false);
+    });
+
+    it("sizes a GGUF repo by the one quantisation a user downloads and needs no GPU for it", () => {
+        const quants = ["Q2_K", "Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"];
+        const r = analyseModel(
+            model({
+                id: "TheBloke/Llama-2-7B-GGUF",
+                ggufParameters: 6_738_415_616,
+                pipelineTag: "text-generation",
+                files: quants.map((q, i) => ({
+                    name: `llama-2-7b.${q}.gguf`,
+                    size: (2.8 + i) * GiB,
+                })),
+            }),
+            now,
+        );
+        expect(r.minDiskGiB).toBe(Math.ceil(4.8 * 1.2));
+        expect(r.minDiskGiB).toBeLessThan(10);
+        expect(r.gpu).toBe(false);
     });
 });
 
