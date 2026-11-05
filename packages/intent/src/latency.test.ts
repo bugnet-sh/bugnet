@@ -93,6 +93,22 @@ function repeated(unit: string, size = 50_000): string {
     return unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
 }
 
+const patterns: [string, RegExp][] = [
+    ...Object.entries(L).filter((e): e is [string, RegExp] => e[1] instanceof RegExp),
+    ...signatures.map((s) => [`signature ${s.id}`, s.re] as [string, RegExp]),
+];
+
+// Every match of a pattern, counted without keeping them
+function scan(re: RegExp, s: string): number {
+    let n = 0;
+    re.lastIndex = 0;
+    for (let m = re.exec(s); m !== null && re.global; m = re.exec(s)) {
+        n++;
+        if (m[0] === "") re.lastIndex++;
+    }
+    return n;
+}
+
 describe("latency", () => {
     // Wall time on a loaded machine measures the scheduler, so the budget is checked in CPU time
     it("classifies 10,000 mixed inputs in under a second of CPU time", () => {
@@ -110,5 +126,28 @@ describe("latency", () => {
             expect(cpuMs(() => classifyFailure("x", text, ctx))).toBeLessThan(50);
             expect(cpuMs(() => clonedDirs(text, "/w"))).toBeLessThan(50);
         }
+    });
+
+    // One token alone, repeated or with its last letter stretched, is where nested runs backtrack
+    it.each(patterns)("keeps %s linear on one repeated or stretched token", (_name, re) => {
+        for (const token of tokens(re.source)) {
+            const tail = token.slice(-1);
+            for (const text of [repeated(token), token + tail.repeat(50_000)]) {
+                expect(cpuMs(() => scan(re, text))).toBeLessThan(25);
+            }
+        }
+    });
+
+    it.each([
+        ["a stretched rm flag", "rm -" + "r".repeat(16_000)],
+        ["repeated private address octets", repeated("10.")],
+        ["a long run of digits after a private prefix", "192.168." + "1".repeat(50_000)],
+        ["one setup verb repeated without spaces", repeated("install")],
+        ["one Turkish setup verb repeated without spaces", repeated("kurmana")],
+    ])("classifies %s in under 50 ms", (_name, text) => {
+        mixed(50);
+        const ctx = { os: "macos", arch: "arm64" } as const;
+        expect(cpuMs(() => classifyPrompt(text, ctx))).toBeLessThan(50);
+        expect(cpuMs(() => classifyCommand(text, ctx))).toBeLessThan(50);
     });
 });

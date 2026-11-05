@@ -422,7 +422,7 @@ export const windowsText = family(String.raw`
 `);
 
 export const driverText = family(String.raw`
-    (?:install|update|upgrade|set ?up|kur\w*|instal\w*)\w* (?:the )?(?:nvidia|cuda|gpu|graphics) (?:drivers?|toolkit)
+    (?:instal\w*|updat\w*|upgrad\w*|set ?up|kur\w*) (?:the )?(?:nvidia|cuda|gpu|graphics) (?:drivers?|toolkit)
     (?:(?:nvidia|cuda|gpu|graphics)[- ](?:card )?)+(?:drivers?|toolkit)|drivers? for (?:my |the |an? )?(?:nvidia|gpu|graphics)
     kernel modul\w*|dkms|out[- ]of[- ]tree (?:driver|module)|custom kernel|kernel patch\w*
 `);
@@ -430,7 +430,7 @@ export const driverText = family(String.raw`
 /* Experiments that can break the machine */
 
 export const destructive = family(String.raw`
-    rm -[a-z]*r[a-z]*f?[a-z]* (?:--no-preserve-root )?(?:/|~|\$home|/\*|/usr|/etc|/bin|/var|/system)(?=\s|$)
+    rm -[a-z]{0,6}r[a-z]{0,6} (?:--no-preserve-root )?(?:/|~|\$home|/\*|/usr|/etc|/bin|/var|/system)(?=\s|$)
     dd(?:[- ]based)? [^\n]{0,40}?(?:/dev/|disk|drive|ssd|speed test)
     mkfs\w*|wipefs|wipe (?:the |my )?(?:disk|drive|ssd|partition)|format (?:the |my )?(?:disk|drive|ssd|partition|c:)
     fork ?bomb|(?:cause|trigger|force|induce|provoke)\w* (?:a |the )?kernel panic|oom killer|break (?:my|the) (?:system|machine|os|install)
@@ -604,10 +604,10 @@ export const abuse = family(String.raw`
     brute ?forc\w* (?:\w+ ){0,2}?(?:instagram|facebook|gmail|ssh|rdp|login|logins|accounts?)|kaba kuvvet|fuerza bruta
 `);
 
-const privateNet = String.raw`(?:192\.168|10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01]))\.[\d./]+`;
+const privateNet = String.raw`(?:192\.168|10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01]))\.[\d./]{1,15}`;
 
 export const lanScan = new RegExp(
-    String.raw`(?<![a-z])(?:scan|nmap|port ?scan|sweep|enumerate|map|discover|tara|escane|scann)\w*[^\n]{0,60}?(?:${privateNet}|(?:my|our|the) (?:home |local |lab |office )?(?:network|lan|subnet|wifi)|home ?lab)|${privateNet}[^\n]{0,40}?(?:open ports|services?|scan)`,
+    String.raw`(?<![a-z])(?:scan|nmap|port ?scan|sweep|enumerate|map|discover|tara|escane|scann)\w{0,12}[^\n]{0,60}?(?:${privateNet}|(?:my|our|the) (?:home |local |lab |office )?(?:network|lan|subnet|wifi)|home ?lab)|(?<![\w.])${privateNet}[^\n]{0,40}?(?:open ports|services?|scan)`,
     "g",
 );
 
