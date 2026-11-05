@@ -40,6 +40,8 @@ var action = family(String.raw`
     herunterlad\w*|teste\w*
     rodar|roda|rode|rodando|executar|executa|instalar|instala|instale|testar|subir|configurar
     baixar|baixa|baixe|fazer funcionar|por pra rodar
+    faire tourner|fais tourner|executer|executez|lance|lancer|lancez|demarrer|essayer|essaie|telecharger
+    eseguire|esegui|eseguilo|avviare|avvia|lanciare|lancia|provare|provalo|scaricare|scarica|far girare
 `);
 var runsPasted = family(String.raw`
     (?:run|execute|exec|try|install|launch|start|paste|ejecut\w*|corre|correr|calistir\w*|ausfu(?:e)?hr\w*|rodar|roda|executar|instala\w*)(?: (?:it|this|that|these|them|those|the))?(?: (?:above|below|following|same))?(?: (?:install )?(?:commands?|scripts?|snippet|lines?|one[- ]liners?|installer|steps?|code|block))?(?= *(?:$|[\n,.!?:;]|(?:for|please|pls|on|in|here|now|again|first|and|then|so|to|from|locally|myself|anyway)(?![a-z])))
@@ -50,6 +52,7 @@ var taskVerb = family(String.raw`
     transcrib\w*|transkribier\w*|desifre\w*|yaziya (?:dok|cevir|aktar)\w*|subtitl\w*|caption\w*|diariz\w*
     clone (?:my|a|his|her|their|this|the|someone'?s) (?:\w+ )?voice|clon(?:ar|a) (?:mi |la |su |a |minha |sua )?voz
     klon\w* (?:meine |die )?stimme|(?:meine|die) stimme (?:zu )?klon\w*|ses(?:imi|ini|i)? klon\w*|sesimi (?:kopyala|taklit)\w*
+    clon\w* (?:(?:la|ma|sa|mia|sua|ta|tua) ){0,2}(?:voce|voix)
     narrate|read (?:it|this) (?:aloud|out loud)|seslendir\w*|vertonen|vorlesen
     (?:generate|create|make|render|produce|animate) (?:[^ \n]+ ){0,4}?(?:images?|pictures?|photos?|art|portraits?|shots?|clips?|videos?|animations?|songs?|music|voiceovers?|speech|audio)
     fine[- ]?tun\w*|finetun\w*|feintun\w*|train|training|trainier\w*|entrenar|treinar|egit\w*
@@ -66,6 +69,7 @@ var local = family(String.raw`
     en local|localmente|en mi (?:pc|mac|maquina|ordenador|computadora|portatil|laptop|equipo)
     no meu (?:pc|mac|computador|notebook)|na minha maquina
     auf meine\w* (?:rechner|computer|laptop|pc|mac|maschine)|bei mir lokal
+    sur (?:mon|ma) (?:pc|mac|ordinateur|portable|laptop|machine)|in locale|sul mio (?:pc|mac|computer|portatile)
 `);
 var aiName = family(String.raw`
     xtts\w*|coqui|f5[- ]?tts|e2[- ]?tts|kok[oe]ro|piper[- ]?tts|styletts2?|openvoice|parler[- ]?tts
@@ -76,32 +80,36 @@ var aiName = family(String.raw`
     flux[- ](?:dev|schnell|kontext|klein)|co[mn]f[iy] ?ui|automatic ?1111|a1111|sd[- ]?webui|sd[- ]forge
     forge webui|webui forge|fooocus|invoke ?ai|qwen[- ]?image|z[- ]image|hidream|kohya\w*
     controlnet|civitai|txt2img|img2img|real[- ]?esrgan|diffusers
-    wan ?2(?:\.\d)?|hunyuan ?video|ltx[- ]?(?:video|2(?:\.\d)?)|cogvideo\w*|mochi[- ]?1|animatediff
+    wan ?2\.\d|hunyuan ?video|ltx[- ]?(?:video|2(?:\.\d)?)|cogvideo\w*|mochi[- ]?1|animatediff
     stable video diffusion|svd[- ]xt|framepack|wav2lip|sadtalker|liveportrait|facefusion|roop
     deep[- ]?live[- ]?cam|open[- ]?sora
     ol{1,2}am{1,2}a|l{1,2}ama[.-]?cpp|llamafile|lm ?studio|text[- ]generation[- ]webui|oobabooga|koboldcpp|vllm
     sglang|text[- ]generation[- ]inference|exllama\w*|gguf|ggml|mlx(?:[- ]lm)?|gpt4all
-    (?:llama(?![- ]?index)|lama(?=[- ]?\d)|llava|qwen|mistral|mixtral|gemma|deep[- ]?seek|codellama|nemotron|gpt[- ]oss|starcoder|vicuna)(?:[- ]?(?:r|v|coder)?\d+(?:\.\d+)?)?(?:[- :]?\d+(?:\.\d+)?b)?
-    (?:phi|yi|granite|falcon|olmo)[- ]?\d+(?:\.\d+)?(?:[- :]?\d+(?:\.\d+)?b)?
-    (?:whisper|wisper|whipser)(?:x|\.cpp|[- ]large\w*)?|faster[- ]whisper|distil[- ]whisper|insanely[- ]fast[- ]whisper
+    (?:llava|qwen|mixtral|deep[- ]?seek|codellama|nemotron|gpt[- ]oss|starcoder|vicuna)(?:[- ]?(?:r|v|coder)?\d+(?:\.\d+)?)?(?:[- :]?\d+(?:\.\d+)?b)?
+    (?:llama(?![- ]?index)|lama|mistral|gemma)[- ]?(?:r|v|coder)?\d+(?:\.\d+)?(?:[- :]?\d+(?:\.\d+)?b)?
+    (?:phi|yi|granite|olmo)[- ]?[1-9](?:\.\d+)?(?:[- :]?\d+(?:\.\d+)?b)?|falcon[- ]?(?:\d+(?:\.\d+)?b|[1-3](?:\.\d+)?(?:[- :]?\d+(?:\.\d+)?b)?)
+    (?:whisper|wisper|whipser)(?:x|\.cpp|[- ]large\w*|[- ]v?\d)|faster[- ]whisper|distil[- ]whisper|insanely[- ]fast[- ]whisper
     parakeet|nvidia canary|wav2vec2?|vosk|pyannote
     musicgen|audiocraft|stable audio|riffusion|ace[- ]step|diffrhythm|audioldm|demucs|uvr5?
     yolov?\d+\w*|ultralytics|detectron2|mmdetection|segment anything|sam ?2|nanogpt|dreambooth
     textual inversion|unsloth|axolotl|deepspeed|torchrun|accelerate launch|fluxgym|ai[- ]toolkit
 `);
 var aiWeakName = family(String.raw`
-    bark|piper|flux|forge|orpheus|sesame|krea
+    bark|piper|flux|forge|orpheus|sesame|krea|whisper|llama|gemma|mistral|wan ?2
 `);
 var aiContext = family(String.raw`
     tts|text[- ]to[- ]speech|voices?|speech|images?|video|models?|weights|checkpoints?|lora
-    diffusion|ai|llm|gpu|vram
+    diffusion|ai|llm|gpu|vram|audio|mp3s?|wavs?|m4a|recordings?|podcasts?|transcri\w*|transkri\w*
+    subtitles?|lectures?|interviews?|ollama|gguf|quantiz\w*|locally|local|offline|lokal\w*|yerel\w*
+    localmente|en local|\d+(?:\.\d)? ?b|kayit\w*|kayd\w*|grabacion\w*|aufnahme\w*|gravac\w*
 `);
+var integrationAfter = /^(?:[- ][\w.-]+)?[- ](?:api|provider|adapter|client|sdk|integration|wrapper|endpoint|connector|plugin|keys?)s?(?![a-z])/;
 var aiTask = family(String.raw`
     text[- ]to[- ](?:speech|image|video|music|audio)|image[- ]to[- ](?:video|image)|speech[- ]to[- ]text
     tts|stt|voice ?(?:clone|cloner|cloning|changer|conversion|model)|ai voice|ai cover|voice ?over\w*
     stem separation|vocal (?:removal|remover|isolation|separation)|(?:separate|isolate|strip)\w* (?:out )?(?:the )?vocals
     audiobook|sesli kitap|texto a voz|sintesis de voz|clonacion de voz|clonagem de voz|text[- ]?zu[- ]?sprache
-    sprachsynthese|stimmklon\w*|ki[- ]?stimme|horbuch
+    sprachsynthese|stimmklon\w*|ki[- ]?stimme|horbuch|sintesi vocale|synthese vocale
     (?:ai|open[- ]source|local|diffusion) (?:image|video|art|music|voice|speech) (?:model|generator|generation)
     (?:image|video|music) (?:generation|generator|diffusion) model|(?:generative|diffusion|text[- ]to[- ]\w+) (?:image |video )?model
     local (?:llm|model|ai|chatgpt|gpt|language model)|self[- ]host(?:ed)? (?:llm|model|ai)|(?:llm|model) locally
@@ -109,7 +117,7 @@ var aiTask = family(String.raw`
     (?:llm|modelo) (?:en )?local|ia local|modelo local
     fine[- ]?tun\w*|finetun\w*|feintun\w*|q?lora|ince ayar\w*|ajuste fino
     (?:entrenar|treinar|trainier\w*|egit\w*) (?:un |uma |ein |mein |mi )?(?:modelo|model\w*|lora|voz|stimme)
-    (?:model|lora|ses)\w* egit\w*|train (?:a |an |my |the )?(?:\w+ )?(?:model|lora|network|classifier|detector) (?:from scratch|on)
+    (?:model|lora|ses)\w* egit\w*|train (?:a |an |my |the )?(?:\w+ )?(?:model|lora|network|classifier|detector|gpt|llm|transformer|language model|neural net\w*|gan|vae) (?:from scratch|on)
     transcri(?:be|bing|ption|pt)\w*|transkri\w*|desifre\w*|diariz\w*
     upscal\w*|inpaint\w*|lip ?sync\w*|talking head|face ?swap\w*|deepfake\w*|yuz degistir\w*
     intercambio de caras|gesichtstausch
@@ -122,6 +130,7 @@ var voiceClone = family(String.raw`
     (?:my|his|her|their|a) voice (?:as|for) (?:a |an )?(?:tts|voice ?over|narrat\w*)
     clon(?:ar|a|e) (?:mi |la |su |minha |sua )?voz|klon\w* (?:meine |die |seine )?stimme|ses(?:imi|ini|i)? klon\w*
     (?:meine|die|seine|ihre) stimme (?:zu )?klon\w*|(?:mi|tu|su|minha|sua) voz clonad[ao]
+    clon\w* (?:(?:la|ma|sa|mia|sua|ta|tua) ){0,2}(?:voce|voix)
 `);
 var localAssistant = family(String.raw`
     (?:private|offline|local|self[- ]?hosted|personal) (?:ai |chat ?|llm |gpt )?(?:assistant|chatbot|chat ?gpt|gpt|llm|copilot)
@@ -129,7 +138,7 @@ var localAssistant = family(String.raw`
     (?:assistant|chatbot|chat ?gpt|llm) (?:\w+ ){0,3}?(?:on|in) my (?:own )?(?:computer|machine|laptop|mac|pc|hardware|server)
 `);
 var videoName = family(String.raw`
-    wan ?2(?:\.\d)?|hunyuan ?video|ltx[- ]?(?:video|2)|cogvideo\w*|mochi[- ]?1|animatediff
+    wan ?2\.\d|hunyuan ?video|ltx[- ]?(?:video|2)|cogvideo\w*|mochi[- ]?1|animatediff
     stable video diffusion|framepack|text[- ]to[- ]video|image[- ]to[- ]video|video model
 `);
 var paramSize = /(?<![a-z0-9_.])(\d{1,3}(?:\.\d)?) ?b(?![a-z0-9_])/g;
@@ -144,7 +153,7 @@ var ownRepoBefore = family(String.raw`
     (?:my|our|mine|benim|kendi|mi|nuestro|meu|nosso|mein\w*|unser\w*) (?:own |propio |eigene\w* )?(?:\w+ )?(?:repo|repository|fork|project|app|site|code|repom|projem|proyecto|projeto|projekt)\w*[ :]*(?:at |on |from |is |here |-)?$
 `);
 var codeNoun = String.raw`(?:repo|repos|repository|script|scripts|(?<!(?:csv|json|pdf|data|log|text|config|excel|word|design|figma|image|video|audio) )files?|binary|binaries|tool|tools|bot|bots|exe|executable|zip|archive|app|apk|dmg|msi|installer|program|plugin|extension|package|mod|mods|patcher|crack|cheat|hack|cli|one[- ]liner|take[- ]home|mcp server|\w[\w-]{0,40}\.(?:exe|zip|rar|7z|apk|dmg|pkg|app|msi|jar|sh|py|js|ps1|bat))(?![a-z0-9_])`;
-var person = String.raw`(?:an? |my |some |this |that |the |random )?(?:random )?(?:friend|buddy|mate|cousin|brother|sister|someone|somebody|some ?one|guy|dude|stranger|recruiter|client|vendor|person|user|redditor|youtuber|streamer|seller|account|anon)s?(?! (?:on|from|in|at) (?:my|our) (?:team|company|org|work|office|department))`;
+var person = String.raw`(?:an? |my |some |this |that |the |random )?(?:random )?(?:friend|buddy|mate|cousin|brother|sister|someone|somebody|some ?one|guy|dude|stranger|recruiter|client|vendor|person|user(?!s)|redditor|youtuber|streamer|seller|account|anon|interviewer|hiring manager|headhunter|employer)s?(?! (?:on|from|in|at) (?:my|our) (?:team|company|org|work|office|department))`;
 var handed = String.raw`(?:sent|sends|send|shared|shares|gave|gives|linked|links|dropped|drops|posted|posts|dm'?d|dmed|messaged|emailed|uploaded|recommended|recommends|passed|forwarded|handed)`;
 var place = String.raw`(?:reddit|subreddit|discord|telegram|youtube|tiktok|twitter|tweet|x\.com|forum|forums|hacker news|4chan|facebook|instagram|whatsapp|pastebin|gist|medium|blog|random (?:site|website|page)|website|video|livestream|stream|group chat|channel|thread|comments?|dms?|github|gitlab)`;
 var pronoun = String.raw`(?:this|it|these|them|that)(?= *(?:$|[\n,.!?:;]|(?:on|over|via|in|from|earlier|yesterday|today|last|and|but|to|so|which|for)(?![a-z])))`;
@@ -152,7 +161,7 @@ var handedObject = String.raw`(?: (?:me|us|him|her|them))?(?: (?:${pronoun}|(?:(
 var origin = family(String.raw`
     ${person}\b[^\n.?!]{0,40}?\b${handed}${handedObject}
     (?:this|that|the|a|an|some|these) (?:[\w'.-]{1,40} ){0,3}?${codeNoun} (?:that |which )?(?:i |we )?(?:got |received )?(?:from )?${person}[^\n.?!]{0,30}? ${handed}
-    ${codeNoun} (?:[\w'.-]{1,40} ){0,3}?(?:from|by) ${person}
+    ${codeNoun} (?:[\w'.-]{1,40} ){0,2}?(?:from|by) ${person}
     (?:found|saw|seen|got|spotted|came across|stumbled (?:on|upon|across)|downloaded|grabbed|picked up) (?:${pronoun}|(?:a|an|the|this|that|some) (?:[\w'.-]{1,40} ){0,3}?${codeNoun})(?: [\w'.-]{1,40}){0,4}? (?:on|in|at|from|via|off) (?:a |an |the |some |this )?(?:[\w'.-]{1,40} ){0,2}?${place}
     ${codeNoun} (?:that |which )?(?:i |we |someone |somebody |a guy |some guy )?(?:found|saw|seen|got|spotted|came across|downloaded|grabbed|posted|shared|linked|dropped)(?: it)? (?:on|in|at|from|via|off) (?:a |an |the |some |this )?(?:[\w'.-]{1,40} ){0,2}?${place}
     ${codeNoun} (?:from|off|via) (?:a |an |the |some |this |that )?(?:[\w'.-]{1,40} ){0,2}?${place}
@@ -167,6 +176,8 @@ var origin = family(String.raw`
     me (?:lo |la )?(?:mando|paso|envio|compartio|dio|recomendo) (?:un amigo|una amiga|mi amig[oa]|alguien|un desconocido|un reclutador|un cliente|mi primo|un tipo)
     (?:un amigo|una amiga|mi amig[oa]|alguien|un desconocido|un reclutador|un cliente|mi primo|mi herman[oa]|un tipo)(?: (?:de|en) \w+)? (?:me |nos )?(?:mando|paso|envio|compartio|dio|recomendo) (?:un |una |el |la |este |esta |esto |lo )?(?:\w+ ){0,2}?(?:repo|repositorio|script|programa|herramienta|bot|archivo|ejecutable|exe|zip|app|aplicacion|instalador|extension|codigo|enlace|link)
     (?:script|repo|programa|herramienta|bot|archivo|codigo|app) (?:que )?(?:encontre|vi|baje|descargue|pasaron|compartieron) en (?:un |una |el |la )?(?:\w+ )?(?:foro|reddit|discord|telegram|youtube|tiktok)
+    me (?:pasaron|mandaron|enviaron|compartieron|dieron|recomendaron) (?:un |una |el |la |este |esta |esto )?(?:\w+ ){0,2}?(?:repo|repositorio|script|programa|herramienta|bot|archivo|ejecutable|exe|zip|app|aplicacion|instalador|extension|codigo|enlace|link)
+    (?:repo|repositorio|script|programa|herramienta|bot|archivo|app|aplicacion) (?:[\w-]+ ){0,4}?que (?:promete|supuestamente|dice que|asegura)
     prueba tecnica|ejercicio de (?:entrevista|seleccion)|reclutador
     (?:auf|bei|in) (?:\w+ )?(?:reddit|discord|telegram|youtube|tiktok|twitter|einem forum|forum) (?:gefunden|gesehen)
     (?:ein freund|eine freundin|ein kumpel|jemand|ein fremder|ein recruiter|ein kunde)[^\n.?!]{0,40}?(?:skript|script|programm|tool|repo|datei|exe|zip|bot|app|link|installer|code|das|es|dies)\b[^\n.?!]{0,30}?(?:geschickt|gesendet|geteilt|gegeben|empfohlen)
@@ -178,7 +189,8 @@ var paidApp = String.raw`(?:photoshop|office|windows|adobe|fl studio|capcut|auto
 var aiApp = String.raw`(?:claude code|claude|copilot|cursor|chatgpt|sora|kling|seedance|midjourney|elevenlabs|voicemod)`;
 var game = String.raw`(?:roblox|valorant|fortnite|cs2|csgo|counter[- ]strike|apex legends|warzone|gta|pubg|tarkov|overwatch|r6|dota|genshin|free fire|minecraft|rust|apex|cod)`;
 var lure = family(String.raw`
-    cracked|keygen|serial key|activator|kms ?pico|kms ?auto|pirated|warez|nulled|unlocker
+    cracked (?:[\w.-]+ ){0,2}?(?:version|apk|exe|games?|software|apps?|copy|build|installer|plugins?|vsts?|accounts?|client|launcher|edition|release)s?
+    keygen|serial key|activator|kms ?pico|kms ?auto|pirated|warez|nulled|unlocker
     crack(?:s)? (?:for|of|version|download|setup|apk|exe|patch)
     free (?:\w+ )?(?:nitro|robux|v-?bucks|followers|likes|vip|premium)(?! (?:trial|tier|plan|plans|features?|period|month|week|users?|members?))
     (?:get|unlock|activate|gives?|giving)\w* (?:\w+ ){0,3}?(?:premium|pro|plus|vip) (?:\w+ ){0,2}?(?:for free|free|without paying|for nothing|gratis)
@@ -186,14 +198,16 @@ var lure = family(String.raw`
     mod menu|aimbot|wallhack|wall hack|esp hack|triggerbot|spoofer|hwid (?:spoof\w*|ban\w*)|dll inject\w*|cheat engine
     game (?:hacks?|trainers?|cheats?)|auto[- ]?farm\w*|auto[- ]?clicker
     inject\w* (?:\w+ ){0,2}?into (?:the |a )?(?:running )?(?:game|process)
-    (?:crack|cracked|keygen|activator)\w*\b[^\n]{0,30}?\b${paidApp}
+    (?:crack|cracked|keygen|activator)\w*\b[^\n]{0,30}?\b(?:${paidApp}|${game})(?![a-z])
     ${paidApp}[^\n]{0,20}?\b(?:crack|cracked|keygen|activator|kirik|crackeado|craqueado)\w*
     ${paidApp} (?:premium |pro |plus )?(?:patcher|unlocker|mod apk)
+    (?:unlock|desbloque|freischalt|desbloquei)\w* (?:\w+ ){0,3}?(?:premium|pro|plus|vip)\b[^\n]{0,30}?\b${paidApp}(?![a-z])
     ${game} (?:\w+ )?(?:cheats?|hacks?|aimbot|executor|injector|mod menu|trainer|unlocker|spoofer)
     (?:nitro|robux|token|account|gift ?card|v-?bucks) (?:gen|generator)|token (?:grabber|logger|stealer)
     stealer|remote access trojan|rat (?:builder|client|panel|tool)
     (?:wallet|seed phrase|seed|mnemonic|private key) (?:recover\w*|finder|cracker|checker|drainer|brute\w*)
-    drainer|(?:recover|find|brute ?force|crack)\w* (?:\w+ ){0,3}?(?:seed phrase|mnemonic|wallet)
+    drainer (?:script|kit|bot|contract|code|tool|repo|app|link|site)s?|(?:crypto|token|nft|solana|sol|eth)[- ]?drainer
+    (?:recover|find|brute ?force|crack)\w* (?:\w+ ){0,3}?(?:seed phrase|mnemonic|wallet)
     airdrop (?:claim\w*|bot|farmer|farming|hunter|checker)|claim\w* (?:\w+ ){0,2}?airdrop
     (?:sniper|mev|sandwich|arbitrage|arb|pump|copy[- ]?trade|copytrade|volume|memecoin|crypto|forex|trading) (?:\w+ )?bots?
     (?:instagram|insta|tiktok|youtube|twitter|twitch|spotify|discord|kick) (?:\w+ )?(?:views?|viewers?|follows?|followers?|likes?|likers?|subs|subscribers?|streams?|listeners?|plays?|comments?|members?|engagement) ?(?:bot|booster|farm\w*|gen\w*)
@@ -202,10 +216,10 @@ var lure = family(String.raw`
     ${aiApp} (?:premium|pro|plus|max|ultra) (?:\w+ ){0,2}?(?:for free|free|without paying|for nothing|unlocked|crack\w*|keygen)
     free ${aiApp} (?:premium|pro|plus|max|ultra|accounts?|licen[cs]es?|keys?|subscriptions?|access)
     leaked (?:source|build|version|code|model)|uncensored (?:image|model|generator|ai)
-    hile\w*|kirik (?:surum|program)\w*|korsan\w*|lisans (?:anahtari|kirma)\w*
+    hile(?:si|sini|ler|leri|lerini|li|yi|ye|de|den)?|kirik (?:surum|program)\w*|korsan\w*|lisans (?:anahtari|kirma)\w*
     (?:bedava|ucretsiz) (?:nitro|robux|vp|vbucks|takipci|begeni|lisans|premium|pro)\w*|hesap (?:botu|calma)
     kripto (?:bot|cuzdan)\w*|cuzdan (?:kurtar|bul)\w*|takipci (?:botu|hilesi|bot)|sizdiril\w*
-    trucos? (?:para|de) (?:juego|valorant|fortnite|roblox)|crackead[oa]|pirata|activador|licencia gratis
+    trucos? (?:para|de) (?:juego|valorant|fortnite|roblox)|crackead[oa]|(?:version|copia|juego|programa|software|app|aplicacion|apk|jogo|versao|windows|office|photoshop) pirata|activador|licencia gratis
     gratis (?:premium|nitro|robux|pavos)|(?:robux|nitro|pavos|v-?bucks) gratis|generador de (?:nitro|robux|cuentas)
     bot de (?:trading|cripto|seguidores)|recuperar (?:billetera|cartera|frase semilla)
     (?:version|codigo|modelo|build|cuentas?) filtrad[oa]s?
@@ -217,9 +231,22 @@ var lure = family(String.raw`
 var ownBefore = /(?:^|[\s(])(?:my|our|mine|mi|mis|meu|minha|nosso|benim|kendi|mein\w*|unser\w*|nuestro)\s(?:\S+\s){0,2}$/;
 var createBefore = /(?:build|write|create|make|code|develop|implement|scaffold|program)\s(?:me\s)?(?:a|an|my|our|the)\s(?:\S+\s){0,2}$/;
 var poc = family(String.raw`
-    pocs?|proof[- ]of[- ]concept|exploits?|exploit code|cve-\d{4}-\d{3,7}|0[- ]?day|zero[- ]?day|rce|privesc
-    lpe|reverse shell|bind shell|shellcode|msfvenom|metasploit|zafiyet\w*|guvenlik acig\w*|exploit'?\w*
-    vulnerabilidad\w*|schwachstelle\w*|sicherheitslu(?:e)?cke\w*
+    exploits?|exploit code|cve-\d{4}-\d{3,7}|0[- ]?day|zero[- ]?day|rce|privesc
+    lpe|reverse shell|bind shell|shellcode|msfvenom|metasploit|exploit'?\w*
+`);
+var pocWeak = family(String.raw`
+    pocs?|proof[- ]of[- ]concept
+`);
+var flaw = family(String.raw`
+    cve\w*|vuln\w*|security (?:bug|flaw|hole|issue|advisory)|bug bounty|rce|privesc|lpe
+    (?:buffer|heap|stack|integer) overflow|\w+ injection|use[- ]after[- ]free|zero[- ]?day|0[- ]?day
+    payloads?|shellcode|(?:the|this|that|a|an|new) (?:[\w.-]+ ){0,2}?(?:bug|flaw)
+    zafiyet\w*|guvenlik acig\w*|vulnerabilidad\w*|vulnerabilidade\w*|schwachstelle\w*|sicherheitslu(?:e)?cke\w*
+`);
+var exploitUse = family(String.raw`
+    (?:run|runs|running|execute|exec|launch|try|test|compile|build|clone|download|fire|use|pull|grab|fetch)\w* (?:[\w.'-]+ ){0,4}?exploits?
+    exploits? (?:code|script|scripts|binary|repo|chain|kit|against|on (?:my|our|the|a)|for (?:cve|the|this|that))
+    (?:ejecut|corr|prueb|lanz|compil|clon|descarg|ausfu(?:e)?hr|start|rod|execut|calistir|dene|derle|indir)\w* (?:[\w.'-]+ ){0,4}?exploit\w*
 `);
 var receivedFile = /\.(?:zip|rar|7z|exe|msi|scr|bat|cmd|ps1|vbs|jar|lnk|iso|dmg|pkg|app|apk|docm|xlsm|pptm|hta|pif)(?![a-z0-9_])/g;
 var receivedContext = family(String.raw`
@@ -227,6 +254,17 @@ var receivedContext = family(String.raw`
     over (?:telegram|whatsapp|discord|email|signal|slack)|on whatsapp|never heard of
     unknown (?:sender|vendor|client)|ekte(?:ki)?|mail\w* gelen|adjunto|me enviaron|anhang|angehangt|anexo
     macros?|makro\w*
+`);
+var mailed = family(String.raw`
+    (?:e-?mail|mail|message|inbox)(?:ed)? (?:\w+ ){0,2}?attachments?|attachments? (?:from|in|of) (?:an? |the |some )?(?:\w+ ){0,2}?(?:e-?mails?|mail|messages?|sender|stranger)
+    (?:as|in) an? (?:e-?mail )?attachment|(?:came|arrived|sent|got) (?:\w+ ){0,2}?(?:by|via|over|in an?) e-?mail
+    e-?mail(?:ed)? (?:me|us) (?:an? |the |this |some )?(?:\w+ ){0,2}?(?:scripts?|programs?|exe|binar(?:y|ies)|installers?|executables?|apps?)
+    adjunto (?:de|en|del) (?:un |el )?correo|anhang (?:einer|der|aus der) (?:e-?mail|mail)|anexo (?:de|do|no) (?:um |o )?e-?mail
+    e-?posta eki\w*|mailde(?:ki)? ek\w*
+`);
+var codeKind = family(String.raw`
+    scripts?|programs?|exe|executables?|binar(?:y|ies)|installers?|javascript|js|python|powershell
+    macros?|apk|payloads?|skript|programm|programa|ejecutable|executavel
 `);
 var disguisedFile = /\.(?:pdf|docx?|xlsx?|jpe?g|png|mp4|mp3|txt)\.(?:exe|scr|bat|cmd|js|vbs|lnk|com|pif)(?![a-z0-9_])/g;
 var enableMacros = family(String.raw`
@@ -242,11 +280,17 @@ var avOff = family(String.raw`
 var safety = family(String.raw`
     is (?:this|it|that) (?:safe|legit|malware|malicious|a virus|a scam|sketchy|shady|trustworthy)
     safe to (?:run|install|open|use)|could (?:this|it) (?:be malicious|steal)
-    (?:don'?t|dont|do not|not sure i) trust|untrusted|sketchy|shady|suspicious
+    (?:don'?t|dont|do not|not sure i) trust
+    (?:untrusted|sketchy|shady|suspicious|dodgy|fishy|obfuscated|unknown) (?:[\w.'-]+ ){0,2}?(?:code|scripts?|repos?|repository|binar(?:y|ies)|files?|exe|executables?|programs?|apps?|apk|packages?|installers?|links?|urls?|attachments?|tools?|extensions?|plugins?|zip|archives?|downloads?|dll|macros?|javascript|js|python|powershell|commands?|one[- ]liners?|payloads?|dependenc(?:y|ies)|source|senders?|emails?)
+    (?:looks?|seems?|is|feels?|kinda|kind of|a bit|very|pretty|super|bit|smells?) (?:\w+ )?(?:sketchy|shady|suspicious|dodgy|fishy)
     guvenli mi|zararli mi|virus(?:lu)? (?:mu|var mi)|kotu amacli|guvenilir mi|guvenmiyorum
-    es seguro|es (?:un )?virus|es malware|es (?:una )?estafa|es confiable|no confio|sospechoso
-    ist (?:das|es) sicher|schadsoftware|ist das malware|vertrauenswu(?:e)?rdig|verdachtig
-    e seguro|nao confio|suspeito
+    es seguro|es (?:un )?virus|es malware|es (?:una )?estafa|es confiable|no confio|parece sospechos[oa]
+    (?:archivo|script|programa|repo|repositorio|enlace|link|exe|adjunto|codigo|ejecutable|app) (?:\w+ )?sospechos[oa]
+    ist (?:das|es) sicher|schadsoftware|ist das malware|vertrauenswu(?:e)?rdig|(?:sieht|wirkt) (?:\w+ )?verdachtig
+    verdachtig\w* (?:datei|skript|script|programm|repo|link|exe|anhang|code|tool|app)
+    e seguro|nao confio|parece suspeit[oa]
+    (?:arquivo|script|programa|repo|link|exe|anexo|codigo|executavel|app) (?:\w+ )?suspeit[oa]
+    supheli (?:dosya|script|program|link|exe|ek|kod|uygulama)\w*
 `);
 var repoWord = family(String.raw`
     repo|repos|repository|repositorio|depo(?:su|yu|yi)?|repoyu|repoyi|reposu|binary|binaries|script|scripts
@@ -260,13 +304,18 @@ var explicit = family(String.raw`
     (?:isolated|separate|temporary|ephemeral|fresh|clean) (?:linux |cloud )?(?:box|vm|machine|sandbox|micro ?vm)
     spin up an? (?:\w+ )?(?:vm|box|sandbox|machine)|(?:rent|borrow) an? (?:cloud )?(?:gpu|server|box|vm|machine)
     cloud (?:gpu|sandbox)|remote (?:gpu|sandbox)|bugnet
-    kum ?havuzu\w*|sanal makine\w*|izole (?:bir )?ortam\w*|gecici (?:bir )?(?:sunucu|makine|ortam)\w*
-    uzak (?:bir )?sunucu\w*|bulut\w* (?:makine|sunucu|gpu)\w*
-    maquina virtual|entorno aislado|servidor remoto|en la nube|na nuvem|caja de arena
-    virtuelle\w* maschine|isoliert\w* umgebung|in der cloud|entfernte\w* (?:server|maschine)|wegwerf\w*
+    izole (?:bir )?ortam\w*|gecici (?:bir )?(?:sunucu|makine|ortam)\w*|bulut\w* gpu\w*
+    (?:sanal makine|kum ?havuzu|uzak (?:bir )?sunucu|bulut (?:sunucu|makine))\w*(?:da|de|ta|te|ya|ye|a|e)\b[^\n]{0,30}?\b(?:calistir|dene|kur|test et|yukle|derle)\w*
+    entorno aislado|maquina (?:virtual )?desechable|gpu en la nube|ambiente isolado|gpu na nuvem
+    (?:ejecut|corr|prueb|lanz|abr|instal|compil|arranc|rod|execut)\w* (?:[^ \n]+ ){0,8}?(?:en|dentro de|em|numa?|na) (?:una? |el |la |uma )?(?:sandbox|vm|maquina virtual|caja de arena|servidor remoto|entorno (?:aislado|temporal)|ambiente (?:isolado|temporario))
+    isoliert\w* umgebung|wegwerf\w*
+    (?:in|auf) (?:einer |einem |der |dem )?(?:sandbox|vm|virtuelle\w* maschine|entfernte\w* (?:server|maschine))\b[^\n]{0,30}?\b(?:ausfu(?:e)?hr|laufen|start|test|instal|probier)\w*
+    (?:fu(?:e)?hr|lass|start|teste|installier|probier)\w* [^\n]{0,40}?(?:in|auf) (?:einer |einem |der |dem )?(?:sandbox|vm|virtuelle\w* maschine)
 `);
 var notIsolation = family(String.raw`
     iframe|stripe|paypal|braintree|plaid|adyen|square|razorpay|mollie|klarna|checkout|payments?|merchant
+    odeme\w*|iyzico|paytr|sanal pos|pagos?|pasarela|pagamentos?|zahlung\w*
+    testcontainers|test ?containers?|per test|each test|for each test|test fixtures?|in ci
     test (?:cards?|card numbers?|mode|merchants?|accounts?|users?)|card numbers?|credit cards?
     in-app purchases?|iap|storekit|app store|testflight|google play|play console|ios build|android build
     salesforce|apex|sfdx|scratch orgs?|crm|hubspot|zoho|netsuite|shopify|ebay|amazon pay|twilio|docusign|coinbase
@@ -276,15 +325,19 @@ var notMine = family(String.raw`
     (?:don'?t|dont|do not|rather not|would rather not|wouldn'?t|won'?t|never) (?:want|wanna|need|like|trust)[^\n]{0,50}?(?:on|in|onto|near|to touch) (?:my|this) (?:own )?(?:machine|laptop|computer|mac|macbook|pc|system|box|disk|drive|ssd|host)
     (?:anywhere |somewhere |remotely )?near my (?:machine|laptop|computer|mac|macbook|pc|system|files)
     (?:keep|stay) (?:it |this |that )?(?:off|away from) my (?:machine|laptop|computer|mac|pc|system)
-    (?:instead of|not on|outside(?: of)?|away from|other than|that isn'?t|that is not|isn'?t|is not|but not on) (?:on )?my (?:own )?(?:machine|laptop|computer|mac|macbook|pc|system|box)
-    (?:run|test|try|execute|install|do|put|host|detonate)\w* (?:[^ \n]+ ){0,4}?(?:(?:somewhere|someplace) (?:else|safe|isolated)|elsewhere)
-    (?:run|test|try|execute|install|build|open|detonate|do|put)\w* (?:[^ \n]+ ){0,4}?(?:on|in|onto) (?:some |an? )?(?:other|another|different|separate|second|spare|someone else'?s) (?:computer|machine|box|pc|laptop|device|system|host)
+    (?:instead of|outside(?: of)?|away from|other than|that isn'?t|that is not) (?:on )?my (?:own )?(?:machine|laptop|computer|mac|macbook|pc|system|box)
+    (?:run|test|try|execute|install|do|put|build|open|detonate)(?:ning|ing)? (?:it|this|that|them|these|those|the|an?|my|our)\b[^\n]{0,50}?(?:not on|isn'?t|is not|never on) (?:on )?my (?:own )?(?:machine|laptop|computer|mac|macbook|pc|system|box)
+    (?:run|test|try|execute|install|do|put|host|detonate)(?:ning|ing)? (?:[^ \n]+ ){0,4}?(?:(?:somewhere|someplace) (?:else|safe|isolated)|elsewhere)
+    (?:run|test|try|execute|install|build|open|detonate|do|put)(?:ning|ing)? (?:[^ \n]+ ){0,4}?(?:on|in|onto) (?:some |an? )?(?:other|another|different|separate|second|spare|someone else'?s) (?:computer|machine|box|pc|laptop|system|host)
     (?:bilgisayarim|makinem|laptopum|sistemim)\w*[^\n]{0,40}?(?:kurmak istemiyorum|calistirmak istemiyorum|bulasmasin|bozul\w*|kirlen\w*|zarar\w*)
-    baska bir (?:makine|yer)\w*
+    baska bir (?:makine|yer|bilgisayar|sistem)\w* [^\n]{0,30}?\b(?:calistir|dene|kur|test et|yukle)\w*
     no quiero (?:instalar|ejecutar|correr|tener)\w*[^\n]{0,30}?en mi (?:pc|computadora|ordenador|maquina|portatil|laptop|mac|sistema)
-    en otro (?:lado|sitio|equipo)|fuera de mi (?:pc|maquina|ordenador)
-    nicht auf meine\w* (?:rechner|computer|laptop|pc|mac|system)|woanders
-    nao quero (?:instalar|rodar|executar)[^\n]{0,30}?(?:no meu|na minha)|em outro lugar|fora do meu (?:pc|computador)
+    (?:ejecut|corr|prueb|instal|lanz|hac|pon)\w* (?:[^ \n]+ ){0,4}?en otro (?:lado|sitio|equipo|ordenador|pc|lugar)
+    en otro (?:lado|sitio|equipo|ordenador) (?:[^ \n]+ ){0,2}?(?:ejecut|corr|prueb|instal)\w*|fuera de mi (?:pc|maquina|ordenador)
+    nicht auf meine\w* (?:rechner|computer|laptop|pc|mac|system)
+    (?:fu(?:e)?hr|lass|instal|test|probier|start)\w* (?:[^ \n]+ ){0,4}?woanders|woanders (?:[^ \n]+ ){0,3}?(?:ausfu(?:e)?hr|laufen|instal|test|probier|start)\w*
+    nao quero (?:instalar|rodar|executar)[^\n]{0,30}?(?:no meu|na minha)|fora do meu (?:pc|computador)
+    (?:rod|execut|instal|test)\w* (?:[^ \n]+ ){0,4}?em outr[oa] (?:lugar|computador|pc|maquina)
 `);
 var nvidiaOnly = family(String.raw`
     cuda(?:[- ]?\d+(?:\.\d+)?)?|nvidia(?: gpu| card| drivers?)?|cupy|numba\.cuda|flash[-_ ]?attn\w*|flash[- ]attention
@@ -293,6 +346,8 @@ var nvidiaOnly = family(String.raw`
 `);
 var nvidiaNeed = family(String.raw`
     (?:needs?|requires?|requiring|depends on|built for|only (?:runs|works) (?:on|with)|won'?t run without|must have)\b[^\n]{0,30}?\b(?:cuda|nvidia)
+    (?:precisa|requer|necesita|requiere|braucht|benotigt|gerektir\w*)\b[^\n]{0,30}?\b(?:cuda|nvidia)
+    (?:so|solo|nur|sadece|apenas) (?:funciona|roda|corre|funktioniert|lauft|calisir)\w*\b[^\n]{0,30}?\b(?:cuda|nvidia)
     (?:cuda|nvidia)[- ]only|cupy|numba\.cuda|flash[-_ ]?attn\w*|flash[- ]attention|xformers|bitsandbytes|triton|tensorrt
     vllm|exllamav2|auto[- ]gptq|mamba[- ]ssm|nvidia[- ]container[- ]toolkit
 `);
@@ -300,7 +355,7 @@ var rawDevice = family(String.raw`
     /dev/(?:sd[a-z]|nvme\d|disk\d|hd[a-z]|mmcblk\d)
 `);
 var remoteTarget = family(String.raw`
-    (?:on|in|to|onto|into) (?:the|our|my|a|an|this|that) (?:\w+ )?(?:server|vps|ec2|droplet|cluster|k8s|kubernetes|pod|runpod|colab|kaggle|lambda|homelab|nas|raspberry pi|ci|ci runner)
+    (?:on|in|to|onto|into) (?:the|our|my|a|an|this|that) (?:\w+ )?(?:server|servers|vps|ec2|droplet|cluster|k8s|kubernetes|pod|runpod|colab|kaggle|lambda|homelab|nas|raspberry pi|ci|ci runner|hosts?|instances?|bastion|fleet)
     (?:google )?colab|kaggle notebook|github actions|gitlab ci|dockerfile|devcontainer|codespace\w*|wsl2?
 `);
 var hardwareGap = family(String.raw`
@@ -316,9 +371,11 @@ var hardwareGap = family(String.raw`
 var linuxOnly = family(String.raw`
     (?:only|solo|nur|sadece|apenas|just) (?:\w+ ){0,3}?(?:on |en |auf |em )?linux|linux[- ]only|linux x86[_-]?64
     only (?:ships|supports|has|runs on|works on) (?:\w+ ){0,2}?linux|requires? linux|needs? linux
+    so (?:funciona|roda|rodam|funcionam|existe|compila)\w* (?:\w+ ){0,2}?(?:em |no )?linux
     ebpf|bpftrace|bcc tools|io_uring|systemd|systemctl|apt(?:-get)?|kvm|lxc|cgroups?|ip netns|nftables|iptables
     linux'?(?:ta|te|da|de)|linux binar\w*
 `);
+var linuxConfigAfter = /^[ -](?:(?:service|unit|timer|socket|sources?) )?(?:files?|units?|rules?|config\w*|configuration|polic(?:y|ies)|profiles?|chains?|manifests?|templates?|definitions?)(?![a-z])/;
 var x86Only = family(String.raw`
     x86(?:[_-]64)?|amd64|intel mkl|mkl|avx[- ]?512|avx2?|rosetta|intel[- ]only|only (?:\w+ ){0,2}?intel
 `);
@@ -330,17 +387,18 @@ var windowsText = family(String.raw`
     (?:i'?m|im|i am) on windows|windows (?:10|11)|on my (?:windows|win) (?:pc|laptop|machine)
 `);
 var driverText = family(String.raw`
-    (?:install|update|upgrade|set ?up|kur\w*|instal\w*)\w* (?:the )?(?:nvidia|cuda|gpu|graphics) (?:drivers?|toolkit)
+    (?:instal\w*|updat\w*|upgrad\w*|set ?up|kur\w*) (?:the )?(?:nvidia|cuda|gpu|graphics) (?:drivers?|toolkit)
     (?:(?:nvidia|cuda|gpu|graphics)[- ](?:card )?)+(?:drivers?|toolkit)|drivers? for (?:my |the |an? )?(?:nvidia|gpu|graphics)
     kernel modul\w*|dkms|out[- ]of[- ]tree (?:driver|module)|custom kernel|kernel patch\w*
 `);
 var destructive = family(String.raw`
-    rm -[a-z]*r[a-z]*f?[a-z]* (?:--no-preserve-root )?(?:/|~|\$home|/\*|/usr|/etc|/bin|/var|/system)(?=\s|$)
+    rm -[a-z]{0,6}r[a-z]{0,6} (?:--no-preserve-root )?(?:/|~|\$home|/\*|/usr|/etc|/bin|/var|/system)(?=\s|$)
     dd(?:[- ]based)? [^\n]{0,40}?(?:/dev/|disk|drive|ssd|speed test)
     mkfs\w*|wipefs|wipe (?:the |my )?(?:disk|drive|ssd|partition)|format (?:the |my )?(?:disk|drive|ssd|partition|c:)
-    fork ?bomb|(?:cause|trigger|force|induce|provoke)\w* (?:a |the )?kernel panic|oom killer|break (?:my|the) (?:system|machine|os|install)
+    fork ?bomb|(?:cause|trigger|force|induce|provoke|invoke)\w* (?:a |the )?(?:kernel panic|oom(?: killer)?)|break (?:my|the) (?:system|machine|os|install)
+    (?:delet|remov|wip|eras)\w* (?:\w+ ){0,3}?(?:every (?:file|folder|directory)|all (?:the )?(?:files|folders|directories|data)|everything)\b[^\n]{0,30}?(?:under|in|from|on|of) (?:/|~|\$home|(?:my|the) (?:whole |entire )?(?:home (?:dir\w*|folder)|filesystem|file system|system (?:drive|disk|partition)|hard (?:drive|disk)|boot (?:drive|disk|partition)))(?![\w/.~-])
     fill\w* (?:up )?(?:the |my |all )?(?:disk|drive|ssd)(?: space)? (?:until|till|on purpose|to (?:see|test|check|simulate))|simulate (?:a )?full disk|disk[- ]full (?:test|scenario|simulation)
-    chaos (?:test|engineering|monkey)|(?:disk|ssd)\w* (?:\w+ )?(?:sil|bicimlendir|formatla)\w*|sistemi bozabilir
+    (?:disk|ssd)\w* (?:\w+ )?(?:sil|bicimlendir|formatla)\w*|sistemi bozabilir
     borrar el disco|formate(?:ar|o) (?:el |mi )?(?:disco|ssd|unidad)|romper el sistema
     festplatte (?:lo(?:e)?schen|formatieren)|formatier\w* (?:\w+ )?festplatte|system kaputt
     apagar o disco|format(?:ar|o) o (?:disco|hd|ssd)
@@ -362,13 +420,18 @@ var heavyPhrase = family(String.raw`
 var heavyTask = family(String.raw`
     param(?:eter)? (?:sweep|search)|grid search|random search|hyper-?param\w* (?:search|sweep|tuning|optimi[sz]\w*)
     optuna|ray tune|backtest\w*|fuzz\w*|render\w*|monte carlo|benchmark\w*|batch (?:job|process\w*)
+    (?:pre-?)?train\w* (?:[\w-]+ ){0,4}?from scratch|pre-?training
+    (?:process|aggregat|crunch|analy[sz]|index|ingest|transform|dedup|reprocess)\w* (?:[\w.-]+ ){0,6}?(?:datasets?|parquet|csvs?|logs|corpus|tables?|records|rows|dumps?)
     transcod\w*|re-?encod\w*|(?:convert|encode|compress)\w* (?:\w+ ){0,5}?(?:to|into|as|with) (?:av1|hevc|h\.?265|x265|vp9|prores)
 `);
 var volume = /(?<![\w.])(\d+(?:\.\d+)?) ?(tb|terabytes?|gb|gigabytes?)(?![a-z])/g;
+var volumeOf = /^ (?:of )?(?:[\w.-]+ ){0,2}?(?:datasets?|data|parquet|csvs?|logs?|files|images|videos|corpus|dumps?|archives?|tables?|records|rows|footage|recordings|photos)(?![a-z])/;
 var perItem = /(?<![\w.])(\d+(?:[.,]\d+)?)(k)?\+? (?:[a-z-]+ ){0,2}?[a-z]+s?\b[^\n]{0,24}?\b(?:at |@ |~|about |around )*~?(\d+(?:\.\d+)?) ?(s|sec|secs|seconds?|m|mins?|minutes?|h|hrs?|hours?)(?: each| apiece| per | a piece)/g;
 var longBuild = family(String.raw`
-    (?:compile|build|compil\w*|derle\w*|kompilier\w*) (?:\w+ ){0,2}?(?:kernel|chromium|llvm|gcc|firefox|aosp|android|webkit|qt|tensorflow|pytorch)
+    (?:compile|build|compil\w*|derle\w*|kompilier\w*) (?:\w+ ){0,3}?(?:chromium|llvm|clang|firefox|aosp|android (?:source|os|platform|rom|tree|system image)|webkit|kernel(?![- ]?modul))
+    (?:compile|build|compil\w*|derle\w*|kompilier\w*) (?:\w+ ){0,2}?(?:kernel|gcc|qt ?\d?|tensorflow|pytorch|libreoffice|electron|node(?:js)?|python|rustc|swift) from source
 `);
+var fromScratch = /\b(?:from source|from scratch|the (?:entire|whole|full)|everything)\b/;
 var loadTest = family(String.raw`
     load[- ]?test\w*|stress[- ]?test\w*|soak test\w*|(?:\d+k?|thousands of) (?:rps|requests per second|concurrent (?:users|connections))
     yuk testi|prueba de carga|lasttest\w*|teste de carga
@@ -379,13 +442,14 @@ var heat = family(String.raw`
     fans? (?:spin|scream|go crazy|get loud)|drains? (?:my )?battery
     isiniyor|se calienta|wird hei(?:ss)?|lufter|esquenta
 `);
+var statedLength = /(?:takes?|taking|take|lasts?|runs? for) (?:about |around |roughly |like |~|over |more than |at least |up to )?$/;
 var hours = /(?<![\w.])(\d+(?:\.\d+)?) ?(?:h|hr|hrs|hours?|horas?|stunden?|std|saat\w*)(?![a-z])/g;
 var minutes = /(?<![\w.])(\d+) ?(?:min|mins|minutes?|minutos?|minuten?|dakika\w*)(?![a-z])/g;
 var repeats = /(?<![\w.])(\d+) (?:times|veces|vezes|mal|kez|defa|runs|iterations|builds)(?![a-z])/g;
 var batch = /(?<![\w.])(\d+(?:[.,]\d+)?)(k)?\+? ?(?:[a-z-]+ ){0,2}?(?:images?|pictures?|photos?|files?|videos?|clips?|recordings?|episodes?|tracks?|songs?|documents?|pdfs?|combos?|combinations?|samples?|shots?|avatars?|lectures?|podcasts?|runs?|configs?|configurations?|hours of (?:audio|video|footage))(?![a-z])/g;
 var wholeBatch = family(String.raw`
     (?:all|every|whole) (?:of )?(?:my|the|our) (?:\w+ )?(?:backlog|archive|library|recordings|footage|dataset|photos|videos|collection)
-    (?:my|the|our) (?:whole|entire|full) (?:[\w.-]+ ){0,2}?(?:backlog|archive|library|recordings|footage|dataset|photos|videos|collection|catalog)
+    (?:my|the|our) (?:whole|entire|full) (?:[\w.-]+ ){0,2}?(?:backlog|archive|library|recordings|footage|dataset|photos|videos|collection|catalog|dump|corpus)
 `);
 var epochs = /(?<![\w.])(\d+) epochs?(?![a-z])/g;
 var concept = family(String.raw`
@@ -434,7 +498,7 @@ var offline = family(String.raw`
     sin (?:internet|conexion)|en el avion|ohne internet|im flugzeug|sem internet|no aviao
 `);
 var own = family(String.raw`
-    (?:my|our) (?:own )?(?:app|apps|application|project|repo|repository|code|codebase|service|api(?! (?:keys?|tokens?|secrets?|credentials))|server|site|website|portfolio|script|component|module|tests|test suite|library|lib|package|cli|bot|extension|plugin|mod|dotfiles|backend|frontend|dashboard|blog|startup|saas|game|fork|branch|pr|workflow|pipeline|infra|cluster|monorepo)(?! (?:posts?|articles?|entries|photos?|videos?|recordings?|episodes?|notes|content|assets))
+    (?:my|our) (?:own )?(?:app|apps|application|project|repo|repository|code|codebase|service|api(?! (?:keys?|tokens?|secrets?|credentials))|server|site|website|portfolio|script|component|module|tests|test suite|library|lib|package|cli|bot|extension|plugin|mod|dotfiles|backend|frontend|dashboard|blog|startup|saas|game|fork|branch|pr|workflow|pipeline|infra|cluster|monorepo|chatbot|agent)(?! (?:posts?|articles?|entries|photos?|videos?|recordings?|episodes?|notes|content|assets))
     (?:src|lib|app|routes|components|pages|tests?|spec|internal|cmd|pkg)/[^ \n]+\.(?:tsx?|jsx?|py|go|rs|rb|java|kt|swift|cs|php|vue|svelte)
     [\w-]+\.(?:tsx|jsx|vue|svelte)
     (?:benim|kendi) (?:projem|uygulamam|kodum|sitem|repom|botum)\w*|projemdeki|projemde|uygulamamda|kodumda|repomda
@@ -449,6 +513,7 @@ var docs = family(String.raw`
 `);
 var tests = family(String.raw`
     (?:write|add|generate|create) (?:\w+ ){0,2}?(?:unit |integration |e2e )?tests?
+    (?:write|add|generate|create|draft) (?:me )?(?:an? |the |some )?(?:[\w-]+ ){0,2}?(?:load|stress|soak|perf|performance|benchmark|k6|locust|jmeter|artillery|gatling|e2e|playwright|cypress)(?: test)? ?(?:scripts?|tests?|suites?|scenarios?|plans?)
     unit-?tests? (?:\w+ ){0,3}?schreib\w*|tests? unitarios|testes? unitarios|test(?:leri)? yaz\w*
 `);
 var edit = family(String.raw`
@@ -469,9 +534,9 @@ var abuse = family(String.raw`
     account (?:creator|generator)|hesap (?:olusturucu|acici)|credential stuffing|combo ?list
     brute ?forc\w* (?:\w+ ){0,2}?(?:instagram|facebook|gmail|ssh|rdp|login|logins|accounts?)|kaba kuvvet|fuerza bruta
 `);
-var privateNet = String.raw`(?:192\.168|10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01]))\.[\d./]+`;
+var privateNet = String.raw`(?:192\.168|10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01]))\.[\d./]{1,15}`;
 var lanScan = new RegExp(
-  String.raw`(?<![a-z])(?:scan|nmap|port ?scan|sweep|enumerate|map|discover|tara|escane|scann)\w*[^\n]{0,60}?(?:${privateNet}|(?:my|our|the) (?:home |local |lab |office )?(?:network|lan|subnet|wifi)|home ?lab)|${privateNet}[^\n]{0,40}?(?:open ports|services?|scan)`,
+  String.raw`(?<![a-z])(?:scan|nmap|port ?scan|sweep|enumerate|map|discover|tara|escane|scann)\w{0,12}[^\n]{0,60}?(?:${privateNet}|(?:my|our|the) (?:home |local |lab |office )?(?:network|lan|subnet|wifi)|home ?lab)|(?<![\w.])${privateNet}[^\n]{0,40}?(?:open ports|services?|scan)`,
   "g"
 );
 var privateTarget = new RegExp(
@@ -655,31 +720,36 @@ var popular = new Set([...words(pypi), ...words(npm)].map(canonical));
 var popularList = [...popular];
 var brandSet = /* @__PURE__ */ new Set([...words(brands), ...popularList]);
 var leet = { "0": "o", "1": "l", "3": "e", "4": "a", "5": "s", "7": "t" };
-function distance(a, b, max) {
-  if (Math.abs(a.length - b.length) > max) return max + 1;
-  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
-  let prevPrev = prev;
-  for (let i = 1; i <= a.length; i++) {
-    const cur = [i];
-    let rowMin = i;
-    for (let j = 1; j <= b.length; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      let v = Math.min(
-        prev[j] + 1,
-        cur[j - 1] + 1,
-        prev[j - 1] + cost
-      );
-      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
-        v = Math.min(v, prevPrev[j - 2] + 1);
-      }
-      cur.push(v);
-      rowMin = Math.min(rowMin, v);
+var keyRows = ["qwertyuiop", "asdfghjkl", "zxcvbnm"];
+function adjacent(a, b) {
+  const at = (c) => keyRows.findIndex((r) => r.includes(c));
+  const [ra, rb] = [at(a), at(b)];
+  if (ra === -1 || rb === -1 || Math.abs(ra - rb) > 1) return false;
+  const [ca, cb] = [keyRows[ra].indexOf(a), keyRows[rb].indexOf(b)];
+  return ra === rb ? Math.abs(ca - cb) === 1 : ca - cb >= -1 && ca - cb <= 1;
+}
+function leftmost(s, i) {
+  let at = i;
+  while (at > 0 && s[at - 1] === s[i]) at--;
+  return at;
+}
+function slip(name, real) {
+  if (name.length === real.length) {
+    let i2 = 0;
+    while (i2 < name.length && name[i2] === real[i2]) i2++;
+    if (i2 >= name.length - 1) return false;
+    if (name.slice(i2 + 1) === real.slice(i2 + 1)) {
+      return i2 > 0 && adjacent(name[i2], real[i2]);
     }
-    if (rowMin > max) return max + 1;
-    prevPrev = prev;
-    prev = cur;
+    return name[i2] === real[i2 + 1] && name[i2 + 1] === real[i2] && name.slice(i2 + 2) === real.slice(i2 + 2);
   }
-  return prev[b.length];
+  const [long, short] = name.length > real.length ? [name, real] : [real, name];
+  if (long.length !== short.length + 1) return false;
+  let i = 0;
+  while (i < short.length && long[i] === short[i]) i++;
+  if (long.slice(i + 1) !== short.slice(i)) return false;
+  const at = leftmost(long, i);
+  return at > 0 && at < long.length - 1;
 }
 function typosquatOf(name) {
   const n = canonical(name);
@@ -691,8 +761,8 @@ function typosquatOf(name) {
     }
   }
   for (const p of popularList) {
-    if (p.length < 5 || p.startsWith("@")) continue;
-    if (distance(n, p, 1) <= 1) return p;
+    if (p.length < 5 || p.startsWith("@") || Math.abs(p.length - n.length) > 1) continue;
+    if (slip(n, p)) return p;
   }
   return null;
 }
@@ -713,7 +783,30 @@ var famousOwners = new Set(
     elastic grafana prometheus home-assistant supabase prisma tailwindlabs shadcn-ui langchain-ai
     run-llama ultralytics stability-ai black-forest-labs wan-video tencent deepseek-ai qwenlm
     mistralai vllm-project sgl-project xai-org lmstudio-ai invoke-ai unslothai expressjs webpack
-    vitejs babel eslint prettier`.split(/\s+/).filter(Boolean)
+    vitejs babel eslint prettier withastro remix-run solidjs preactjs nuxt storybookjs jestjs
+    cypress-io puppeteer axios lodash fastify koajs socketio npm yarnpkg pnpm
+    biomejs swc-project evanw rollup parcel-bundler gatsbyjs strapi tanstack trpc pmndrs reduxjs
+    date-fns sindresorhus typicode cloudflare netlify tauri-apps ionic-team expo
+    react-native-community software-mansion mui ant-design chakra-ui apollographql graphql encode
+    pydantic python-poetry pypa pytest-dev pre-commit ansible scrapy celery explosion nltk
+    streamlit gradio-app plotly pyca boto conda conda-forge mamba-org burntsushi sharkdp tokio-rs
+    serde-rs clap-rs rust-lang-nursery alacritty wez helix-editor zellij-org nushell starship
+    eza-community ajeetdsouza dandavison casey bevyengine rustdesk zed-industries pola-rs golangci
+    spf13 gin-gonic gofiber labstack go-gorm junegunn jesseduffield charmbracelet cli gohugoio
+    caddyserver traefik containerd etcd-io coredns cilium istio helm argoproj fluxcd rancher
+    k3s-io kubernetes-sigs minio cockroachdb pingcap influxdata gravitational syncthing restic
+    rclone go-gitea mattermost air-verse cosmtrek android googlesamples square
+    kotlin spring-projects eclipse netflix alibaba reactivex swiftlang dart-lang julialang ziglang
+    elixir-lang phoenixframework rails ruby rubygems laravel symfony php composer wordpress
+    godotengine raysan5 ocornut libsdl-org glfw opencv keras-team jax-ml karpathy lm-sys nomic-ai
+    mlc-ai ml-explore abetlen lightning-ai wandb mlflow ray-project dmlc github actions
+    microsoftdocs azure azure-samples aws-samples pulumi nixos nix-community tmux zsh-users tpope
+    folke nvim-lua nvim-treesitter lazyvim kovidgoyal ghostty-org mitchellh jqlang stedolan
+    containers portainer nginx sqlite duckdb tursodatabase meilisearch typesense qdrant
+    milvus-io chroma-core weaviate opentofu terraform-linters aquasecurity sigstore
+    open-telemetry jaegertracing getsentry posthog calcom n8n-io appwrite pocketbase hasura
+    nocodb directus excalidraw tldraw mermaid-js jgraph obsproject videolan audacity blender
+    signalapp telegramdesktop bitwarden keepassxreboot`.split(/\s+/).filter(Boolean)
 );
 function repoOf(url) {
   const u = url.replace(/^git@([^:]+):/, "$1/").replace(/^[a-z+]+:\/\//i, "").replace(/^www\./, "").replace(/\.git$/, "").replace(/\/+$/, "");
@@ -762,6 +855,8 @@ function heredocEnd(cmd, from, delim) {
 function split(cmd) {
   const out = [];
   let words2 = [];
+  let lives = [];
+  let live = [];
   let redirects = [];
   let word = "";
   let inWord = false;
@@ -771,29 +866,55 @@ function split(cmd) {
   let target = null;
   let pipedFrom = false;
   let heredoc = null;
+  let heredocQuoted = false;
   let heredocOwner = -1;
   let stdin = null;
+  let stdinLive = [];
   const endWord = () => {
     if (inWord) {
       if (target === "out") redirects.push(word);
-      else if (target === "here") stdin = word;
-      else if (target === null) words2.push(word);
+      else if (target === "here") {
+        stdin = word;
+        stdinLive = live;
+      } else if (target === null) {
+        words2.push(word);
+        lives.push(live);
+      }
       target = null;
     }
     word = "";
+    live = [];
     inWord = false;
   };
   const endSeg = (pipe) => {
     endWord();
     if (words2.length > 0 || redirects.length > 0) {
-      out.push({ words: words2, redirects, pipedFrom, pipesTo: pipe, stdin });
+      out.push({
+        words: words2,
+        live: lives,
+        redirects,
+        pipedFrom,
+        pipesTo: pipe,
+        stdin,
+        stdinLive,
+        stdinExpands: false
+      });
       pipedFrom = pipe;
     } else if (!pipe) {
       pipedFrom = false;
     }
     words2 = [];
+    lives = [];
     redirects = [];
     stdin = null;
+    stdinLive = [];
+  };
+  const backtick = (i) => {
+    const close = cmd.indexOf("`", i + 1);
+    const end = close === -1 ? cmd.length : close;
+    live.push(word.length);
+    word += `$(${cmd.slice(i + 1, end)})`;
+    return end;
   };
   for (let i = 0; i < cmd.length; i++) {
     const c = cmd[i];
@@ -808,7 +929,11 @@ function split(cmd) {
       else if (c === "\\" && '"\\$`'.includes(next)) {
         word += next;
         i++;
-      } else word += c;
+      } else if (c === "`") i = backtick(i);
+      else {
+        if (c === "$" && next === "(") live.push(word.length);
+        word += c;
+      }
       continue;
     }
     if (depth > 0) {
@@ -838,6 +963,7 @@ function split(cmd) {
       continue;
     }
     if ((c === "$" || c === "<" || c === ">") && next === "(") {
+      live.push(word.length);
       word += `${c}(`;
       inWord = true;
       depth = 1;
@@ -845,11 +971,8 @@ function split(cmd) {
       continue;
     }
     if (c === "`") {
-      const close = cmd.indexOf("`", i + 1);
-      const end = close === -1 ? cmd.length : close;
-      word += `$(${cmd.slice(i + 1, end)})`;
+      i = backtick(i);
       inWord = true;
-      i = end;
       continue;
     }
     if (c === " " || c === "	" || c === "\r") {
@@ -861,7 +984,10 @@ function split(cmd) {
       if (heredoc !== null) {
         const { close, end } = heredocEnd(cmd, i + 1, heredoc);
         const owner = out[heredocOwner];
-        if (owner) owner.stdin = cmd.slice(i + 1, close);
+        if (owner) {
+          owner.stdin = cmd.slice(i + 1, close);
+          owner.stdinExpands = !heredocQuoted;
+        }
         i = end - 1;
         heredoc = null;
       }
@@ -915,9 +1041,10 @@ function split(cmd) {
       if (c === "<" && next === "<") {
         let j = i + 2;
         if (cmd[j] === "-") j++;
-        const m = /^[ \t]*(['"]?)([\w.-]{1,64})\1/.exec(cmd.slice(j, j + 80));
+        const m = /^[ \t]*(\\?)(['"]?)([\w.-]{1,64})\2/.exec(cmd.slice(j, j + 80));
         if (m) {
-          heredoc = m[2];
+          heredoc = m[3];
+          heredocQuoted = m[1] !== "" || m[2] !== "";
           heredocOwner = out.length;
           i = j + m[0].length - 1;
         } else i = j - 1;
@@ -976,24 +1103,53 @@ function strip(words2) {
       }
     } else break;
   }
-  return { rest: words2.slice(i), sudo };
+  return { rest: words2.slice(i), sudo, at: i };
 }
-function nested(argv, head) {
-  const inner = [];
-  for (const w of argv) {
-    let at = w.search(/[$<>]\(/);
-    while (at !== -1) {
-      let d = 0;
-      let end = at + 1;
-      for (; end < w.length; end++) {
-        if (w[end] === "(") d++;
-        else if (w[end] === ")" && --d === 0) break;
-      }
-      inner.push({ text: w.slice(at + 2, end), via: "subst" });
-      const rest = w.slice(end + 1).search(/[$<>]\(/);
-      at = rest === -1 ? -1 : end + 1 + rest;
+function closeOf(w, at) {
+  let d = 0;
+  let end = at + 1;
+  for (; end < w.length; end++) {
+    if (w[end] === "(") d++;
+    else if (w[end] === ")" && --d === 0) break;
+  }
+  return end;
+}
+function substitutions(w, starts) {
+  const out = [];
+  let after = 0;
+  for (const at of starts) {
+    if (at < after || !/[$<>]/.test(w[at] ?? "") || w[at + 1] !== "(") continue;
+    const end = closeOf(w, at);
+    out.push({ text: w.slice(at + 2, end), via: "subst", opener: w.slice(at, at + 2) });
+    after = end + 1;
+  }
+  return out;
+}
+function expansions(text) {
+  const out = [];
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === "\\") i++;
+    else if (c === "$" && text[i + 1] === "(") {
+      const end = closeOf(text, i);
+      out.push({ text: text.slice(i + 2, end), via: "subst", opener: "$(" });
+      i = end;
+    } else if (c === "`") {
+      const close = text.indexOf("`", i + 1);
+      if (close === -1) break;
+      out.push({ text: text.slice(i + 1, close), via: "subst", opener: "$(" });
+      i = close;
     }
   }
+  return out;
+}
+function nested(argv, live, head) {
+  const inner = [];
+  argv.forEach((w, k) => {
+    const found = substitutions(w, live[k] ?? []);
+    if (k === 0 && found[0] && live[k]?.[0] === 0) found[0].asCommand = true;
+    inner.push(...found);
+  });
   const lowered = argv.map((a) => a.toLowerCase());
   const runsString = shellNames.has(head) || head === "powershell" || head === "pwsh" || head === "cmd" || head === "eval";
   if (runsString) {
@@ -1002,18 +1158,19 @@ function nested(argv, head) {
     );
     const target = head === "eval" ? 1 : flag + 1;
     const text = argv[target];
-    if (flag !== -1 && text !== void 0) inner.push({ text, via: "string" });
+    if (flag !== -1 && text !== void 0) inner.push({ text, via: "string", opener: null });
   }
   return inner;
 }
-function parse(cmd, depth = 0, parent = null, via = null) {
+function parse(cmd, depth = 0, parent = null, via = null, opener = null) {
   const segs = [];
   const raws = split(cmd).map((raw) => {
-    const { rest, sudo } = strip(raw.words);
+    const { rest, sudo, at } = strip(raw.words);
     const argv = rest.length > 0 ? rest : raw.words;
-    return { raw, argv, sudo, head: basename(argv[0] ?? "") };
+    const live = rest.length > 0 ? raw.live.slice(at) : raw.live;
+    return { raw, argv, live, sudo, head: basename(argv[0] ?? "") };
   });
-  raws.forEach(({ raw, argv, sudo, head }, i) => {
+  raws.forEach(({ raw, argv, live, sudo, head }, i) => {
     segs.push({
       argv,
       lower: argv.map((a) => a.toLowerCase()),
@@ -1024,18 +1181,27 @@ function parse(cmd, depth = 0, parent = null, via = null) {
       pipesTo: raw.pipesTo,
       parent,
       via,
+      opener,
       stdin: raw.stdin
     });
     if (depth >= maxDepth) return;
-    const inner = nested(argv, head);
+    const inner = nested(argv, live, head);
+    if (raw.stdin !== null && raw.stdinLive.length > 0)
+      inner.push(...substitutions(raw.stdin, raw.stdinLive));
+    else if (raw.stdin !== null && raw.stdinExpands && !shellNames.has(head))
+      inner.push(...expansions(raw.stdin));
     if (raw.stdin !== null && shellNames.has(head))
-      inner.push({ text: raw.stdin, via: "string" });
+      inner.push({ text: raw.stdin, via: "string", opener: null });
     const sink = raw.pipesTo ? raws[i + 1]?.head : void 0;
     if (sink && shellNames.has(sink) && /^(?:echo|printf|cat)$/.test(head)) {
       const text = head === "cat" ? raw.stdin : argv.slice(1).join(" ");
       if (text) segs.push(...parse(text, depth + 1, sink, "string"));
     }
-    for (const n of inner) segs.push(...parse(n.text, depth + 1, head, n.via));
+    const runner = via === "string" && parent !== null ? parent : "eval";
+    for (const n of inner) {
+      const owner = n.asCommand ? runner : head;
+      segs.push(...parse(n.text, depth + 1, owner, n.via, n.opener));
+    }
   });
   return segs;
 }
@@ -1242,6 +1408,9 @@ var mainstream = [
   "deno.land/install.sh",
   "deno.land/install.ps1",
   "deno.land/x/install/",
+  "deno.land/std/",
+  "deno.land/std@",
+  "jsr.io/@std/",
   "astral.sh/uv",
   "astral.sh/ruff",
   "raw.githubusercontent.com/nvm-sh/nvm/",
@@ -1320,11 +1489,22 @@ var mainstreamHosts = [
   "packages.microsoft.com",
   "aka.ms"
 ];
+function resolved(path) {
+  const cut = path.search(/[?#]/);
+  const parts = (cut === -1 ? path : path.slice(0, cut)).replace(/%2e/gi, ".").split("/");
+  const out = [];
+  parts.slice(1).forEach((part, k) => {
+    if (part === "..") out.pop();
+    else if (part !== ".") out.push(part);
+    if ((part === ".." || part === ".") && k === parts.length - 2) out.push("");
+  });
+  return `/${out.join("/")}`;
+}
 function isMainstream(url) {
   const hp = hostPath(url);
   const cut = hp.search(/[/?#]/);
   const host = (cut === -1 ? hp : hp.slice(0, cut)).replace(/:\d+$/, "");
-  const path = cut === -1 ? "/" : hp.slice(cut);
+  const path = cut === -1 ? "/" : resolved(hp.slice(cut));
   return mainstream.some((m) => {
     const slash = m.indexOf("/");
     if (slash === -1) return host === m;
@@ -1334,8 +1514,13 @@ function isMainstream(url) {
 function urlArg(seg) {
   return seg.argv.slice(1).find(looksLikeUrl) ?? null;
 }
+function fetchedUrl(seg) {
+  const urls = seg.argv.slice(1).filter(looksLikeUrl);
+  return urls.find((u) => !isMainstream(u)) ?? urls[0] ?? null;
+}
 function add(st, h) {
-  st.hits.push(h);
+  const same = (x) => x.id === h.id && x.evidence === h.evidence && x.subject === h.subject;
+  if (!st.hits.some(same)) st.hits.push(h);
 }
 function evidence(seg, words2 = 4) {
   return seg.argv.slice(0, words2).join(" ");
@@ -1357,11 +1542,11 @@ function remoteExec(segs, i, st) {
     if (!segs[j].pipesTo) break;
   }
   if (fetchers.has(seg.head) && sink) {
-    url = urlArg(seg);
+    url = fetchedUrl(seg);
     how = `${seg.head} | ${sink.head}`;
   } else if (fetchers.has(seg.head) && seg.via === "subst" && seg.parent !== null && interpreters.has(seg.parent)) {
-    url = urlArg(seg);
-    how = `${seg.parent} $(${seg.head})`;
+    url = fetchedUrl(seg);
+    how = `${seg.parent} ${seg.opener ?? "$("}${seg.head})`;
   } else if (seg.head === "iex" || seg.head === "invoke-expression") {
     const m = /(https?:\/\/[^\s'")]+)/i.exec(seg.argv.join(" "));
     if (m && /downloadstring|iwr|irm|invoke-web|invoke-rest|webclient/i.test(seg.argv.join(" "))) {
@@ -1411,31 +1596,31 @@ function decodedExec(segs, i, st) {
   }
 }
 var scriptHosts = /^(?:python[\d.]*|py|node|deno|bun|perl|ruby|php)$/;
+var codeExec = /\b(?:exec|eval|execfile|runpy\.run_\w+|new function|vm\.run\w*|instance_eval|class_eval)\b(?!\s*\(\s*['"`])/;
+var processRun = /\b(?:system|popen|subprocess|spawn\w*|execsync|exec|child_process|shell_exec|passthru)\b/;
+var fetchCall = /\b(?:urlopen|urlretrieve|requests|httpx|urllib|fetch|https?\.get|axios|curl|wget|net::http|open-uri|lwp|file_get_contents)\b/;
+var writesFile = /urlretrieve|\.write(?:_bytes)?\(|writefile\w*|createwritestream|copyfileobj|chmod|file_put_contents/;
 function inlineCode(seg, st) {
   if (!scriptHosts.test(seg.head)) return;
   const flag = seg.lower.findIndex((a, j) => j > 0 && /^-(?:c|e|-eval|r|p)$/.test(a));
   const code = (flag !== -1 ? seg.argv[flag + 1] : seg.stdin)?.toLowerCase();
   if (!code) return;
-  const runs = /\b(?:exec|eval|system|popen|subprocess|spawn|execsync|child_process|runpy|new function)\b/.test(
-    code
-  );
-  if (!runs) return;
   const url = /https?:\/\/[^\s'"()]+/.exec(code)?.[0];
-  const fetches = /\b(?:urlopen|urlretrieve|requests|httpx|urllib|fetch|https?\.get|axios|curl|wget|net::http|open-uri|lwp|file_get_contents)\b/.test(
-    code
-  );
-  if (url && fetches && !isMainstream(url)) {
+  const remote = url !== void 0 && fetchCall.test(code) && !isMainstream(url);
+  const piped = /\b(?:curl|wget)\b[^'"\n]{0,300}\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b/.test(code);
+  const runsDownload = codeExec.test(code) || processRun.test(code) && (piped || writesFile.test(code));
+  if (remote && runsDownload) {
     add(
       st,
       hit(
         "inline_remote_exec",
         "untrusted_code",
-        6,
+        codeExec.test(code) || piped ? 6 : 5,
         `${seg.head} inline code`,
         hostPath(url)
       )
     );
-  } else if (/b64decode|base64|atob|frombase64string|fromcharcode|codecs\.decode/.test(code)) {
+  } else if ((codeExec.test(code) || processRun.test(code)) && /b64decode|base64|atob|frombase64string|fromcharcode|codecs\.decode/.test(code)) {
     add(
       st,
       hit(
@@ -1464,25 +1649,52 @@ function policyBypass(seg, st) {
   const w = script === void 0 ? 2 : risky ? 4 : 3;
   add(st, hit("policy_bypass", "untrusted_code", w, "-ExecutionPolicy Bypass", script));
 }
+var pathKey = (p) => p.replace(/\\/g, "/").replace(/^\.\//, "");
+function ranFile(seg) {
+  if (!interpreters.has(seg.head) && !scriptHosts.test(seg.head)) return seg.argv[0];
+  return seg.argv.slice(1).find((a) => !a.startsWith("-"));
+}
+function withWritten(segs) {
+  const written = /* @__PURE__ */ new Map();
+  const out = [];
+  for (const seg of segs) {
+    const tee = seg.head === "tee" ? seg.argv.slice(1).find((a) => !a.startsWith("-")) : null;
+    const target = seg.redirects[0] ?? tee;
+    const text = /^(?:cat|tee)$/.test(seg.head) ? seg.stdin : /^(?:echo|printf)$/.test(seg.head) ? seg.argv.slice(1).join(" ") : null;
+    if (target && text) written.set(pathKey(target), text);
+    const run = ranFile(seg);
+    const body = run && !target ? written.get(pathKey(run)) : void 0;
+    if (body === void 0) {
+      out.push(seg);
+    } else if (scriptHosts.test(seg.head)) {
+      out.push({ ...seg, stdin: body });
+    } else {
+      out.push(seg, ...parse(body, 1, seg.head, "string"));
+    }
+  }
+  return out;
+}
+function outputAt(seg) {
+  if (seg.head === "wget")
+    return seg.argv.findIndex((a) => /^(?:-[a-zA-Z]*O|--output-document)$/.test(a));
+  return seg.argv.findIndex(
+    (a) => /^(?:-[a-zA-Z]*o|--output|-outfile)$/i.test(a) && !/O$/.test(a)
+  );
+}
 function downloadThenRun(seg, st) {
-  const file = (p) => p.replace(/\\/g, "/").replace(/^\.\//, "");
   if (fetchers.has(seg.head)) {
     const url = urlArg(seg);
     const named2 = (url ?? "").split(/[?#]/)[0]?.split("/").pop() ?? "";
-    const flagAt = seg.lower.findIndex(
-      (a) => /^(?:-o|--output|--output-document|-outfile)$/.test(a)
-    );
-    const remoteName = seg.head === "wget" ? flagAt === -1 : seg.argv.includes("-O");
-    const out = flagAt !== -1 && seg.argv[flagAt] !== "-O" ? seg.argv[flagAt + 1] : seg.redirects[0];
-    if (out && !out.startsWith("-")) st.downloads.add(file(out));
-    else if (seg.head === "wget" && seg.argv[flagAt] === "-O" && seg.argv[flagAt + 1]) {
-      st.downloads.add(file(seg.argv[flagAt + 1]));
-    } else if (remoteName && named2) st.downloads.add(named2);
+    const at = outputAt(seg);
+    const remoteName = seg.head === "wget" ? at === -1 : seg.argv.some((a) => /^-[a-zA-Z]*O[a-zA-Z]*$|^--remote-name(?:-all)?$/.test(a));
+    const out = at !== -1 ? seg.argv[at + 1] : seg.redirects[0];
+    if (out && !out.startsWith("-")) st.downloads.add(pathKey(out));
+    else if (remoteName && named2) st.downloads.add(named2);
     return;
   }
   if (st.downloads.size === 0) return;
-  const runs = interpreters.has(seg.head) ? seg.argv[1] : seg.argv[0];
-  if (runs && st.downloads.has(file(runs))) {
+  const runs = ranFile(seg);
+  if (runs && st.downloads.has(pathKey(runs))) {
     add(st, hit("download_then_run", "untrusted_code", 5, evidence(seg), runs));
   }
 }
@@ -1843,7 +2055,15 @@ function models(seg, st) {
 }
 var modelFlag = /^--?(?:model|model[-_]name|model[-_]id|model[-_]path|model[-_]name[-_]or[-_]path|pretrained[-_]model[-_]name[-_]or[-_]path|base[-_]model|repo[-_]id|checkpoint)$/;
 var providerPrefix = /^(?:openai|anthropic|gemini|azure|azure_ai|bedrock|vertex_ai|groq|together_ai|openrouter|cohere|replicate|fireworks_ai|perplexity|xai|mistral|deepseek|ollama|ollama_chat|huggingface)\//;
+var hostedProvider = /^(?:openai|anthropic|gemini|google|azure|bedrock|vertex\w*|groq|together\w*|openrouter|cohere|replicate|fireworks\w*|perplexity|xai|mistral|deepseek|deepinfra|nebius|novita|sambanova|cerebras|hf[-_]inference|huggingface[-_]inference|https?:\/\/(?!localhost|127\.|0\.0\.0\.0)\S+)$/;
 function hubModelArg(seg) {
+  const hosted2 = seg.lower.some((a, j) => {
+    const eq = /^--?(?:provider|backend|api[-_]?base|base[-_]?url|api[-_]?url|endpoint)(?:=(.+))?$/.exec(
+      a
+    );
+    return eq !== null && hostedProvider.test(eq[1] ?? seg.lower[j + 1] ?? "");
+  });
+  if (hosted2) return null;
   for (let j = 1; j < seg.argv.length; j++) {
     const a = seg.lower[j];
     const eq = /^(--?[\w-]+)=(.+)$/.exec(a);
@@ -2132,7 +2352,19 @@ function load(seg, st) {
   const h = seg.head;
   const l = seg.lower;
   if (["stress", "stress-ng", "memtester", "s-tui", "y-cruncher", "prime95", "mprime"].includes(h)) {
-    add(st, hit("stress_tool", "heavy_compute", 4, evidence(seg, 3), h));
+    const at = l.findIndex((a) => /^(?:-t|--timeout)(?:=|$)/.test(a));
+    const limit = at === -1 ? "" : l[at]?.split("=")[1] ?? l[at + 1] ?? "";
+    const secs2 = duration(limit);
+    add(
+      st,
+      hit(
+        "stress_tool",
+        "heavy_compute",
+        secs2 > 0 && secs2 <= 120 ? 2 : 4,
+        evidence(seg, 3),
+        h
+      )
+    );
     return;
   }
   if (h === "sysbench") {
@@ -2187,6 +2419,8 @@ function longJobs(seg, segs, st) {
   const joined = l.join(" ");
   if (h === "bazel" && l[1] === "build" && /\/\/\.\.\./.test(joined)) {
     add(st, hit("long_build", "heavy_compute", 3, "bazel build //..."));
+  } else if (h === "autoninja") {
+    add(st, hit("long_build", "heavy_compute", 4, evidence(seg, 3), "autoninja"));
   } else if (h === "docker" && l[1] === "buildx" && /--platform[= ]\S+,\S+/.test(joined)) {
     add(st, hit("long_build", "heavy_compute", 2, "docker buildx multi-platform"));
   } else if (h === "ffmpeg" && /libx265|libaom|libsvtav1|-preset (?:slow|slower|veryslow)/.test(joined)) {
@@ -2214,8 +2448,19 @@ function longJobs(seg, segs, st) {
     }
   }
 }
-var lureName = /(?<![a-z])(?:airdrop|drainer|aimbot|wallhack|cheat|cheats|injector|crack|cracked|keygen|stealer|grabber|sniper|mev|activator|spoofer|nitro gen|token grab\w*|seed finder|wallet recover\w*|unlocker)(?![a-z])/;
-var pocName = /(?<![a-z])(?:poc|exploit|exploits|sploit|cve \d{4} \d+|lpe|privesc|rce|0day|pwn|rootkit)(?![a-z])/;
+var lureName = /(?<![a-z])(?:drainer|aimbot|wallhack|cracked|keygen|stealer|activator|spoofer|nitro gen|token grab\w*|seed finder|wallet recover\w*)(?![a-z])/;
+var pocName = /(?<![a-z])(?:exploit|exploits|sploit|cve \d{4} \d+|lpe|privesc|rce|0day|pwn|rootkit)(?![a-z])/;
+var lureWeak = /^(?:airdrop|cheat|cheats|injector|crack|grabber|sniper|mev|unlocker)$/;
+var pocWeak2 = /^(?:poc|pocs)$/;
+var lureCompanion = /^(?:roblox|valorant|fortnite|cs2|csgo|apex|warzone|gta|pubg|tarkov|overwatch|r6|dota|genshin|minecraft|rust|cod|league|lol|steam|discord|token|tokens|nitro|wallet|wallets|dll|nft|sol|solana|eth|crypto|coin|pump|memecoin|account|accounts|password|passwords|cookie|cookies|claim|claimer|game|games|esp|aim|bot|tool|tools|loader|launcher|main|run|start|script|app|free|pro|new|final|latest|setup|install|x64|x86|win|win64|cli|gui|auto|v?\d+|py|js|mjs|cjs|ts|sh|bat|cmd|ps1|exe|rb|pl|php|c|cpp)$/;
+function namedLike(name, strong, weak, other) {
+  if (strong.test(name)) return true;
+  const words2 = name.split(" ").filter(Boolean);
+  if (!words2.some((w) => weak.test(w))) return false;
+  return words2.every((w) => weak.test(w) || lureCompanion.test(w) || other.test(w));
+}
+var isLureName = (name) => namedLike(name, lureName, lureWeak, lureName);
+var isPocName = (name) => namedLike(name, pocName, pocWeak2, pocName);
 var walletSecret = /\.config\/solana\/[\w.-]+\.json|(?:^|\/)(?:keystore|keypairs?)(?:\/|\.json|$)|wallet\.dat|\.(?:ethereum|bitcoin|electrum)\/|^--(?:private[-_]?key|mnemonic|seed(?:[-_]phrase)?|keypair|wallet(?:[-_]?(?:file|path|key))?)(?:=|$)/;
 var disguised = /\.(?:pdf|docx?|xlsx?|jpe?g|png|mp4|mp3|txt)\.(?:exe|scr|bat|cmd|js|vbs|lnk|com|pif|app)$/i;
 function disguisedFile2(seg, st) {
@@ -2227,9 +2472,9 @@ function lures(seg, st) {
   const h = seg.head;
   if (script) {
     const name = spaced((script.split(/[\\/]/).pop() ?? script).toLowerCase());
-    if (lureName.test(name))
+    if (isLureName(name))
       add(st, hit("lure_script", "untrusted_code", 4, evidence(seg, 2), script));
-    else if (pocName.test(name))
+    else if (isPocName(name))
       add(st, hit("exploit_run", "untrusted_code", 5, evidence(seg, 2), script));
     if (/\.(?:exe|msi|bat|scr|cmd)$/i.test(script) && !/^(?:python|node)/.test(h)) {
       add(st, hit("windows_binary", "untrusted_code", 3, script, script));
@@ -2237,7 +2482,7 @@ function lures(seg, st) {
   }
   if (["gcc", "g++", "cc", "clang", "clang++", "tcc"].includes(h)) {
     const files = seg.lower.slice(1).filter((a) => !a.startsWith("-"));
-    const named2 = files.find((a) => pocName.test(spaced(a.split("/").pop() ?? a)));
+    const named2 = files.find((a) => isPocName(spaced(a.split("/").pop() ?? a)));
     if (named2) add(st, hit("exploit_build", "untrusted_code", 4, evidence(seg, 4), named2));
   }
   if (h === "wine" && /\.(?:exe|msi)$/i.test(seg.argv[1] ?? "")) {
@@ -2336,7 +2581,7 @@ function policy(segs, text) {
 function classifyCommand(command, ctx = {}) {
   const raw = ascii(clip(command)).trim();
   if (raw === "") return none;
-  const segs = parse(raw);
+  const segs = withWritten(parse(raw));
   const st = {
     ctx,
     hits: [],
@@ -2482,7 +2727,13 @@ var signalNoun = {
   weights_download: "AI model weights",
   model_download_script: "a script that downloads AI model weights",
   lfs_pull: "large files, usually model weights",
-  runs_cloned_code: "code from a repository cloned in this session, which the user has not vetted"
+  runs_cloned_code: "code from a repository cloned in this session, which the user has not vetted",
+  asks_isolation: "code in an isolated machine instead of this computer",
+  not_on_my_machine: "code somewhere other than this computer"
+};
+var signalWhy = {
+  asks_isolation: "The user asked for the work to stay off this computer.",
+  not_on_my_machine: "The user asked for the work to stay off this computer."
 };
 var why = {
   local_ai_model: "The local route usually downloads gigabytes of model weights and installs PyTorch and CUDA packages into the user's environment.",
@@ -2538,7 +2789,8 @@ function detection(c, kind, max) {
 }
 function hintFor(c, kind) {
   if (!c.suggest || !c.category) return "";
-  const reason = kind === "failure" ? failureWhy[c.category] : why[c.category];
+  const top = lead(c);
+  const reason = kind === "failure" ? failureWhy[c.category] : (top && signalWhy[top.id]) ?? why[c.category];
   for (const max of [60, 36, 20]) {
     const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${notOffered}`;
     if (text.length <= maxHintChars) return text;
@@ -2554,6 +2806,9 @@ var commandLine = /^(?:sudo |run )?(?:curl|wget|iwr|irm|bash|sh|zsh|git|npm|npx|
 var requestWords = /\?|\b(?:can you|could you|would you|please|pls|plz|for me|help me|i want|i'd like|i need|is it safe|is this safe|and then|then run|and run)\b/;
 var errorLike = /cuda|nvidia|nvcc|libcud|memory|space|errno|quota|killed|kill|137|sigkill|alloc|externally|wheel|requirement|exec format|cpu type|binary file|instruction|architecture|platform|linux|command not found|docker/;
 var maxPasted = 8;
+var maxWeakNames = 8;
+var workItem = /^\/(?:pull|pulls|issues|commit|commits|compare|actions|discussions|wiki|milestones?|projects|security|-\/(?:merge_requests|issues|commit|pipelines|jobs))(?![\w-])/;
+var assetArchive = /(?:^|[\s_.-])(?:icons?|images?|imgs?|assets?|fonts?|photos?|pics?|logos?|designs?|mockups?|sprites?|screenshots?|textures?|sounds?|audio|music|videos?|data|datasets?|exports?|backups?|csv|docs?|reports?|slides?|invoices?|figma|brand\w*)(?:[\s_.-]\w+)*\.(?:zip|rar|7z|tar\.gz|tgz)$/;
 function clauseStarts(t) {
   const starts = [0];
   for (const m of findAll(clauseBreak, t)) starts.push(m.index + m[0].length);
@@ -2636,8 +2891,17 @@ function classifyPrompt(text, ctx = {}) {
   const located = [];
   const global = [];
   const put = (at, h) => located.push({ at, hit: h });
-  const names = findAll(aiName, t);
-  if (find(aiContext, bare)) names.push(...findAll(aiWeakName, t));
+  const near = (m) => {
+    const end = m.index + m[0].length;
+    const pre = /(?:\S+\s+){0,5}$/.exec(bare.slice(Math.max(0, m.index - 120), m.index));
+    const post2 = /^(?:\s+\S+){0,5}/.exec(bare.slice(end, end + 120));
+    const around = `${pre?.[0] ?? ""}${m[0]}${post2?.[0] ?? ""}`;
+    return [aiContext, aiTask, taskVerb].some((re) => find(re, around) !== null);
+  };
+  const weak = findAll(aiWeakName, t).slice(0, maxWeakNames).filter(near);
+  const names = [...findAll(aiName, t), ...weak].filter(
+    (m) => !integrationAfter.test(t.slice(m.index + m[0].length, m.index + m[0].length + 40))
+  );
   names.sort((a, b) => a.index - b.index);
   const tasks = findAll(aiTask, bare);
   const assistant = find(localAssistant, bare);
@@ -2669,11 +2933,12 @@ function classifyPrompt(text, ctx = {}) {
   for (const m of repos) {
     const at = m.index;
     if (find(ownRepoBefore, before(t, at)) || isFamousRepo(repoShort(m[0]))) continue;
+    if (workItem.test(t.slice(at + m[0].length, at + m[0].length + 20))) continue;
     externalRepo = true;
     put(at, hit("unfamiliar_repo", "untrusted_code", act ? 4 : 1, m[0], repoShort(m[0])));
     break;
   }
-  const hf = hfs[0];
+  const hf = hfs.find((m) => !/\/datasets\//.test(m[0]));
   if (hf && act) {
     put(hf.index, hit("model_repo", "local_ai_model", 4, hf[0], repoShort(hf[0])));
   }
@@ -2692,8 +2957,15 @@ function classifyPrompt(text, ctx = {}) {
       hit("disguised_file", "untrusted_code", 4, strongFile[0], strongFile[0])
     );
   } else if (file) {
-    const w = act ? fileContext || from ? 4 : 2 : 1;
+    const assets = assetArchive.test(file[0]);
+    const w = act && !assets ? fileContext || from ? 4 : 2 : 1;
     put(file.index, hit("received_file", "untrusted_code", w, file[0], file[0]));
+  }
+  const post = file || strongFile ? null : find(mailed, bare);
+  if (post && act) {
+    const around = bare.slice(Math.max(0, post.index - 50), post.index + post[0].length + 50);
+    if (find(codeKind, around))
+      put(post.index, hit("received_file", "untrusted_code", 4, post[0]));
   }
   const av = find(avOff, bare);
   if (av) put(av.index, hit("security_bypass", "untrusted_code", 4, av[0]));
@@ -2704,9 +2976,17 @@ function classifyPrompt(text, ctx = {}) {
     put(at, hit("lure", "untrusted_code", doing ? 4 : 2, m[0], m[0]));
     break;
   }
-  const exploit = find(poc, bare);
+  const flawed = find(flaw, bare);
+  const exploit = find(poc, bare) ?? findAll(pocWeak, bare).slice(0, maxWeakNames).find((m) => {
+    const around = bare.slice(Math.max(0, m.index - 40), m.index + m[0].length + 60);
+    return find(flaw, around) !== null || find(poc, around) !== null;
+  });
   if (exploit && act) {
-    put(exploit.index, hit("exploit", "untrusted_code", 4, exploit[0], exploit[0]));
+    const used = flawed !== null || find(exploitUse, bare) !== null;
+    put(
+      exploit.index,
+      hit("exploit", "untrusted_code", used ? 4 : 2, exploit[0], exploit[0])
+    );
   }
   const unvetted = () => located.some((l) => l.hit.category === "untrusted_code" && l.hit.weight >= 3);
   const secret = find(wantsSecrets, bare);
@@ -2723,7 +3003,8 @@ function classifyPrompt(text, ctx = {}) {
   const away = find(notMine, bare);
   if (away) global.push(hit("not_on_my_machine", null, 4, away[0]));
   const nv = mac ? find(nvidiaOnly, bare) : null;
-  const need = mac ? find(nvidiaNeed, bare) : null;
+  const cpu = /\bcpu[- ](?:fallback|only)\b|\bon (?:the )?cpu\b/.test(bare);
+  const need = mac && !cpu ? find(nvidiaNeed, bare) : null;
   const gap = find(hardwareGap, bare);
   if (mac && (need || nv && gap)) {
     const m = need ?? nv;
@@ -2732,7 +3013,11 @@ function classifyPrompt(text, ctx = {}) {
     put(nv.index, hit("mentions_nvidia", "environment", 2, nv[0]));
   }
   if (gap && (nv || ai || act)) put(gap.index, hit("hardware_gap", "environment", 2, gap[0]));
-  const linux = notLinux ? find(linuxOnly, bare) : null;
+  const linux = notLinux ? findAll(linuxOnly, bare).find(
+    (m) => !linuxConfigAfter.test(
+      bare.slice(m.index + m[0].length, m.index + m[0].length + 40)
+    )
+  ) : void 0;
   if (linux) {
     put(linux.index, hit("needs_linux", "environment", act ? 4 : 3, linux[0]));
   }
@@ -2777,7 +3062,9 @@ function classifyPrompt(text, ctx = {}) {
   };
   const atLeast = (re, n) => findAll(re, bare).find((m) => Number(m[1]) >= n);
   for (const m of findAll(heavyPhrase, bare).slice(0, 2)) cue(m, 2, false);
-  cue(atLeast(hours, 1), 2, false);
+  const length = atLeast(hours, 1);
+  const stated = length && act && Number(length[1]) >= 2 && statedLength.test(before(bare, length.index, 30));
+  cue(length, stated ? 3 : 2, false);
   cue(atLeast(minutes, 30), 2, false);
   cue(
     findAll(perItem, bare).find((m) => perItemSeconds(m) >= 3600),
@@ -2785,7 +3072,11 @@ function classifyPrompt(text, ctx = {}) {
     false
   );
   cue(find(heavyTask, bare), 1, true);
-  cue(find(longBuild, bare), 2, true);
+  const build = find(longBuild, bare);
+  if (build) {
+    const rest = bare.slice(build.index, build.index + build[0].length + 40);
+    cue(build, fromScratch.test(rest) ? 4 : 3, true);
+  }
   for (const m of findAll(loadTest, bare).slice(0, 2)) cue(m, 2, true);
   cue(find(heat, bare), 1, true);
   cue(atLeast(repeats, 10), 1, true);
@@ -2797,11 +3088,14 @@ function classifyPrompt(text, ctx = {}) {
   cue(find(wholeBatch, bare), 1, true);
   cue(atLeast(epochs, 20), 2, true);
   if (work > 0) {
-    cue(
-      findAll(volume, bare).find((m) => /^t/.test(m[2]) || Number(m[1]) >= 200),
-      1,
-      true
-    );
+    const of = (m) => volumeOf.test(bare.slice(m.index + m[0].length, m.index + m[0].length + 40));
+    const size = findAll(volume, bare).slice(0, maxPasted).find((m) => /^t/.test(m[2]) || Number(m[1]) >= 200);
+    if (size)
+      cue(
+        size,
+        of(size) && (/^t/.test(size[2]) || Number(size[1]) >= 500) ? 3 : 1,
+        true
+      );
   }
   const heavy2 = work > 0 ? work + time : Math.min(time, 2);
   if (heavy2 > 0) {
