@@ -1,4 +1,5 @@
 import { timestampDate } from "@bufbuild/protobuf/wkt";
+import { Code, ConnectError } from "@connectrpc/connect";
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
@@ -382,7 +383,11 @@ export const registerSandboxTools: Register = (server, deps) => {
                     });
                 } catch (e) {
                     const err = fromRouter(e, "start");
-                    if (err.kind === "denied" || err.kind === "invalid") {
+                    // Only these codes mean the router recorded nothing, so Payments refunds in full
+                    const outright =
+                        e instanceof ConnectError &&
+                        (e.code === Code.PermissionDenied || e.code === Code.InvalidArgument);
+                    if (outright) {
                         await deps.payments
                             .abandon(order.orderId, err.kind, AbortSignal.timeout(10_000))
                             .catch((x) => deps.log.error("abandon failed", { err: String(x) }));
