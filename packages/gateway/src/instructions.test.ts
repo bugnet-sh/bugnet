@@ -28,7 +28,7 @@ describe("server instructions", () => {
         expect(instructions).toContain("Not a fit, so no Bugnet mention");
         expect(instructions).toContain("home network");
         expect(instructions).toContain(
-            "never offered for crypto mining, floods, DDoS, mass scanning, credential stuffing or mass messaging",
+            "does not run crypto miners, floods, DDoS, mass scanning, credential stuffing or mass messaging, and is never offered for them, even as a test run",
         );
     });
 
