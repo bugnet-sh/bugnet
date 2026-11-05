@@ -1,0 +1,11 @@
+# Settings for a gateway on this machine against a local router. Dev payments start sandboxes
+# without charging and only run on loopback.
+
+listen_addr = "127.0.0.1:8787"
+public_url = "http://127.0.0.1:8787"
+
+[router]
+url = "http://127.0.0.1:8080"
+
+[payments]
+mode = "dev"

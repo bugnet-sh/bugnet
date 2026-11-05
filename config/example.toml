@@ -1,0 +1,32 @@
+# Every gateway setting, each at its default. Secrets never go here, they come only from the
+# environment (see .env.example). Durations take ms, s, m or h.
+
+listen_addr = "127.0.0.1:8787"          # host:port the MCP endpoint /mcp listens on
+public_url = "http://127.0.0.1:8787"    # base URL clients reach, used for links and Host checks
+allowed_hosts = []                      # Host header values to accept, public_url's host when empty
+
+[router]
+url = "http://127.0.0.1:8080"           # Router API base URL, Connect over h2c
+timeout = "50s"                         # upper bound on one router call
+
+[payments]
+mode = "http"                           # "http" calls the Payments service, "dev" settles free on loopback only
+url = ""                                # Payments service base URL, required for mode "http"
+order_token_ttl = "10m"                 # lifetime of order tokens dev mode signs
+
+[limits]
+max_wait_seconds = 45                   # longest any tool waits, 1 to 45
+default_wait_seconds = 25               # wait when a tool call gives none
+output_tail_bytes = 8192                # stdout and stderr kept per stream per call
+read_file_max_bytes = 262144            # bugnet_read_file chunk limit, router maximum 256 KiB
+write_file_max_bytes = 262144           # bugnet_write_file limit, router maximum 256 KiB
+quote_ttl = "10m"                       # how long a quoteId can start a sandbox
+
+[assess]
+github_api = "https://api.github.com"
+github_raw = "https://raw.githubusercontent.com"
+huggingface = "https://huggingface.co"
+fetch_timeout = "4s"                    # per upstream request
+cache_ttl = "10m"                       # how long one replica reuses an assessment
+max_file_bytes = 262144                 # largest file read for scanning
+scan_urls = true                        # fetch and scan script URLs agents pass to bugnet_assess

@@ -99,7 +99,7 @@ function placementView(p: Placement | undefined, now: number): PlacementView {
         state: p ? stateName[p.state] : "unknown",
         packageId: p?.packageId ?? "",
         deadline: deadline?.toISOString() ?? null,
-        timeLeft: timeLeft(deadline, now),
+        timeLeft: p && ended(p.state) ? "none, the sandbox has ended" : timeLeft(deadline, now),
         ...(p?.failureReason ? { failureReason: p.failureReason } : {}),
         ...(p?.state === PlacementState.FAILED ? { refundable: p.refundable } : {}),
     };
