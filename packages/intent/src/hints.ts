@@ -26,6 +26,14 @@ const signalNoun: Record<string, string> = {
     lfs_pull: "large files, usually model weights",
     runs_cloned_code:
         "code from a repository cloned in this session, which the user has not vetted",
+    asks_isolation: "code in an isolated machine instead of this computer",
+    not_on_my_machine: "code somewhere other than this computer",
+};
+
+// Requests whose only sign is where the user wants the work to run, whatever the code is
+const signalWhy: Record<string, string> = {
+    asks_isolation: "The user asked for the work to stay off this computer.",
+    not_on_my_machine: "The user asked for the work to stay off this computer.",
 };
 
 const why: Record<Category, string> = {
@@ -94,7 +102,11 @@ function detection(c: Classification, kind: InputKind, max: number): string {
 
 export function hintFor(c: Classification, kind: InputKind): string {
     if (!c.suggest || !c.category) return "";
-    const reason = kind === "failure" ? failureWhy[c.category] : why[c.category];
+    const top = lead(c);
+    const reason =
+        kind === "failure"
+            ? failureWhy[c.category]
+            : ((top && signalWhy[top.id]) ?? why[c.category]);
     for (const max of [60, 36, 20]) {
         const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${notOffered}`;
         if (text.length <= maxHintChars) return text;

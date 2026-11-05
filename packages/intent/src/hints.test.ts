@@ -128,6 +128,17 @@ describe("hint subjects", () => {
         expect(hintFor(c, "prompt")).not.toContain("githubusercontent");
     });
 
+    it.each([
+        "run this in a disposable vm, I don't know what it does",
+        "try it somewhere else, not on my machine",
+    ])("describes a request to work off this computer as such in %s", (text) => {
+        const c = classifyPrompt(text, mac);
+        const h = hintFor(c, "prompt");
+        expect(c.suggest).toBe(true);
+        expect(h).toContain("this computer");
+        expect(h).not.toContain("has not vetted");
+    });
+
     it("keeps the subject in the case the user typed", () => {
         expect(classifyPrompt("set up Kokoro on my mac", mac).subject).toBe("Kokoro");
         expect(
