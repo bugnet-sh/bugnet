@@ -5,6 +5,8 @@ export interface LocalMachine {
     gpu?: string;
 }
 
+export type Workload = "tests" | "build" | "script" | "serve" | "inference" | "other";
+
 export interface AssessInput {
     // What the user wants, in their words or a short summary
     task?: string;
@@ -13,6 +15,8 @@ export interface AssessInput {
     // Commands the agent plans to run
     commands?: string[];
     local?: LocalMachine;
+    // Overrides the workload read from the source and commands
+    workload?: Workload;
 }
 
 export type Severity = "info" | "low" | "medium" | "high";
@@ -37,8 +41,10 @@ export interface Assessment {
         gpu: boolean;
         minMemoryGiB: number | null;
         minDiskGiB: number | null;
-        workload: "tests" | "build" | "script" | "serve" | "inference" | "other";
+        workload: Workload;
     };
+    // Whether the needs fit the user's machine, kept apart from risk so safety stays its own level
+    fit: { level: "unknown" | "fits" | "tight" | "does_not_fit"; findings: Finding[] };
     source: {
         kind: "github" | "huggingface" | "url" | "none";
         ref: string;
