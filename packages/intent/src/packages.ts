@@ -167,15 +167,14 @@ function adjacent(a: string, b: string): boolean {
     return ra === rb ? Math.abs(ca - cb) === 1 : ca - cb >= -1 && ca - cb <= 1;
 }
 
-// The leftmost index a repeated letter could occupy, so cchardet adds its c at the start
+// The leftmost index a repeated letter could take, so a doubled first letter is added at the start
 function leftmost(s: string, i: number): number {
     let at = i;
     while (at > 0 && s[at - 1] === s[i]) at--;
     return at;
 }
 
-// One typing slip from a popular name, as typosquats make it, while a letter added or dropped at
-// either end or a distant letter swapped in usually names another real package
+// A slip inside the name, since a letter added at either end usually names another real package
 function slip(name: string, real: string): boolean {
     if (name.length === real.length) {
         let i = 0;

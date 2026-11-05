@@ -1483,7 +1483,7 @@ const lureName =
 const pocName =
     /(?<![a-z])(?:exploit|exploits|sploit|cve \d{4} \d+|lpe|privesc|rce|0day|pwn|rootkit)(?![a-z])/;
 
-// Words with an everyday meaning too, as in cheat sheet, frame grabber or a poc of a feature
+// Lure and exploit words that also have an everyday meaning in a script name
 const lureWeak = /^(?:airdrop|cheat|cheats|injector|crack|grabber|sniper|mev|unlocker)$/;
 const pocWeak = /^(?:poc|pocs)$/;
 
