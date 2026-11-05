@@ -56,8 +56,12 @@ export interface GithubEnv {
 const listingBytes = 8 * 1024 * 1024;
 export const maxFilesRead = 6;
 
+// Secondary limits answer 403 with quota still left, so retry-after and the message count too
 function rateLimited(r: Fetched): boolean {
-    return r.status === 429 || (r.status === 403 && r.headers["x-ratelimit-remaining"] === "0");
+    if (r.status === 429) return true;
+    if (r.status !== 403) return false;
+    if (r.headers["x-ratelimit-remaining"] === "0" || r.headers["retry-after"]) return true;
+    return /rate limit/i.test(bodyText(r).slice(0, 2000));
 }
 
 function str(v: unknown): string {

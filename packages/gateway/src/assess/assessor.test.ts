@@ -224,6 +224,18 @@ describe("assessor over GitHub", () => {
         expect(calls.length).toBe(2);
     });
 
+    it.each([
+        [{ "retry-after": "60", "x-ratelimit-remaining": "4000" }, "Slow down"],
+        [{ "x-ratelimit-remaining": "4000" }, "You have exceeded a secondary rate limit"],
+    ])("treats a secondary rate limit as rate limited", async (headers, message) => {
+        const { fetch } = fakeFetch({
+            "https://api.github.com/repos/acme/tool": { status: 403, headers, json: { message } },
+        });
+        const a = createAssessor(config(), { fetch, now: () => now });
+        const r = await a.assess({ source: "https://github.com/acme/tool" }, signal());
+        expect(r.risk.findings).toMatchObject([{ id: "github_rate_limited" }]);
+    });
+
     it("does not call a repo checked when none of its files could be read", async () => {
         const routes = githubRoutes(mainstream());
         for (const url of Object.keys(routes)) {
