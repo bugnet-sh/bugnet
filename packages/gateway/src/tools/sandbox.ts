@@ -140,6 +140,8 @@ export interface QuoteRequest {
     workload: (typeof workloads)[number];
     expectedMinutes?: number | undefined;
     needs?: (typeof needs)[number][] | undefined;
+    minMemoryGiB?: number | null | undefined;
+    minDiskGiB?: number | null | undefined;
 }
 
 export interface BuiltQuote {
@@ -149,8 +151,25 @@ export interface BuiltQuote {
         expiresAt: string;
         packages: (QuotedPackage & { priceUsd: string })[];
         recommended: { packageId: string; priceUsd: string; why: string } | null;
+        // False when the work states a memory or disk need that no package on offer meets
+        largeEnough: boolean;
         warnings: string[];
     };
+}
+
+// A zero size means the router did not report it, so it cannot rule a package out
+function meetsSize(p: QuotedPackage, memoryGiB: number | null, diskGiB: number | null): boolean {
+    const memory = memoryGiB === null || p.memoryMib === 0 || p.memoryMib >= memoryGiB * 1024;
+    const disk = diskGiB === null || p.diskGib === 0 || p.diskGib >= diskGiB;
+    return memory && disk;
+}
+
+export function sizeText(memoryGiB: number | null, diskGiB: number | null): string {
+    const parts = [
+        memoryGiB !== null ? `${memoryGiB} GiB of memory` : "",
+        diskGiB !== null ? `${diskGiB} GiB of disk` : "",
+    ].filter(Boolean);
+    return `about ${parts.join(" and ")}`;
 }
 
 // Prices the packages that can start now and signs them into a quoteId bugnet_start accepts
@@ -171,11 +190,15 @@ export async function buildQuote(deps: Deps, args: QuoteRequest): Promise<BuiltQ
     if (args.needs?.includes("secrets")) {
         warnings.push("Secrets go in with bugnet_secret_link or the bridge, never in arguments");
     }
-    const rec = recommend(
-        wantGpu ? available.filter((p) => p.gpuCount > 0) : available,
-        args.workload,
-        args.expectedMinutes,
-    );
+    const memoryGiB = args.minMemoryGiB ?? null;
+    const diskGiB = args.minDiskGiB ?? null;
+    const kind = wantGpu ? available.filter((p) => p.gpuCount > 0) : available;
+    const sized = kind.filter((p) => meetsSize(p, memoryGiB, diskGiB));
+    const largeEnough = kind.length === 0 || sized.length > 0;
+    if (!largeEnough) {
+        warnings.push(`No package is large enough for ${sizeText(memoryGiB, diskGiB)}`);
+    }
+    const rec = recommend(sized, args.workload, args.expectedMinutes);
     const expiresAt = deps.now() + deps.config.limits.quote_ttl;
     const quoteId = signQuote(deps.config.secrets.quoteKey, {
         packages: available,
@@ -213,6 +236,7 @@ export async function buildQuote(deps: Deps, args: QuoteRequest): Promise<BuiltQ
             recommended: rec
                 ? { packageId: rec.pkg.id, priceUsd: usd(rec.pkg.priceMicros), why: rec.why }
                 : null,
+            largeEnough,
             warnings,
         },
     };

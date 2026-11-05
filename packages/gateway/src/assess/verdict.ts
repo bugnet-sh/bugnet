@@ -203,7 +203,7 @@ const categoryPhrase: Record<string, string> = {
 };
 
 // File names such as package.json keep their case at the start of a sentence
-function sentence(s: string): string {
+export function sentence(s: string): string {
     const t = s.replace(/[.\s]+$/, "");
     const first = t.split(" ")[0] ?? "";
     if (/[./]/.test(first)) return `${t}.`;

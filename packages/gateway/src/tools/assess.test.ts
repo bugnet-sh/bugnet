@@ -54,21 +54,31 @@ const assessment: Assessment = {
     },
 };
 
-function option(id: string, priceMicros: bigint, gpuCount: number, memoryMib: number) {
+function option(
+    id: string,
+    priceMicros: bigint,
+    gpuCount: number,
+    memoryMib: number,
+    diskGib = 100,
+) {
     return {
         packageId: id,
         priceMicros,
         minutes: 30,
         available: true,
-        resources: { vcpu: 4, memoryMib, diskGib: 50, gpuCount },
+        resources: { vcpu: 4, memoryMib, diskGib, gpuCount },
     };
 }
 
-async function connect(router: Partial<RouterClient>, seen: { input?: unknown } = {}) {
+async function connect(
+    router: Partial<RouterClient>,
+    seen: { input?: unknown } = {},
+    result: Assessment = assessment,
+) {
     const assessor: Assessor = {
         async assess(input) {
             seen.input = input;
-            return assessment;
+            return result;
         },
     };
     const deps: Deps = {
@@ -170,6 +180,42 @@ describe("bugnet_assess tool", () => {
         const claims = verifyQuote(deps.config.secrets.quoteKey, quote.quoteId, now);
         expect(claims.source).toBe("black-forest-labs/FLUX.1-schnell");
         expect(r.structuredContent?.assessment.recommendation).toBe("sandbox_strongly_recommended");
+    });
+
+    it("never recommends a package smaller than the memory and disk the work needs", async () => {
+        const huge: Assessment = {
+            ...assessment,
+            needs: { gpu: true, minMemoryGiB: 770.4, minDiskGiB: 643, workload: "inference" },
+            fit: {
+                level: "does_not_fit",
+                findings: [
+                    {
+                        id: "local_memory",
+                        severity: "medium",
+                        title: "Needs about 770.4 GiB of memory, this machine has 16 GiB",
+                    },
+                ],
+            },
+        };
+        const estimate = (async () => ({
+            options: [option("cpu-s", 50_000n, 0, 4096), option("gpu-m", 900_000n, 1, 32768)],
+        })) as unknown as RouterClient["estimate"];
+        const { client } = await connect({ estimate }, {}, huge);
+        const r = (await client.callTool({
+            name: "bugnet_assess",
+            arguments: { source: "deepseek-ai/DeepSeek-R1" },
+        })) as Result;
+        const text = r.content.map((c) => c.text).join("\n");
+        expect(text).not.toMatch(/Recommended package/);
+        expect(text).not.toMatch(/sandbox can run/);
+        expect(text).toMatch(/No package is large enough, 2 others are in the quote/);
+        expect(text).toMatch(
+            /Warning: No package is large enough for about 770\.4 GiB of memory and 643 GiB of disk\./,
+        );
+        const summary = r.structuredContent?.assessment.summary ?? "";
+        expect(summary).toMatch(
+            /^Needs about 770\.4 GiB of memory, this machine has 16 GiB\. No Bugnet package is large enough/,
+        );
     });
 
     it("still returns the assessment when the router is down", async () => {

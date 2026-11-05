@@ -1,9 +1,9 @@
 import { z } from "zod";
 import type { Assessment } from "../assess/assessor.ts";
 import { sortFindings } from "../assess/scan.ts";
-import { maxCommands } from "../assess/verdict.ts";
+import { maxCommands, sentence } from "../assess/verdict.ts";
 import { ok, withProgress, type Register } from "./common.ts";
-import { buildQuote, describeSize, workloads, type BuiltQuote } from "./sandbox.ts";
+import { buildQuote, describeSize, sizeText, workloads, type BuiltQuote } from "./sandbox.ts";
 
 export const assessBudgetMs = 12_000;
 export const quoteBudgetMs = 8_000;
@@ -68,7 +68,8 @@ function quoteLines(quote: BuiltQuote | null): string[] {
             `Recommended package: ${rec.packageId}${size}, ${rec.priceUsd} USDC, because ${rec.why}.`,
         );
     } else if (q.packages.length > 0) {
-        lines.push(`No package fits these needs, ${q.packages.length} others are in the quote.`);
+        const why = q.largeEnough ? "fits these needs" : "is large enough";
+        lines.push(`No package ${why}, ${q.packages.length} others are in the quote.`);
     } else {
         lines.push("No package can start right now. Try again in a minute.");
     }
@@ -96,6 +97,15 @@ export function renderAssessment(a: Assessment, quote: BuiltQuote | null): strin
     }
     lines.push(needsLine(a), ...quoteLines(quote), "Ask the user before bugnet_start.");
     return lines.join("\n");
+}
+
+// For work no package can hold, so the summary never promises that a sandbox can run it
+export function tooLargeSummary(a: Assessment): string {
+    const fit = a.fit.level === "does_not_fit" ? sortFindings(a.fit.findings)[0] : undefined;
+    const size = sizeText(a.needs.minMemoryGiB, a.needs.minDiskGiB);
+    const tail = `No Bugnet package is large enough for ${size}${fit ? " either" : ""}, so a smaller or quantised variant is the way to run it.`;
+    if (fit && a.risk.level !== "high") return `${sentence(fit.title)} ${tail}`;
+    return `${a.summary} ${tail}`;
 }
 
 function within<T>(work: Promise<T>, ms: number): Promise<T> {
@@ -155,11 +165,16 @@ export const registerAssessTool: Register = (server, deps) => {
                         workload: assessment.needs.workload,
                         expectedMinutes: args.expectedMinutes,
                         needs: assessment.needs.gpu ? ["gpu"] : [],
+                        minMemoryGiB: assessment.needs.minMemoryGiB,
+                        minDiskGiB: assessment.needs.minDiskGiB,
                     }),
                     quoteBudgetMs,
                 );
             } catch (e) {
                 deps.log.warn("assess quote failed", { err: (e as Error).message });
+            }
+            if (quote && !quote.structured.largeEnough) {
+                assessment = { ...assessment, summary: tooLargeSummary(assessment) };
             }
             return ok(renderAssessment(assessment, quote), {
                 assessment,
