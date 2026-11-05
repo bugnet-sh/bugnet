@@ -58,6 +58,17 @@ const errorLike =
 // Pasted logs can hold thousands of commands, and the first few say what the paste is
 const maxPasted = 8;
 
+// Each weak model name costs a look at its neighbours, and the first few decide
+const maxWeakNames = 8;
+
+// Pull requests, issues and commits of a repo are team work to review, not code handed over
+const workItem =
+    /^\/(?:pull|pulls|issues|commit|commits|compare|actions|discussions|wiki|milestones?|projects|security|-\/(?:merge_requests|issues|commit|pipelines|jobs))(?![\w-])/;
+
+// Archives of icons, fonts, photos or exports carry assets, not programs
+const assetArchive =
+    /(?:^|[\s_.-])(?:icons?|images?|imgs?|assets?|fonts?|photos?|pics?|logos?|designs?|mockups?|sprites?|screenshots?|textures?|sounds?|audio|music|videos?|data|datasets?|exports?|backups?|csv|docs?|reports?|slides?|invoices?|figma|brand\w*)(?:[\s_.-]\w+)*\.(?:zip|rar|7z|tar\.gz|tgz)$/;
+
 function clauseStarts(t: string): number[] {
     const starts = [0];
     for (const m of findAll(clauseBreak, t)) starts.push(m.index + m[0].length);
@@ -168,8 +179,18 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     const put = (at: number, h: Hit) => located.push({ at, hit: h });
 
     /* Heavy local AI */
-    const names = findAll(L.aiName, t);
-    if (find(L.aiContext, bare)) names.push(...findAll(L.aiWeakName, t));
+    // A name that is also a word or a person counts only with AI words within five words of it
+    const near = (m: RegExpExecArray) => {
+        const end = m.index + m[0].length;
+        const pre = /(?:\S+\s+){0,5}$/.exec(bare.slice(Math.max(0, m.index - 120), m.index));
+        const post = /^(?:\s+\S+){0,5}/.exec(bare.slice(end, end + 120));
+        const around = `${pre?.[0] ?? ""}${m[0]}${post?.[0] ?? ""}`;
+        return [L.aiContext, L.aiTask, L.taskVerb].some((re) => find(re, around) !== null);
+    };
+    const weak = findAll(L.aiWeakName, t).slice(0, maxWeakNames).filter(near);
+    const names = [...findAll(L.aiName, t), ...weak].filter(
+        (m) => !L.integrationAfter.test(t.slice(m.index + m[0].length, m.index + m[0].length + 40)),
+    );
     names.sort((a, b) => (a.index as number) - (b.index as number));
     const tasks = findAll(L.aiTask, bare);
     // Voice cloning and a local chat assistant run as local models even without a model name
@@ -204,11 +225,12 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     for (const m of repos) {
         const at = m.index as number;
         if (find(L.ownRepoBefore, before(t, at)) || isFamousRepo(repoShort(m[0]))) continue;
+        if (workItem.test(t.slice(at + m[0].length, at + m[0].length + 20))) continue;
         externalRepo = true;
         put(at, hit("unfamiliar_repo", "untrusted_code", act ? 4 : 1, m[0], repoShort(m[0])));
         break;
     }
-    const hf = hfs[0];
+    const hf = hfs.find((m) => !/\/datasets\//.test(m[0]));
     if (hf && act) {
         put(hf.index as number, hit("model_repo", "local_ai_model", 4, hf[0], repoShort(hf[0])));
     }
@@ -228,8 +250,15 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
             hit("disguised_file", "untrusted_code", 4, strongFile[0], strongFile[0]),
         );
     } else if (file) {
-        const w = act ? (fileContext || from ? 4 : 2) : 1;
+        const assets = assetArchive.test(file[0]);
+        const w = act && !assets ? (fileContext || from ? 4 : 2) : 1;
         put(file.index as number, hit("received_file", "untrusted_code", w, file[0], file[0]));
+    }
+    const post = file || strongFile ? null : find(L.mailed, bare);
+    if (post && act) {
+        const clause = clauseOf(starts, post.index);
+        const kind = findAll(L.codeKind, bare).find((m) => clauseOf(starts, m.index) === clause);
+        if (kind) put(post.index, hit("received_file", "untrusted_code", 4, post[0]));
     }
     const av = find(L.avOff, bare);
     if (av) put(av.index as number, hit("security_bypass", "untrusted_code", 4, av[0]));
@@ -241,9 +270,22 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
         put(at, hit("lure", "untrusted_code", doing ? 4 : 2, m[0], m[0]));
         break;
     }
-    const exploit = find(L.poc, bare);
+    // An exploit counts when it is run or built, or names the flaw it targets
+    const flawed = find(L.flaw, bare);
+    const exploit =
+        find(L.poc, bare) ??
+        findAll(L.pocWeak, bare)
+            .slice(0, maxWeakNames)
+            .find((m) => {
+                const around = bare.slice(Math.max(0, m.index - 40), m.index + m[0].length + 60);
+                return find(L.flaw, around) !== null || find(L.poc, around) !== null;
+            });
     if (exploit && act) {
-        put(exploit.index as number, hit("exploit", "untrusted_code", 4, exploit[0], exploit[0]));
+        const used = flawed !== null || find(L.exploitUse, bare) !== null;
+        put(
+            exploit.index as number,
+            hit("exploit", "untrusted_code", used ? 4 : 2, exploit[0], exploit[0]),
+        );
     }
     const unvetted = () =>
         located.some((l) => l.hit.category === "untrusted_code" && l.hit.weight >= 3);
@@ -270,7 +312,9 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
 
     /* Setups that do not fit this machine */
     const nv = mac ? find(L.nvidiaOnly, bare) : null;
-    const need = mac ? find(L.nvidiaNeed, bare) : null;
+    // A CPU fallback means this run does not need the GPU that production uses
+    const cpu = /\bcpu[- ](?:fallback|only)\b|\bon (?:the )?cpu\b/.test(bare);
+    const need = mac && !cpu ? find(L.nvidiaNeed, bare) : null;
     const gap = find(L.hardwareGap, bare);
     if (mac && (need || (nv && gap))) {
         const m = (need ?? nv) as RegExpExecArray;
@@ -279,7 +323,14 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
         put(nv.index, hit("mentions_nvidia", "environment", 2, nv[0]));
     }
     if (gap && (nv || ai || act)) put(gap.index, hit("hardware_gap", "environment", 2, gap[0]));
-    const linux = notLinux ? find(L.linuxOnly, bare) : null;
+    const linux = notLinux
+        ? findAll(L.linuxOnly, bare).find(
+              (m) =>
+                  !L.linuxConfigAfter.test(
+                      bare.slice(m.index + m[0].length, m.index + m[0].length + 40),
+                  ),
+          )
+        : undefined;
     if (linux) {
         put(linux.index as number, hit("needs_linux", "environment", act ? 4 : 3, linux[0]));
     }

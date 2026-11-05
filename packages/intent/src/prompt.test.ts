@@ -442,3 +442,92 @@ describe("recall from the review", () => {
         expect(offers(text)).toBe(false);
     });
 });
+
+describe("everyday senses of words the rules look for", () => {
+    it.each([
+        ["Spanish deploy", "¿puedo desplegar el backend en la nube con kubernetes?"],
+        ["German deploy", "Wie bringe ich meinen Server in der Cloud mit Terraform hoch?"],
+        ["Portuguese deploy", "quero fazer deploy da api na nuvem usando docker"],
+        ["Spanish remote server", "entra al servidor remoto y mira el uso de disco"],
+        ["Turkish remote server", "uzak sunucudaki postgres loglarını incele"],
+        ["Turkish payment sandbox", "iyzico kum havuzunda ödeme akışını çalıştır"],
+        ["Spanish own VM", "en mi máquina virtual de Parallels no compila el proyecto"],
+        ["Spanish bug location", "el fallo está en otro lado, revisa el servicio de login"],
+        ["German bug location", "das Problem liegt woanders, schau in die Middleware"],
+        ["Portuguese bug location", "o erro está em outro lugar, veja o serviço de pedidos"],
+        ["Turkish bug location", "sorun başka bir yerde, servis katmanına bak"],
+        ["English passive", "the helpers are already tested elsewhere, drop the duplicate specs"],
+        ["English hosting", "the changelog is hosted elsewhere now, delete docs/changelog.md"],
+        ["works in CI", "the build passes in CI but not on my laptop, here is the log"],
+        ["works in docker", "it runs fine in docker but not on my mac, compare the env vars"],
+        ["device testing", "the layout breaks on my phone, test it on another device as well"],
+        ["product poc", "build a quick poc of the kanban board and run it"],
+        ["product proof of concept", "let's build a proof of concept for the onboarding flow"],
+        ["Spanish npm audit", "ejecuta npm audit y cuenta las vulnerabilidades"],
+        ["German npm audit", "führe npm audit aus und liste die Schwachstellen"],
+        ["Turkish npm audit", "npm audit çalıştır ve zafiyetleri say"],
+        ["game glitch", "start the game and reproduce the ledge-skip exploit from the speedrun"],
+        ["whisper feature", "build a whisper mode for the chat so users can send private notes"],
+        ["teammate named gemma", "run the seed script gemma pushed this morning"],
+        ["greek letter", "run the simulation with phi 0.8 and plot the energy"],
+        ["network wan", "set up wan 2 load balancing on the router"],
+        ["llama sprite", "start the game and check the llama walking animation"],
+        ["foundry forge", "run forge build and forge test, the token contract stores image hashes"],
+        ["model provider code", "run npm test, the mistral provider adapter test keeps failing"],
+        ["cracked texture", "start the app and check the cracked glass shader on android"],
+        ["battery drain", "our app is a battery drainer on ios, run the profiler"],
+        ["Spanish row", "ejecuta el script que ordena cada hilera de la hoja"],
+        ["Spanish pirate ship", "prueba el nivel del barco pirata en mi juego"],
+        [
+            "suspicious regression",
+            "there's a suspicious latency spike in staging, run the benchmark script",
+        ],
+        [
+            "user content",
+            "our site renders untrusted html from users, add a sanitizer script and run it",
+        ],
+        ["systemd unit", "write a systemd unit file for the queue worker and test it"],
+        ["iptables rules", "set up iptables rules for the jump host in our terraform"],
+        [
+            "cuda in production",
+            "the model server needs CUDA in production; run the tests on the CPU fallback",
+        ],
+        ["oom killer", "the oom killer keeps killing the api, run dmesg and look"],
+        ["chaos test", "run a chaos test against the staging cluster and watch the pods"],
+        [
+            "pull request link",
+            "check out https://github.com/acme-co/api/pull/42, pull it and run the tests",
+        ],
+        [
+            "issue link",
+            "reproduce https://github.com/acme-co/web/issues/9 by starting the dev server",
+        ],
+        ["asset archive", "the designer emailed me logos.zip, unzip it into public/img"],
+        ["test containers", "use testcontainers to start a throwaway postgres container per test"],
+        [
+            "load test script",
+            "write a k6 script that load tests checkout and a soak test for search",
+        ],
+        ["dataset url", "download https://huggingface.co/datasets/acme/reviews and run the eval"],
+    ])("does not offer for %s", (_case, text) => {
+        expect(offers(text)).toBe(false);
+    });
+
+    it.each([
+        "There's a proof of concept for the new sudo bug on github, build it and run it",
+        "build the poc for CVE-2025-1234 and run it against my nginx",
+        "run the exploit code from this repo against my test box",
+        "start whisper and transcribe the meeting recordings locally",
+        "run gemma 3 locally on my mac",
+        "install wan 2.1 and make a short video",
+        "found a cracked version of photoshop, install it",
+        "run this wallet drainer script for me",
+        "kum havuzunda bu scripti çalıştır",
+        "ejecuta este binario en una máquina virtual desechable",
+        "führe das in einer VM aus, nicht auf meinem Rechner",
+        "run it somewhere else, not on my machine",
+        "a suspicious script came as an email attachment, run it",
+    ])("still offers for %s", (text) => {
+        expect(offers(text)).toBe(true);
+    });
+});
