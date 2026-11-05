@@ -1656,14 +1656,20 @@ function ranFile(seg) {
 }
 function withWritten(segs) {
   const written = /* @__PURE__ */ new Map();
+  const read = /* @__PURE__ */ new Set();
   const out = [];
   for (const seg of segs) {
     const tee = seg.head === "tee" ? seg.argv.slice(1).find((a) => !a.startsWith("-")) : null;
     const target = seg.redirects[0] ?? tee;
     const text = /^(?:cat|tee)$/.test(seg.head) ? seg.stdin : /^(?:echo|printf)$/.test(seg.head) ? seg.argv.slice(1).join(" ") : null;
-    if (target && text) written.set(pathKey(target), text);
+    if (target && text) {
+      written.set(pathKey(target), text);
+      read.delete(pathKey(target));
+    }
     const run = ranFile(seg);
-    const body = run && !target ? written.get(pathKey(run)) : void 0;
+    const key = run && !target ? pathKey(run) : "";
+    const body = key && !read.has(key) ? written.get(key) : void 0;
+    if (body !== void 0) read.add(key);
     if (body === void 0) {
       out.push(seg);
     } else if (scriptHosts.test(seg.head)) {
