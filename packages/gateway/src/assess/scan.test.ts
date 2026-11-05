@@ -15,6 +15,7 @@ import {
     repoFindings,
     repoNeeds,
     scanCommand,
+    scanFile,
     scanRepo,
     setupPy,
     shift,
@@ -440,6 +441,14 @@ describe("whole repos", () => {
             ]),
         );
         for (const f of scan.findings) expect((f.evidence ?? "").length).toBeLessThanOrEqual(120);
+    });
+
+    it("cleans repo-controlled file names before they reach titles", () => {
+        const name = `.github/workflows/${String.fromCharCode(0x202e)}evil${"x".repeat(80)}.yml`;
+        const f = scanFile(file(name, "run: echo '${{ toJSON(secrets) }}' > s"), "normal");
+        expect(f[0]?.id).toBe("workflow_secrets");
+        expect(f[0]?.title).not.toContain(String.fromCharCode(0x202e));
+        expect(f[0]?.title.length).toBeLessThan(100);
     });
 
     it("sorts by severity, drops duplicates and keeps at most three per rule", () => {
