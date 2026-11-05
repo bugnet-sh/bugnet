@@ -95,7 +95,13 @@ export function renderAssessment(a: Assessment, quote: BuiltQuote | null): strin
             lines.push(`- ${f.severity}: ${f.title}${f.evidence ? ` [${f.evidence}]` : ""}`);
         }
     }
-    lines.push(needsLine(a), ...quoteLines(quote), "Ask the user before bugnet_start.");
+    lines.push(needsLine(a), ...quoteLines(quote));
+    if (a.recommendation !== "local_ok") {
+        lines.push(
+            "The user has not seen this check, so share it before any local install or run.",
+        );
+    }
+    lines.push("Ask the user before bugnet_start.");
     return lines.join("\n");
 }
 

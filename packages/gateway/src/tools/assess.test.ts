@@ -7,7 +7,12 @@ import { silentLog } from "../log.ts";
 import type { Payments } from "../payments/port.ts";
 import type { RouterClient } from "../router.ts";
 import { verifyQuote } from "../quote.ts";
-import { assessDescription, registerAssessTool, unavailableSummary } from "./assess.ts";
+import {
+    assessDescription,
+    registerAssessTool,
+    renderAssessment,
+    unavailableSummary,
+} from "./assess.ts";
 import type { Deps } from "./common.ts";
 import { buildQuote } from "./sandbox.ts";
 
@@ -275,6 +280,17 @@ describe("bugnet_assess tool", () => {
             arguments: { commands: Array.from({ length: 21 }, () => "ls") },
         })) as Result;
         expect(r.isError).toBe(true);
+    });
+});
+
+describe("renderAssessment", () => {
+    it("notes that the user has not seen a check that favours a sandbox", () => {
+        const shared = /The user has not seen this check, so share it before any local install/;
+        expect(renderAssessment(assessment, null)).toMatch(shared);
+        const fine: Assessment = { ...assessment, recommendation: "local_ok" };
+        const text = renderAssessment(fine, null);
+        expect(text).not.toMatch(shared);
+        expect(text.endsWith("Ask the user before bugnet_start.")).toBe(true);
     });
 });
 
