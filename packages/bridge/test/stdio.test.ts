@@ -14,7 +14,8 @@ import {
     type FakeSecretsRoute,
 } from "../src/testing/harness.ts";
 
-// BUGNET_BRIDGE_BIN points the test at a built bundle such as dist/main.js
+// BUGNET_BRIDGE_BIN and BUGNET_BRIDGE_NODE point the test at a built bundle and another Node
+const node = process.env.BUGNET_BRIDGE_NODE ?? process.execPath;
 const bin =
     process.env.BUGNET_BRIDGE_BIN ?? fileURLToPath(new URL("../src/main.ts", import.meta.url));
 const value = "hf_FromTheShell_9f8e7d6c5b4a";
@@ -38,12 +39,12 @@ afterAll(async () => {
 
 describe("the bugnet-mcp command", () => {
     it("prints its version and usage, and refuses an unknown flag", { timeout: 60_000 }, () => {
-        const version = spawnSync(process.execPath, [bin, "--version"], { encoding: "utf8" });
+        const version = spawnSync(node, [bin, "--version"], { encoding: "utf8" });
         expect(version.stdout).toBe("0.1.0\n");
         expect(version.status).toBe(0);
-        const help = spawnSync(process.execPath, [bin, "--help"], { encoding: "utf8" });
+        const help = spawnSync(node, [bin, "--help"], { encoding: "utf8" });
         expect(help.stdout).toMatch(/^Usage: bugnet-mcp \[--gateway URL\] \[--config FILE\]/);
-        const bad = spawnSync(process.execPath, [bin, "--gatewy", "x"], { encoding: "utf8" });
+        const bad = spawnSync(node, [bin, "--gatewy", "x"], { encoding: "utf8" });
         expect(bad.status).toBe(2);
         expect(bad.stdout).toBe("");
         expect(bad.stderr).toMatch(/^bugnet-mcp: /);
@@ -56,7 +57,7 @@ describe("the bugnet-mcp command", () => {
             { timeout: 60_000 },
             async () => {
                 const transport = new StdioClientTransport({
-                    command: process.execPath,
+                    command: node,
                     args: [bin, "--gateway", gateway.url, "--config", join(dir, "mcp.toml")],
                     env: { ...getDefaultEnvironment(), HF_TOKEN: value },
                     cwd: dir,
