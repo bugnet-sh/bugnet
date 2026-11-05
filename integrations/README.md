@@ -1,7 +1,8 @@
 # Bugnet for clients without the Claude Code plugin
 
 Every MCP client loads the gateway's server instructions, which say when to offer Bugnet. These
-files add the same guidance where a client reads rules instead:
+files add the same guidance where a client reads rules instead. The Cursor and Codex commands
+follow their docs and were not run here, since neither client is installed on the build machine.
 
 | Client                        | Add the server                                                                     | Add the guidance                                                                                                                           |
 | ----------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
