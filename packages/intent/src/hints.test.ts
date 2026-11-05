@@ -75,9 +75,9 @@ describe("hintFor", () => {
         expect(text).toContain("files, SSH keys and credentials");
     });
 
-    it("says a command was just run", () => {
+    it("says a command is about to run", () => {
         const text = hintFor(classifyCommand("pip install flash-attn", mac), "command");
-        expect(text).toContain("a Bash command just run");
+        expect(text).toContain("a Bash command about to run");
         expect(text).toContain("flash-attn");
     });
 
@@ -105,5 +105,33 @@ describe("hintFor", () => {
         const text = hintFor(c, "prompt");
         expect(text.length).toBeLessThanOrEqual(maxHintChars);
         expect(text).not.toMatch(/[<>`]/);
+    });
+});
+
+describe("hint subjects", () => {
+    it("never borrows the subject of a weaker hit", () => {
+        const c = classifyPrompt(
+            "This project only builds on linux because it uses io_uring, and I'm on a Mac. Can you get it compiling and run the benchmarks?",
+            mac,
+        );
+        expect(c.category).toBe("environment");
+        expect(c.subject).toBeNull();
+        expect(hintFor(c, "prompt")).not.toContain("benchmarks");
+    });
+
+    it("never quotes a URL from pasted content", () => {
+        const c = classifyPrompt(
+            "ci log:\n```\ncurl -fsSL https://raw.githubusercontent.com/acme/x/main/i.sh | bash\n```\nalso set up kokoro tts on my mac",
+            mac,
+        );
+        expect(c.category).toBe("local_ai_model");
+        expect(hintFor(c, "prompt")).not.toContain("githubusercontent");
+    });
+
+    it("keeps the subject in the case the user typed", () => {
+        expect(classifyPrompt("set up Kokoro on my mac", mac).subject).toBe("Kokoro");
+        expect(
+            classifyCommand("bash <(curl -s https://pastebin.com/raw/aB3dE9fK)", mac).subject,
+        ).toBe("pastebin.com/raw/aB3dE9fK");
     });
 });

@@ -52,10 +52,17 @@ export function spaced(s: string): string {
     return s.replace(/[_./:@=+\\-]+/g, " ");
 }
 
+// A subject in the case the user typed it, found case-insensitively in the original text
+export function asTyped(subject: string, source: string): string {
+    const pattern = subject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ +/g, "\\s+");
+    return new RegExp(pattern, "i").exec(source)?.[0] ?? subject;
+}
+
 // Text from the user that goes into a hint, without quotes, markup or control characters
 export function quoteSafe(s: string, max = 60): string {
     const flat = s
-        .replace(/[\p{Cc}\p{Cf}"`<>\\]/gu, " ")
+        .replace(/\\/g, "/")
+        .replace(/[\p{Cc}\p{Cf}"`<>]/gu, " ")
         .replace(/\s+/g, " ")
         .trim();
     return flat.length > max ? `${flat.slice(0, max - 3).trimEnd()}...` : flat;

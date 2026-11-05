@@ -11,7 +11,7 @@
 import { classifyCommand } from "./command.ts";
 import * as L from "./lexicon.ts";
 import { find, findAll } from "./lexicon.ts";
-import { norm } from "./normalize.ts";
+import { asTyped, clip, norm } from "./normalize.ts";
 import { signatures } from "./failure.ts";
 import { isFamousRepo } from "./repos.ts";
 import { finish, hit, none, refuse, type Hit } from "./score.ts";
@@ -23,6 +23,7 @@ interface Located {
 }
 
 interface Clause {
+    hits: Hit[];
     code: number;
     risky: number;
     heavy: number;
@@ -431,6 +432,7 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     /* Clause sums never go below zero, so chores elsewhere cannot cancel a risky step */
     const perClause = new Map<number, Clause>();
     const empty = (): Clause => ({
+        hits: [],
         code: 0,
         risky: 0,
         heavy: 0,
@@ -445,6 +447,7 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
         if (l.hit.category === "heavy_compute") e.heavy += l.hit.weight;
         else if (l.hit.category === "risky_experiment") e.risky += l.hit.weight;
         else e.code += l.hit.weight;
+        e.hits.push(l.hit);
         perClause.set(c, e);
     }
     for (const n of negatives) {
@@ -457,17 +460,26 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     }
     let points = global.reduce((s, h) => s + h.weight, 0);
     const kept: Hit[] = [...located.map((l) => l.hit), ...global];
+    // Hits of cancelled clauses still show as signals but never pick the category or subject
+    const live: Hit[] = [...global];
     for (const e of perClause.values()) {
         // The user's own code is trusted, but a wrecking or heavy step stays risky whoever wrote it
-        points += Math.max(0, e.code + e.own + e.edit + e.writing);
-        points += Math.max(0, e.risky + e.edit + e.writing);
-        points += e.writing < 0 ? 0 : e.heavy;
+        const code = e.code + e.own + e.edit + e.writing;
+        const risky = e.risky + e.edit + e.writing;
+        points += Math.max(0, code) + Math.max(0, risky) + (e.writing < 0 ? 0 : e.heavy);
+        live.push(
+            ...e.hits.filter((h) => {
+                if (h.category === "heavy_compute") return e.writing >= 0;
+                return (h.category === "risky_experiment" ? risky : code) > 0;
+            }),
+        );
         kept.push(...e.negs);
     }
 
     if (stop) return refuse(kept, hit("abuse", null, -10, stop[0]));
     if (lan) return refuse(kept, hit("lan_scan", null, -10, lan[0]));
-    return finish(kept, points);
+    const c = finish(kept, points, live);
+    return c.subject ? { ...c, subject: asTyped(c.subject, clip(text)) } : c;
 }
 
 function perItemSeconds(m: RegExpExecArray): number {

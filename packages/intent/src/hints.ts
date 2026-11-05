@@ -87,7 +87,7 @@ function detection(c: Classification, kind: InputKind, max: number): string {
     if (kind === "command") {
         const step = lead(c)?.evidence;
         const shown = step ? ` (${quoteSafe(step, max)})` : "";
-        return `a Bash command just run${shown} involves ${described(c, max)}.`;
+        return `a Bash command about to run${shown} involves ${described(c, max)}.`;
     }
     return `the prompt asks to run or set up ${described(c, max)}.`;
 }

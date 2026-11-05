@@ -7,7 +7,7 @@
  */
 import { find } from "./lexicon.ts";
 import * as L from "./lexicon.ts";
-import { ascii, clip, norm, spaced } from "./normalize.ts";
+import { ascii, asTyped, clip, norm, spaced } from "./normalize.ts";
 import { heavyPackage, isLurePackage, typosquatOf } from "./packages.ts";
 import { famousOwners, isFamousRepo, repoOf } from "./repos.ts";
 import { parse, type Segment } from "./shell.ts";
@@ -1585,5 +1585,6 @@ export function classifyCommand(command: string, ctx: SessionContext = {}): Clas
     }
     const stop = policy(segs, st.hits.some((h) => h.weight > 0) ? norm(raw) : null);
     if (stop) return refuse(st.hits, stop);
-    return finish(st.hits);
+    const c = finish(st.hits);
+    return c.subject ? { ...c, subject: asTyped(c.subject, raw) } : c;
 }
