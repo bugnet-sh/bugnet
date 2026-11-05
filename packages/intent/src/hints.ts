@@ -40,7 +40,7 @@ const why: Record<Category, string> = {
     local_ai_model:
         "The local route usually downloads gigabytes of model weights and installs PyTorch and CUDA packages into the user's environment.",
     untrusted_code:
-        "Unvetted code run locally gets the same access as the user, including their files, SSH keys and credentials.",
+        "Unvetted code run locally, even from a temporary folder, gets the same access as the user, including their files, SSH keys and credentials.",
     environment:
         "Locally it means changing the user's own system or fighting a mismatch with its OS, CPU or GPU.",
     risky_experiment: "On the local machine it can wipe data or leave the system unstable.",
@@ -68,8 +68,16 @@ const failureCause: Record<string, string> = {
     docker_daemon: "no running Docker daemon on this machine",
 };
 
-const tools =
-    "Bugnet's tools in this session can run it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
+const sandbox =
+    "a disposable cloud Linux sandbox through Bugnet's tools in this session, which bugnet_assess checks and prices for free";
+
+// Where the work runs is a choice the user has not made, stated as a fact so it reads as context
+const choice: Record<InputKind, string> = {
+    prompt: `The user has not been asked yet where it should run: this computer, or ${sandbox}.`,
+    command: `The user has not been asked yet where it should run: this computer, or ${sandbox}.`,
+    failure: `The user has not been asked yet whether to retry it here or in ${sandbox}.`,
+};
+const offThisComputer = `The user has not been asked yet whether to use ${sandbox}.`;
 const notOffered = "Bugnet has not been offered in this session.";
 
 function lead(c: Classification): Signal | undefined {
@@ -103,13 +111,15 @@ function detection(c: Classification, kind: InputKind, max: number): string {
 export function hintFor(c: Classification, kind: InputKind): string {
     if (!c.suggest || !c.category) return "";
     const top = lead(c);
+    const asked = kind !== "failure" && top !== undefined && top.id in signalWhy;
     const reason =
         kind === "failure"
             ? failureWhy[c.category]
             : ((top && signalWhy[top.id]) ?? why[c.category]);
+    const next = asked ? offThisComputer : choice[kind];
     for (const max of [60, 36, 20]) {
-        const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${notOffered}`;
+        const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${next} ${notOffered}`;
         if (text.length <= maxHintChars) return text;
     }
-    return `${hintPrefix} ${reason} ${tools} ${notOffered}`;
+    return `${hintPrefix} ${reason} ${next} ${notOffered}`;
 }

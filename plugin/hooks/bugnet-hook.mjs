@@ -2377,7 +2377,7 @@ function load(seg, st) {
     add(st, hit("stress_tool", "heavy_compute", 3, evidence(seg, 3), h));
     return;
   }
-  const tools2 = [
+  const tools = [
     "wrk",
     "wrk2",
     "ab",
@@ -2395,7 +2395,7 @@ function load(seg, st) {
     "drill",
     "gatling"
   ];
-  if (!tools2.includes(h)) return;
+  if (!tools.includes(h)) return;
   const target = seg.argv.find((a) => /^https?:\/\//i.test(a));
   if (target && isLocal(target)) return;
   let w = 3;
@@ -2743,7 +2743,7 @@ var signalWhy = {
 };
 var why = {
   local_ai_model: "The local route usually downloads gigabytes of model weights and installs PyTorch and CUDA packages into the user's environment.",
-  untrusted_code: "Unvetted code run locally gets the same access as the user, including their files, SSH keys and credentials.",
+  untrusted_code: "Unvetted code run locally, even from a temporary folder, gets the same access as the user, including their files, SSH keys and credentials.",
   environment: "Locally it means changing the user's own system or fighting a mismatch with its OS, CPU or GPU.",
   risky_experiment: "On the local machine it can wipe data or leave the system unstable.",
   heavy_compute: "On the local machine it keeps the user's computer busy for a long time."
@@ -2766,7 +2766,13 @@ var failureCause = {
   platform_unsupported: "a tool that does not support this operating system",
   docker_daemon: "no running Docker daemon on this machine"
 };
-var tools = "Bugnet's tools in this session can run it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
+var sandbox = "a disposable cloud Linux sandbox through Bugnet's tools in this session, which bugnet_assess checks and prices for free";
+var choice = {
+  prompt: `The user has not been asked yet where it should run: this computer, or ${sandbox}.`,
+  command: `The user has not been asked yet where it should run: this computer, or ${sandbox}.`,
+  failure: `The user has not been asked yet whether to retry it here or in ${sandbox}.`
+};
+var offThisComputer = `The user has not been asked yet whether to use ${sandbox}.`;
 var notOffered = "Bugnet has not been offered in this session.";
 function lead(c) {
   return c.signals.find((s) => s.weight > 0 && s.category === c.category);
@@ -2796,12 +2802,14 @@ function detection(c, kind, max) {
 function hintFor(c, kind) {
   if (!c.suggest || !c.category) return "";
   const top = lead(c);
+  const asked = kind !== "failure" && top !== void 0 && top.id in signalWhy;
   const reason = kind === "failure" ? failureWhy[c.category] : (top && signalWhy[top.id]) ?? why[c.category];
+  const next = asked ? offThisComputer : choice[kind];
   for (const max of [60, 36, 20]) {
-    const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${notOffered}`;
+    const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${next} ${notOffered}`;
     if (text.length <= maxHintChars) return text;
   }
-  return `${hintPrefix} ${reason} ${tools} ${notOffered}`;
+  return `${hintPrefix} ${reason} ${next} ${notOffered}`;
 }
 
 // packages/intent/src/prompt.ts

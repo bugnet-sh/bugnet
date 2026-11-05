@@ -110,7 +110,7 @@ describe("bugnet_assess tool", () => {
         const { client } = await connect({});
         const { tools } = await client.listTools();
         const t = tools.find((x) => x.name === "bugnet_assess");
-        expect(t?.title).toBe("Check whether to use a Bugnet sandbox (free)");
+        expect(t?.title).toBe("Check where to run it, here or in a Bugnet sandbox (free)");
         expect(t?.annotations).toMatchObject({ readOnlyHint: true, openWorldHint: true });
         expect(t?._meta?.["anthropic/alwaysLoad"]).toBe(true);
         expect(assessDescription.length).toBeLessThan(900);
@@ -171,7 +171,9 @@ describe("bugnet_assess tool", () => {
             /Recommended package: gpu-m, 4 vCPU \/ 32 GiB \/ 1 GPU, 30 min, \$0\.90 USDC/,
         );
         expect(text).toMatch(/quoteId \(valid 10 min\): q1\./);
-        expect(text.trim().endsWith("Ask the user before bugnet_start.")).toBe(true);
+        expect(
+            text.trim().endsWith("before bugnet_start or any local fetch, install or run."),
+        ).toBe(true);
         expect(requirements).toMatchObject({ gpu: true });
         expect(seen.input).toMatchObject({
             task: "run flux",
@@ -263,7 +265,7 @@ describe("bugnet_assess tool", () => {
         expect(r.isError).toBeFalsy();
         const text = r.content.map((c) => c.text).join("\n");
         expect(text).toMatch(/No quote: prices are unavailable right now/);
-        expect(text).toMatch(/Ask the user before bugnet_start\.$/);
+        expect(text).toMatch(/Ask them before bugnet_start or any local fetch, install or run\.$/);
         expect(r.structuredContent?.quote).toBeNull();
         expect(r.structuredContent?.assessment.summary).toBe(assessment.summary);
     });

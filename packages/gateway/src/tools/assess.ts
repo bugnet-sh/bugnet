@@ -8,18 +8,21 @@ import { buildQuote, describeSize, sizeText, workloads, type BuiltQuote } from "
 export const assessBudgetMs = 12_000;
 export const quoteBudgetMs = 8_000;
 const shownFindings = 8;
+const choiceLine =
+    "Where it runs is the user's choice, this computer or this sandbox at the price above. " +
+    "Ask them before bugnet_start or any local fetch, install or run.";
 
 export const assessDescription =
-    "Free, read-only check before installing or running an untrusted GitHub repo, script or " +
-    "installer, an AI model such as text to speech, image generation or a local LLM, or " +
-    "anything that needs a GPU. It returns whether a disposable Bugnet cloud sandbox is safer " +
-    "or needed, and why: repo age, stars and owner, install scripts that download or run " +
-    "binaries, obfuscated code, pickle-only model weights, and the GPU, memory and disk the " +
-    "work needs against the user's machine, plus a priced quote with a quoteId for " +
-    "bugnet_start. Pass what the user wants as task, the repo URL, Hugging Face model id or " +
-    "script URL as source, the commands you plan to run, and the user's os, arch, RAM and GPU " +
-    "when known. Fetched files are never returned, only short findings. It charges nothing " +
-    "and starts nothing.";
+    "Free, read-only check before the first fetch, install or run of an untrusted GitHub repo, " +
+    "script or installer, an AI model such as text to speech, image generation or a local LLM, " +
+    "or work that needs a GPU, Linux or hours of compute. Where such work runs is the user's " +
+    "choice, this computer or a disposable Bugnet cloud sandbox, and this returns the facts " +
+    "for it: repo age, stars and owner, install scripts that download or run binaries, " +
+    "obfuscated code, pickle-only model weights, the GPU, memory and disk the work needs " +
+    "against the user's machine, and a priced quote with a quoteId for bugnet_start. Pass what " +
+    "the user wants as task, the repo URL, Hugging Face model id or script URL as source, the " +
+    "commands you plan to run, and the user's os, arch, RAM and GPU when known. Fetched files " +
+    "are never returned. It charges nothing and starts nothing.";
 
 const assessInput = z.object({
     task: z.string().max(2000).optional().describe("What the user wants, in their words"),
@@ -95,7 +98,7 @@ export function renderAssessment(a: Assessment, quote: BuiltQuote | null): strin
             lines.push(`- ${f.severity}: ${f.title}${f.evidence ? ` [${f.evidence}]` : ""}`);
         }
     }
-    lines.push(needsLine(a), ...quoteLines(quote), "Ask the user before bugnet_start.");
+    lines.push(needsLine(a), ...quoteLines(quote), choiceLine);
     return lines.join("\n");
 }
 
@@ -132,7 +135,7 @@ export const registerAssessTool: Register = (server, deps) => {
     server.registerTool(
         "bugnet_assess",
         {
-            title: "Check whether to use a Bugnet sandbox (free)",
+            title: "Check where to run it, here or in a Bugnet sandbox (free)",
             description: assessDescription,
             inputSchema: assessInput,
             annotations: { readOnlyHint: true, openWorldHint: true },

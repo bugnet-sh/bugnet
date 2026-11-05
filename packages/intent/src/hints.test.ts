@@ -56,7 +56,8 @@ describe("hintFor", () => {
         expect(text.length).toBeLessThanOrEqual(maxHintChars);
         expect(text).not.toContain("\n");
         expect(text).toContain("disposable cloud Linux sandbox");
-        expect(text).toContain("bugnet_assess checks it for free");
+        expect(text).toContain("bugnet_assess checks and prices for free");
+        expect(text).toContain("The user has not been asked yet");
         expect(text.endsWith("Bugnet has not been offered in this session.")).toBe(true);
         expect(text.slice(hintPrefix.length)).not.toMatch(imperative);
     });
@@ -73,6 +74,8 @@ describe("hintFor", () => {
         const text = hintFor(c, "prompt");
         expect(text).toContain("github.com/someone/thing");
         expect(text).toContain("files, SSH keys and credentials");
+        expect(text).toContain("even from a temporary folder");
+        expect(text).toContain("where it should run: this computer, or a disposable cloud");
     });
 
     it("says a command is about to run", () => {
@@ -90,6 +93,7 @@ describe("hintFor", () => {
         const text = hintFor(c, "failure");
         expect(text).toContain("docker compose up");
         expect(text).toContain("no running Docker daemon on this machine");
+        expect(text).toContain("whether to retry it here or in a disposable cloud Linux sandbox");
     });
 
     it("is empty when nothing suggests Bugnet", () => {
@@ -136,6 +140,7 @@ describe("hint subjects", () => {
         const h = hintFor(c, "prompt");
         expect(c.suggest).toBe(true);
         expect(h).toContain("this computer");
+        expect(h).toContain("whether to use a disposable cloud Linux sandbox");
         expect(h).not.toContain("has not vetted");
     });
 
