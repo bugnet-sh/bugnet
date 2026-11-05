@@ -140,11 +140,11 @@ export interface SecretToolDeps {
 }
 
 class Refusal extends Error {
-    constructor(
-        message: string,
-        readonly retryAfterSeconds: number | null = null,
-    ) {
+    readonly retryAfterSeconds: number | null;
+
+    constructor(message: string, retryAfterSeconds: number | null = null) {
         super(message);
+        this.retryAfterSeconds = retryAfterSeconds;
     }
 }
 

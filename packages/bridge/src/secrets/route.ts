@@ -15,12 +15,13 @@ export interface RouteOptions {
 }
 
 export class RouteError extends Error {
-    constructor(
-        message: string,
-        readonly reason: string,
-        readonly retryAfterSeconds: number | null = null,
-    ) {
+    readonly reason: string;
+    readonly retryAfterSeconds: number | null;
+
+    constructor(message: string, reason: string, retryAfterSeconds: number | null = null) {
         super(message);
+        this.reason = reason;
+        this.retryAfterSeconds = retryAfterSeconds;
     }
 }
 

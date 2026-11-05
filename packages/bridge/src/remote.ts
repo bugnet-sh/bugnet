@@ -36,8 +36,11 @@ export class RemoteGateway implements RemoteTools {
     private client: Client | null = null;
     private pending: Promise<Client> | null = null;
     private serverInstructions: string | undefined;
+    private readonly opts: RemoteOptions;
 
-    constructor(private readonly opts: RemoteOptions) {}
+    constructor(opts: RemoteOptions) {
+        this.opts = opts;
+    }
 
     instructions(): string | undefined {
         return this.serverInstructions;
