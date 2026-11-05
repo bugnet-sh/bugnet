@@ -35,4 +35,6 @@ export interface SessionContext {
     arch?: "arm64" | "x64";
     // The command runs in, or right after, a repository cloned earlier in this session
     clonedThisSession?: boolean;
+    // That repository, such as github.com/acme/tool, when the clone was seen
+    clonedRepo?: string;
 }

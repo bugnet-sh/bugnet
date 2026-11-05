@@ -34,6 +34,8 @@ export interface HookInput {
 export interface State {
     hinted: string[];
     clonedDirs: string[];
+    // The repository each cloned directory holds, such as github.com/acme/tool
+    clonedRepos: Record<string, string>;
     bugnetUsed: boolean;
 }
 
@@ -61,13 +63,15 @@ function stateFile(env: Env, session: string): string {
 export function loadState(env: Env, session: string): State {
     try {
         const s = JSON.parse(readFileSync(stateFile(env, session), "utf8")) as Partial<State>;
+        const repos = s.clonedRepos;
         return {
             hinted: Array.isArray(s.hinted) ? s.hinted : [],
             clonedDirs: Array.isArray(s.clonedDirs) ? s.clonedDirs : [],
+            clonedRepos: repos && typeof repos === "object" && !Array.isArray(repos) ? repos : {},
             bugnetUsed: s.bugnetUsed === true,
         };
     } catch {
-        return { hinted: [], clonedDirs: [], bugnetUsed: false };
+        return { hinted: [], clonedDirs: [], clonedRepos: {}, bugnetUsed: false };
     }
 }
 
@@ -85,18 +89,24 @@ function prune(env: Env, now: number): void {
     }
 }
 
-// Directories a command clones into, resolved against the hook's cwd
-export function clonedDirs(command: string, cwd: string): string[] {
-    return clonesIn(command).map((c) => (isAbsolute(c.dir) ? c.dir : resolve(cwd, c.dir)));
+// Directories a command clones into, resolved against the hook's cwd, and their repositories
+export function clonedDirs(command: string, cwd: string): { dir: string; repo: string }[] {
+    return clonesIn(command).map((c) => ({
+        dir: isAbsolute(c.dir) ? c.dir : resolve(cwd, c.dir),
+        repo: c.repo,
+    }));
 }
 
-function inCloned(state: State, cwd: string, command: string): boolean {
+// The cloned directory the command runs in, if any, found from the cwd and any cd in it
+function clonedAt(state: State, cwd: string, command: string): string | null {
     const cds = [...clip(command).matchAll(/\bcd\s+(['"]?)([^\s'";&|]+)\1/g)].map((m) =>
         resolve(cwd, m[2] as string),
     );
-    return [cwd, ...cds].some((d) =>
-        state.clonedDirs.some((c) => d === c || d.startsWith(`${c}/`)),
-    );
+    for (const d of [cwd, ...cds]) {
+        const c = state.clonedDirs.find((c) => d === c || d.startsWith(`${c}/`));
+        if (c) return c;
+    }
+    return null;
 }
 
 function osOf(env: Env): SessionContext["os"] {
@@ -125,10 +135,17 @@ export function runHook(mode: Mode, input: HookInput, env: Env, now = Date.now()
 
     if (mode === "track") {
         if (/bugnet/i.test(input.tool_name ?? "")) state.bugnetUsed = true;
-        const dirs = clonedDirs(command, cwd).filter((d) => !state.clonedDirs.includes(d));
-        if (dirs.length > 0 || state.bugnetUsed) {
-            state.clonedDirs.push(...dirs);
+        const fresh = clonedDirs(command, cwd).filter((c) => !state.clonedDirs.includes(c.dir));
+        if (fresh.length > 0 || state.bugnetUsed) {
+            state.clonedDirs.push(...fresh.map((c) => c.dir));
             state.clonedDirs = state.clonedDirs.slice(-20);
+            for (const c of fresh) state.clonedRepos[c.dir] = c.repo;
+            state.clonedRepos = Object.fromEntries(
+                state.clonedDirs.flatMap((d) => {
+                    const repo = state.clonedRepos[d];
+                    return repo ? [[d, repo]] : [];
+                }),
+            );
             saveState(env, session, state);
         }
         return null;
@@ -136,10 +153,12 @@ export function runHook(mode: Mode, input: HookInput, env: Env, now = Date.now()
     if (state.bugnetUsed || state.hinted.length >= maxHintsPerSession) return null;
     if (env.hints === "quiet" && mode !== "failure") return null;
 
+    const dir = mode === "prompt" ? null : clonedAt(state, cwd, command);
     const ctx: SessionContext = {
         os: osOf(env),
         arch: env.arch === "arm64" ? "arm64" : "x64",
-        clonedThisSession: mode !== "prompt" && inCloned(state, cwd, command),
+        clonedThisSession: dir !== null,
+        ...(dir && state.clonedRepos[dir] ? { clonedRepo: state.clonedRepos[dir] } : {}),
     };
     let c: Classification;
     if (mode === "prompt") {

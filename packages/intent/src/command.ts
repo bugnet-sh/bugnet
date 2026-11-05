@@ -9,7 +9,7 @@ import { find } from "./lexicon.ts";
 import * as L from "./lexicon.ts";
 import { ascii, clip, norm, spaced } from "./normalize.ts";
 import { heavyPackage, isLurePackage, typosquatOf } from "./packages.ts";
-import { famousOwners, repoOf } from "./repos.ts";
+import { famousOwners, isFamousRepo, repoOf } from "./repos.ts";
 import { parse, type Segment } from "./shell.ts";
 import { finish, hit, none, refuse, type Hit } from "./score.ts";
 import type { Classification, SessionContext } from "./types.ts";
@@ -571,16 +571,17 @@ function projectStep(seg: Segment): string | null {
     return null;
 }
 
+// A clone of a well-known project is not unvetted, while one of an unknown owner stays so
 function clonedCode(seg: Segment, st: State): void {
     if (st.ranClonedCode || !(st.cloned || st.ctx.clonedThisSession)) return;
     const step = projectStep(seg);
     if (!step) return;
     st.ranClonedCode = true;
-    const subject = st.clonedRepo ?? undefined;
-    const weight = st.cloned && st.clonedFamous ? 2 : 5;
-    add(st, hit("runs_cloned_code", "untrusted_code", weight, step, subject));
-    if (st.clonedRepo && find(L.aiName, spaced(st.clonedRepo))) {
-        add(st, hit("ai_repo", "local_ai_model", 4, step, st.clonedRepo));
+    const repo = st.clonedRepo ?? (st.ctx.clonedRepo ? repoOf(st.ctx.clonedRepo).short : null);
+    const famous = st.cloned ? st.clonedFamous : repo !== null && isFamousRepo(repo);
+    add(st, hit("runs_cloned_code", "untrusted_code", famous ? 2 : 5, step, repo ?? undefined));
+    if (repo && find(L.aiName, spaced(repo))) {
+        add(st, hit("ai_repo", "local_ai_model", 4, step, repo));
     }
 }
 

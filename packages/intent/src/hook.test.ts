@@ -14,13 +14,20 @@ function env(hints: Env["hints"] = "normal"): Env {
 }
 
 describe("clonedDirs", () => {
+    const dirs = (command: string) => clonedDirs(command, "/w").map((c) => c.dir);
+
     it("finds the target of git clone with and without a directory", () => {
-        expect(clonedDirs("git clone https://github.com/acme/tool.git", "/w")).toEqual(["/w/tool"]);
-        expect(clonedDirs("git clone --depth 1 https://github.com/a/b x && cd x", "/w")).toEqual([
-            "/w/x",
+        expect(dirs("git clone https://github.com/acme/tool.git")).toEqual(["/w/tool"]);
+        expect(dirs("git clone --depth 1 https://github.com/a/b x && cd x")).toEqual(["/w/x"]);
+        expect(dirs("git clone git@github.com:a/repo.git /tmp/r")).toEqual(["/tmp/r"]);
+        expect(dirs("gh repo clone acme/tool")).toEqual(["/w/tool"]);
+        expect(dirs("npm install")).toEqual([]);
+    });
+
+    it("names the repository each clone holds", () => {
+        expect(clonedDirs("git clone https://github.com/Vercel/next.js", "/w")).toEqual([
+            { dir: "/w/next.js", repo: "github.com/vercel/next.js" },
         ]);
-        expect(clonedDirs("git clone git@github.com:a/repo.git /tmp/r", "/w")).toEqual(["/tmp/r"]);
-        expect(clonedDirs("npm install", "/w")).toEqual([]);
     });
 });
 
@@ -143,7 +150,27 @@ describe("runHook hints", () => {
         const install = { ...base, cwd: "/w/b", tool_input: { command: "npm install" } };
         const out = runHook("command", install, e);
         expect(JSON.parse(out as string).hookSpecificOutput.hookEventName).toBe("PreToolUse");
-        expect(context(out)).toContain("a Bash command just run (npm install)");
+        expect(context(out)).toContain("(npm install)");
+        expect(context(out)).toContain("github.com/a/b");
         expect(runHook("command", { ...install, cwd: "/elsewhere" }, env())).toBeNull();
+    });
+
+    it("gives no hint for an install inside a tracked clone of a well-known project", () => {
+        const e = env();
+        const base = { session_id: "h3", cwd: "/w", tool_name: "Bash" };
+        const clone = "git clone https://github.com/vercel/next.js";
+        runHook("track", { ...base, tool_input: { command: clone } }, e);
+        expect(loadState(e, "h3").clonedRepos).toEqual({
+            "/w/next.js": "github.com/vercel/next.js",
+        });
+        const install = { ...base, tool_input: { command: "cd next.js && pnpm install" } };
+        expect(runHook("command", install, e)).toBeNull();
+        const own = {
+            ...base,
+            tool_input: { command: "git clone https://github.com/acme-co/api" },
+        };
+        runHook("track", own, e);
+        const test = { ...base, cwd: "/w/api", tool_input: { command: "npm test" } };
+        expect(runHook("command", test, e)).not.toBeNull();
     });
 });
