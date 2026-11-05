@@ -13,6 +13,7 @@ import { registerQuoteTool } from "./tools/quote.ts";
 import { registerPreviewTool } from "./tools/preview.ts";
 import { registerSandboxTools } from "./tools/sandbox.ts";
 import { registerSourceTool } from "./tools/source.ts";
+import { registerTransferTool } from "./tools/transfer.ts";
 
 export const version = "0.1.0";
 
@@ -25,6 +26,7 @@ export const registrations: Register[] = [
     registerExtendTool,
     registerSourceTool,
     registerPreviewTool,
+    registerTransferTool,
 ];
 
 export function buildMcpServer(deps: Deps, extra: Register[] = []): McpServer {

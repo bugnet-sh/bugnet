@@ -29,6 +29,7 @@ shared_quote_burst = 40                 # the burst for each address in shared_r
 
 [tools]
 require_user_approval = true            # paid tools ask the client for a person's approval, off only for unattended test gateways
+confirm_transfers = true                # bugnet_transfer asks too, if require_user_approval is on
 
 [assess]
 github_api = "https://api.github.com"
