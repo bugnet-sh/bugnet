@@ -490,8 +490,9 @@ export function setupPy(file: RepoFile, trust: Trust): Finding[] {
     return out;
 }
 
+// Under the m flag a leading \s would also eat newlines and go quadratic on a file of blank lines
 const pyprojectHook =
-    /^\s*\[tool\.hatch\.build(?:\.targets\.[\w.-]+)?\.hooks\.custom\]|^\s*backend-path\s*=|^\s*\[tool\.setuptools\.cmdclass\]/m;
+    /^[ \t]*\[tool\.hatch\.build(?:\.targets\.[\w.-]+)?\.hooks\.custom\]|^[ \t]*backend-path[ \t]*=|^[ \t]*\[tool\.setuptools\.cmdclass\]/m;
 
 export function pyprojectHooks(file: RepoFile, trust: Trust): Finding[] {
     const m = pyprojectHook.exec(file.text);

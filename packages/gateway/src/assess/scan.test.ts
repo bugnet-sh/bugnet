@@ -472,6 +472,29 @@ describe("whole repos", () => {
         }
     });
 
+    it("stays fast on a 256 KiB file of blank lines in every file kind", () => {
+        const kib = 256 * 1024;
+        const inputs = ["\n".repeat(kib), " \n".repeat(kib / 2), "\t\r\n".repeat(kib / 3)];
+        const paths = [
+            "pyproject.toml",
+            "setup.py",
+            "package.json",
+            "requirements.txt",
+            "Dockerfile",
+            "README.md",
+            "install.sh",
+            ".github/workflows/ci.yml",
+        ];
+        for (const text of inputs) {
+            for (const path of paths) {
+                const started = performance.now();
+                scanFile(file(path, text), "normal");
+                repoNeeds([file(path, text)]);
+                expect(performance.now() - started).toBeLessThan(500);
+            }
+        }
+    });
+
     it("sorts by severity, drops duplicates and keeps at most three per rule", () => {
         const f = (id: string, severity: Finding["severity"], evidence: string): Finding => ({
             id,
