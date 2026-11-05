@@ -37,7 +37,7 @@ export interface RepoSnapshot {
     ownerType: string | null;
     tree: TreeEntry[];
     treeTruncated: boolean;
-    // How many files were chosen for reading, so an empty files list can be told apart from failures
+    // Files chosen for reading, so an empty files list can be told apart from failed reads
     picked: number;
     files: RepoFile[];
     notes: Finding[];
@@ -156,7 +156,7 @@ export function pickFiles(
     return picked;
 }
 
-// For listings over the byte cap, as on tensorflow, the root and workflows show what an install does
+// When the full listing is over the byte cap, the root and workflows still show what installs do
 async function shallowTree(
     apiGet: (path: string) => Promise<Fetched>,
     repoPath: string,

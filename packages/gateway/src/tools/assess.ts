@@ -103,7 +103,9 @@ export function renderAssessment(a: Assessment, quote: BuiltQuote | null): strin
 export function tooLargeSummary(a: Assessment): string {
     const fit = a.fit.level === "does_not_fit" ? sortFindings(a.fit.findings)[0] : undefined;
     const size = sizeText(a.needs.minMemoryGiB, a.needs.minDiskGiB);
-    const tail = `No Bugnet package is large enough for ${size}${fit ? " either" : ""}, so a smaller or quantised variant is the way to run it.`;
+    const tail =
+        `No Bugnet package is large enough for ${size}${fit ? " either" : ""}, ` +
+        "so a smaller or quantised variant is the way to run it.";
     if (fit && a.risk.level !== "high") return `${sentence(fit.title)} ${tail}`;
     return `${a.summary} ${tail}`;
 }

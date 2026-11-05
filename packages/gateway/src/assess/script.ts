@@ -9,7 +9,7 @@ export interface ScriptReport {
     findings: Finding[];
 }
 
-// Install hosts can serve a clean script to a scanner and the payload to curl, so this asks as curl does
+// A host can serve a scanner a clean script and curl the payload, so this asks as curl does
 export const scriptHeaders = { "user-agent": "curl/8.7.1", accept: "*/*" };
 
 const binaryName =
@@ -24,7 +24,9 @@ export function urlFindings(url: string): Finding[] {
         out.push({
             id: "insecure_url",
             severity: isBareIp(host) ? "high" : "medium",
-            title: "The link is not https, so what it serves can be swapped on the way and it was not fetched",
+            title:
+                "The link is not https, so what it serves can be swapped on the way " +
+                "and it was not fetched",
             evidence: evidence(`${new URL(url).protocol} ${host}`),
         });
     }
