@@ -310,3 +310,46 @@ describe("abuse policy", () => {
         expect(c.signals.some((s) => s.id === "lan_scan")).toBe(true);
     });
 });
+
+describe("grammar for model ids, modules, system installs and remote builds", () => {
+    it.each<[string, SessionContext]>([
+        ["python -m mlx_lm.generate --model mlx-community/Llama-3.3-70B-Instruct-4bit", mac],
+        ["python train.py --model_name_or_path mistralai/Mistral-7B-v0.1 --lora_r 16", linux],
+        ["python -m piper --model en_US-lessac-medium --output_file out.wav", mac],
+        ["python scripts/txt2img.py --prompt 'a cat'", mac],
+        ["tune run lora_finetune_single_device --config llama3_1/8B_lora", linux],
+        ["./build/bin/whisper-cli -m models/ggml-large-v3.bin -f talk.wav", mac],
+        ["make && sudo make install", linux],
+        ["sudo python3 setup.py install", linux],
+        ["sudo pip3 install -r requirements.txt", linux],
+        ["make -C /lib/modules/$(uname -r)/build M=$(pwd) modules", linux],
+        ["echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf", linux],
+        ["sudo dnf install akmod-nvidia", linux],
+        ["pip install git+https://github.com/someone/tool", mac],
+        ["go install github.com/someone/fastscan@latest", mac],
+        ["cargo install --git https://github.com/someone/tool", mac],
+        ["deno run -A https://example.dev/script.ts", mac],
+        ["open invoice.pdf.exe", mac],
+        ["ffmpeg -i in.mkv -c:v libx265 -preset veryslow out.mkv", mac],
+    ])("offers for %s", (command, ctx) => {
+        expect(offers(command, ctx)).toBe(true);
+    });
+
+    it.each<[string, SessionContext]>([
+        ["curl -fsSL https://rye.astral.sh/get | bash", mac],
+        ["curl -sS https://bootstrap.pypa.io/get-pip.py | python3", mac],
+        ["pip install git+https://github.com/huggingface/transformers", mac],
+        ["go install golang.org/x/tools/gopls@latest", mac],
+        ["aider --model deepseek/deepseek-chat", mac],
+        ["litellm --model openai/gpt-4o", mac],
+        ["python whisper_client.py meeting.mp3", mac],
+        ["python eval.py --model ./checkpoints/best.pt", mac],
+        ["python -m pytest tests/", mac],
+        ["sudo sysctl -w net.core.somaxconn=4096", linux],
+        ["sudo pip install requests", linux],
+        ["cargo install ripgrep", mac],
+        ["deno run -A main.ts", mac],
+    ])("does not offer for %s", (command, ctx) => {
+        expect(offers(command, ctx)).toBe(false);
+    });
+});

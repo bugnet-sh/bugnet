@@ -280,3 +280,29 @@ describe("classification shape", () => {
         expect(classifyPrompt("   ", mac)).toMatchObject({ suggest: false, category: null });
     });
 });
+
+describe("more phrasing", () => {
+    it.each([
+        "subtitle all 30 episodes of my anime collection with whisperx",
+        "quero clonar minha voz com o RVC no meu notebook",
+        "download this game trainer and inject it into the running game",
+        "installiere bitte dieses Crack-Tool für Photoshop",
+        "compile chromium from source, it takes forever on my machine",
+        "ComfyUI'ı Flux ile kurup birkaç görsel üretebilir misin?",
+        "necesito transcribir 200 horas de entrevistas con whisper en local",
+    ])("offers for %s", (text) => {
+        expect(offers(text)).toBe(true);
+    });
+
+    it.each([
+        "what gpu would i need to run llama 70b?",
+        "can you explain what this curl | bash line in our README does?",
+        "write a crack detection model training script for our bridge photos dataset",
+        "rename the airdrop component to rewards",
+        "why is cuda not available in my docker container on the server",
+        "ejecuta los tests de mi proyecto",
+        "roda os testes do meu app",
+    ])("does not offer for %s", (text) => {
+        expect(offers(text)).toBe(false);
+    });
+});

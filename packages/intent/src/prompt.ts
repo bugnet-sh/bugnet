@@ -269,6 +269,7 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     cue(atLeast(L.hours, 1), 2, false);
     cue(atLeast(L.minutes, 30), 2, false);
     cue(find(L.heavyTask, bare), 1, true);
+    cue(find(L.longBuild, bare), 2, true);
     for (const m of findAll(L.loadTest, bare).slice(0, 2)) cue(m, 2, true);
     cue(find(L.heat, bare), 1, true);
     cue(atLeast(L.repeats, 10), 1, true);
@@ -286,7 +287,10 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     }
 
     /* Commands pasted into the prompt */
-    for (const m of findAll(commandStart, t)) {
+    // A fetch command mentioned in prose without a URL is talk about it, not a command
+    const typed = (x: RegExpExecArray) =>
+        x[0].startsWith("`") || /:\/\//.test(x[0]) || !/^(?:curl|wget|iwr|irm|invoke)/.test(x[0]);
+    for (const m of findAll(commandStart, t).filter(typed)) {
         const c = classifyCommand(m[0].replace(/^`|`$/g, ""), ctx);
         if (c.suggest && c.category) {
             const pts = Math.min(Math.round(c.score * 8), 6);
@@ -322,8 +326,12 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     negate(L.edit, "editing_code", -2);
 
     /* Whole-prompt signals against an offer */
+    // A question that opens the prompt stays a question even when it mentions running something
     const question = find(L.concept, bare);
-    if (question) global.push(hit("concept_question", null, act ? -2 : -5, question[0]));
+    if (question) {
+        const firm = !act || (question.index === 0 && !iso && !away);
+        global.push(hit("concept_question", null, firm ? -5 : -2, question[0]));
+    }
     if (!iso && !away) {
         const ro = find(L.readOnly, bare);
         if (ro) global.push(hit("read_only", null, -6, ro[0]));

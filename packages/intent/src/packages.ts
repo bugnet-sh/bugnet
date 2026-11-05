@@ -201,7 +201,7 @@ export function typosquatOf(name: string): string | null {
 }
 
 const lureWords =
-    /(?:^|[-_.])(?:crack|cracked|keygen|activator|aimbot|wallhack|injector|spoofer|stealer|grabber|drainer|robux|vbucks|nitro-?gen|unlocker|airdrop-?claim)(?:$|[-_.])|(?:^|[-_.])free(?:[-_.][a-z0-9]+)*[-_.](?:pro|premium|plus|vip|nitro|license|activator)(?:$|[-_.])|(?:^|[-_.])(?:pro|premium|plus)[-_.]free(?:$|[-_.])/;
+    /(?:^|[-_.])(?:crack|cracked|keygen|activator|aimbot|wallhack|injector|spoofer|stealer|grabber|drainer|robux|vbucks|nitro-?gen(?:erator)?|unlocker|airdrop-?claim)(?:$|[-_.])|(?:^|[-_.])free(?:[-_.][a-z0-9]+)*[-_.](?:pro|premium|plus|vip|nitro|license|activator)(?:$|[-_.])|(?:^|[-_.])(?:pro|premium|plus)[-_.]free(?:$|[-_.])/;
 
 export function isLurePackage(name: string): boolean {
     return lureWords.test(name.toLowerCase());

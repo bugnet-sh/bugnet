@@ -57,8 +57,8 @@ export const action = family(String.raw`
 
 // Doing the AI task itself counts as intent for AI subjects
 export const taskVerb = family(String.raw`
-    transcrib\w*|transkribier\w*|desifre\w*|yaziya (?:dok|cevir|aktar)\w*
-    clone (?:my|a|his|her|their|this|the|someone'?s) (?:\w+ )?voice|clon(?:ar|a) (?:mi |la |su )?voz
+    transcrib\w*|transkribier\w*|desifre\w*|yaziya (?:dok|cevir|aktar)\w*|subtitl\w*|caption\w*|diariz\w*
+    clone (?:my|a|his|her|their|this|the|someone'?s) (?:\w+ )?voice|clon(?:ar|a) (?:mi |la |su |a |minha |sua )?voz
     klon\w* (?:meine |die )?stimme|ses(?:imi|ini|i)? klon\w*|sesimi (?:kopyala|taklit)\w*
     narrate|read (?:it|this) (?:aloud|out loud)|seslendir\w*|vertonen|vorlesen
     (?:generate|create|make|render|produce|animate) (?:[^ \n]+ ){0,4}?(?:images?|pictures?|photos?|art|portraits?|shots?|clips?|videos?|animations?|songs?|music|voiceovers?|speech|audio)
@@ -187,7 +187,10 @@ export const lure = family(String.raw`
     (?:get|unlock|activate)\w* (?:\w+ ){0,3}?(?:premium|pro|plus) (?:\w+ ){0,2}?(?:for free|free|without paying)
     without paying|bypass (?:the )?(?:paywall|license|licensing|activation|drm)
     mod menu|aimbot|wallhack|wall hack|esp hack|triggerbot|spoofer|hwid|dll inject\w*|cheat engine
-    game hack|auto ?farm\w*|autoclicker
+    game (?:hacks?|trainers?|cheats?)|auto ?farm\w*|autoclicker
+    inject\w* (?:\w+ ){0,2}?into (?:the |a )?(?:running )?(?:game|process)
+    (?:crack|cracked|keygen|patch|activator|kms)\w*\b[^\n]{0,30}?\b(?:photoshop|office|windows|adobe|fl studio|capcut|autocad|premiere|illustrator|lightroom|after effects|matlab|ableton|vegas|corel)
+    (?:photoshop|office|windows|adobe|fl studio|capcut|autocad|premiere|illustrator|lightroom|after effects|matlab|ableton|vegas|corel)[^\n]{0,20}?\b(?:crack|cracked|keygen|activator|kirik|crackeado|craqueado)\w*
     (?:roblox|valorant|fortnite|cs2|csgo|counter[- ]strike|apex|warzone|rust|gta|minecraft|pubg|tarkov|overwatch|cod|r6|dota|genshin|free fire) (?:\w+ )?(?:cheats?|hacks?|esp|aimbot|scripts?|executor|injector|mod menu|trainer|exploit|unlocker|spoofer)
     (?:nitro|robux|token|account|gift ?card|v-?bucks) (?:gen|generator)|token (?:grabber|logger|stealer)
     stealer|remote access trojan|rat (?:builder|client|panel|tool)
@@ -356,7 +359,7 @@ export const windowsText = family(String.raw`
 
 export const driverText = family(String.raw`
     (?:install|update|upgrade|set ?up|kur\w*|instal\w*)\w* (?:the )?(?:nvidia|cuda|gpu|graphics) (?:drivers?|toolkit)
-    (?:nvidia|cuda|gpu|graphics card) drivers?|drivers? for (?:my |the |an? )?(?:nvidia|gpu|graphics)
+    (?:(?:nvidia|cuda|gpu|graphics)[- ](?:card )?)+(?:drivers?|toolkit)|drivers? for (?:my |the |an? )?(?:nvidia|gpu|graphics)
     kernel modul\w*|dkms|out[- ]of[- ]tree (?:driver|module)|custom kernel|kernel patch\w*
 `);
 
@@ -391,7 +394,11 @@ export const heavyPhrase = family(String.raw`
 export const heavyTask = family(String.raw`
     param(?:eter)? sweep|grid search|hyperparameter (?:search|sweep|tuning)|backtest\w*|fuzz\w*|render\w*
     monte carlo|benchmark\w*|batch (?:job|process\w*)
-    (?:compile|build|compil\w*|derle\w*|kompilier\w*) (?:\w+ ){0,2}?(?:kernel|chromium|llvm|gcc|firefox|aosp|android|webkit|qt)
+`);
+
+// Builds of projects so large that one local build takes an hour or more
+export const longBuild = family(String.raw`
+    (?:compile|build|compil\w*|derle\w*|kompilier\w*) (?:\w+ ){0,2}?(?:kernel|chromium|llvm|gcc|firefox|aosp|android|webkit|qt|tensorflow|pytorch)
 `);
 
 export const loadTest = family(String.raw`
@@ -420,7 +427,9 @@ export const epochs = /(?<![\w.])(\d+) epochs?(?![a-z])/g;
 /* Signals against an offer */
 
 export const concept = family(String.raw`
-    ^(?:what|whats|what's|why|explain|eli5|how come)|how (?:does|do|did|is|are|would) (?:\S+ ){0,6}?(?:work|works|differ|compare|detect\w*|handle\w*)
+    ^(?:what|whats|what's|which|why|explain|eli5|how come|how much|how many|is it (?:possible|worth|safe|true)|should i|would it|do i need)
+    how (?:does|do|did|is|are|would) (?:\S+ ){0,6}?(?:work|works|differ|compare|detect\w*|handle\w*)
+    explain|walk me through
     (?:what'?s|what is) the difference|difference between|pros and cons|just curious|out of curiosity|theoretically|in theory
     nedir|nasil calisir|ne ise yarar|acikla\w*|farki ne\w*|ne kadar [^\n]{0,30}?(?:ister|gerekir|tutar)|merak ediyorum
     que es|como funciona|explica\w*|cual es la diferencia|por que
