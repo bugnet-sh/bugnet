@@ -23,6 +23,7 @@ import {
     idempotencyKey,
     ok,
     sandboxFailure,
+    withProgress,
     type Deps,
     type Register,
 } from "./common.ts";
@@ -31,7 +32,8 @@ const directions = ["upload", "download"] as const;
 type Direction = (typeof directions)[number];
 
 const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
-const plain = (s: string) => !/\p{Cc}/u.test(s);
+// Bidi overrides could make a printed command read differently from what the shell runs
+const plain = (s: string) => !/[\p{Cc}\u202a-\u202e\u2066-\u2069]/u.test(s);
 
 const transferInput = z.object({
     handle: handleInput,
@@ -40,7 +42,7 @@ const transferInput = z.object({
         .string()
         .max(4096)
         .regex(/^(?:\/|~(?:\/|$))/, "an absolute path, or ~ or ~/rest")
-        .refine(plain, "a path without control characters")
+        .refine(plain, "a path without control or bidi characters")
         .describe("The sandbox file, an absolute path or ~/rest"),
     sizeBytes: z
         .number()
@@ -66,7 +68,7 @@ const transferInput = z.object({
         .string()
         .min(1)
         .max(4096)
-        .refine(plain, "a path without control characters")
+        .refine(plain, "a path without control or bidi characters")
         .optional()
         .describe(
             "The local file the curl command sends or saves to. Downloads default to the " +
@@ -346,7 +348,10 @@ export const registerTransferTool: Register = (server, deps) => {
         async (args, ctx) => {
             try {
                 const req = transferRequest(args, ctx);
-                const res = await createTransfer(deps, req, ctx.mcpReq.signal);
+                // The router hashes a large download at mint, so progress keeps the call alive
+                const res = await withProgress(ctx, "making the transfer link", () =>
+                    createTransfer(deps, req, ctx.mcpReq.signal),
+                );
                 if (!res.url) {
                     throw new GatewayError(
                         "internal",

@@ -199,7 +199,8 @@ describe("bugnet_transfer uploads", () => {
         const cases: [Record<string, unknown>, RegExp][] = [
             [{ path: "data/in.csv" }, /path: an absolute path, or ~ or ~\/rest/],
             [{ path: "~root/x" }, /path: an absolute path/],
-            [{ path: "/tmp/a\nb" }, /path: a path without control characters/],
+            [{ path: "/tmp/a\nb" }, /path: a path without control or bidi characters/],
+            [{ localFile: "evil\u202egpj.sh" }, /localFile: a path without control or bidi/],
             [{ sha256: "abc" }, /sha256: a SHA-256 as 64 hex characters/],
             [{ mode: "0855" }, /mode: an octal mode such as 0644 or 0755/],
             [{ sizeBytes: -1 }, /sizeBytes/],
