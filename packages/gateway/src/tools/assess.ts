@@ -152,6 +152,11 @@ export function renderAssessment(a: Assessment, quote: BuiltQuote | null): strin
     return lines.join("\n");
 }
 
+// The summary's closing sentence about what a Bugnet sandbox would do, false once none can start
+function withoutSandboxClaim(summary: string): string {
+    return summary.replace(/ [^.]*\bBugnet\b[^.]*\bsandbox\b[^.]*\.$/, "");
+}
+
 // For work no package can hold, so the summary never promises that a sandbox can run it
 export function tooLargeSummary(a: Assessment): string {
     const fit = a.fit.level === "does_not_fit" ? sortFindings(a.fit.findings)[0] : undefined;
@@ -160,7 +165,7 @@ export function tooLargeSummary(a: Assessment): string {
         `No Bugnet package is large enough for ${size}${fit ? " either" : ""}, ` +
         "so a smaller or quantised variant is the way to run it.";
     if (fit && a.risk.level !== "high") return `${sentence(fit.title)} ${tail}`;
-    return `${a.summary} ${tail}`;
+    return `${withoutSandboxClaim(a.summary)} ${tail}`;
 }
 
 // For work that fits a package Bugnet sells but none can start now, such as GPU work without a GPU class
@@ -170,7 +175,7 @@ export function unavailableSummary(a: Assessment): string {
         ? "No Bugnet GPU sandbox is available right now, so Bugnet cannot run it yet."
         : "No Bugnet package can start right now, try again in a minute.";
     if (fit && a.risk.level !== "high") return `${sentence(fit.title)} ${tail}`;
-    return `${a.summary.replace(/ A Bugnet cloud sandbox can run .*$/, "")} ${tail}`;
+    return `${withoutSandboxClaim(a.summary)} ${tail}`;
 }
 
 function within<T>(work: Promise<T>, ms: number): Promise<T> {
