@@ -39,6 +39,8 @@ describe.skipIf(!url)("gateway end to end", () => {
     it("quotes, refuses a wrong price, and starts", async () => {
         const q = await call("bugnet_quote", { workload: "script" });
         expect(q.isError).toBeFalsy();
+        expect(Object.keys(q.structuredContent ?? {})[0]).toBe("message");
+        expect(q.structuredContent?.message).toBe(text(q));
         const quote = q.structuredContent as {
             quoteId: string;
             recommended: { packageId: string; priceUsd: string };

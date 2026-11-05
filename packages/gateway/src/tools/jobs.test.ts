@@ -234,8 +234,7 @@ describe("bugnet_job", () => {
 
     it("tells an unknown job from an unknown sandbox", async () => {
         const client = await connect({
-            // eslint-disable-next-line require-yield
-            async *watchJob() {
+            watchJob() {
                 throw routerError(Code.NotFound);
             },
             getPlacement: () => ({ placement: placement() }),

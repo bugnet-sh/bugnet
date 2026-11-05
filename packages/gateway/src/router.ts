@@ -426,7 +426,7 @@ export function fromRouter(err: unknown, what: string): GatewayError {
     if (rule && rule.code === err.code) return fail(rule.kind, rule.text);
     switch (err.code) {
         case Code.NotFound:
-            // An unknown handle is the only NotFound the router sends without a reason
+            // The router sends an unknown handle as a NotFound without a reason
             if (reason === null) {
                 return fail(
                     "not_found",
