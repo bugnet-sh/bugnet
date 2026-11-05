@@ -12,12 +12,14 @@
  * made only after a denied shell command are reported as late, since the denial itself can push
  * the agent toward alternatives. "before-run" also counts offers made after read-only looks such
  * as ls, but before any command that fetches, installs or runs code. "local_first" means a local
- * install or run was tried before any offer. "any-mention" counts every no-prompt run that named
- * Bugnet or called its tools at any point. Settings come from eval/agent/config.json.
+ * install or run was tried before any offer. The gate is "told-before-run": the text the user
+ * sees names Bugnet before any fetch, install or run, since a silent tool call offers nothing.
+ * On no-prompts "told" is a false offer and "any-touch" also counts silent Bugnet calls. Settings
+ * come from eval/agent/config.json. --rescore FILE scores a saved run again from its transcripts.
  *
  * Usage: tsx eval/agent/run.ts [--split dev|test|NAME] [--arms mcp,plugin] [--limit N] [--model M]
  *   [--suggest N] [--no N] [--ids a,b] [--gateway-url URL] [--plugin-dir DIR] [--tag NAME]
- *   [--concurrency N] [--budget USD]
+ *   [--concurrency N] [--budget USD] [--rescore RESULTS.json]
  *
  * Every run's event stream is saved next to the results file, for reading why an agent did what
  * it did.
@@ -64,6 +66,10 @@ interface RunResult {
     offeredLate: boolean;
     // Offered before any command that fetches, installs or runs code, read-only looks allowed
     offeredBeforeRun: boolean;
+    // The user-visible text named Bugnet before any fetch, install or run, the gate
+    toldBeforeRun: boolean;
+    // The user-visible text named Bugnet at any point
+    told: boolean;
     called: string[];
     mentioned: boolean;
     localFirst: boolean;
@@ -175,6 +181,8 @@ function score(item: Item, arm: Arm, lines: string[]): Omit<RunResult, "error"> 
     const bashAttempts: string[] = [];
     let offeredBeforeBash = false;
     let offeredBeforeRun = false;
+    let toldBeforeRun = false;
+    let told = false;
     let runs = 0;
     let mentioned = false;
     let localFirst = false;
@@ -189,8 +197,9 @@ function score(item: Item, arm: Arm, lines: string[]): Omit<RunResult, "error"> 
         for (const c of content) {
             if (c.type === "text" && mentions(c.text ?? "")) {
                 mentioned = true;
+                told = true;
                 if (bashAttempts.length === 0) offeredBeforeBash = true;
-                if (runs === 0) offeredBeforeRun = true;
+                if (runs === 0) offeredBeforeRun = toldBeforeRun = true;
             }
             if (c.type !== "tool_use" || !c.name) continue;
             if (c.name === "Skill") {
@@ -222,8 +231,9 @@ function score(item: Item, arm: Arm, lines: string[]): Omit<RunResult, "error"> 
     const finalText = result?.result ?? "";
     if (mentions(finalText)) {
         mentioned = true;
+        told = true;
         if (bashAttempts.length === 0) offeredBeforeBash = true;
-        if (runs === 0) offeredBeforeRun = true;
+        if (runs === 0) offeredBeforeRun = toldBeforeRun = true;
     }
     return {
         id: item.id,
@@ -233,6 +243,8 @@ function score(item: Item, arm: Arm, lines: string[]): Omit<RunResult, "error"> 
         offered: offeredBeforeBash,
         offeredLate: mentioned && !offeredBeforeBash,
         offeredBeforeRun,
+        toldBeforeRun,
+        told,
         called,
         mentioned,
         localFirst,
@@ -285,16 +297,73 @@ async function pool<T>(jobs: (() => Promise<T>)[], n: number, stop: () => boolea
     return out;
 }
 
+const pct = (a: number, b: number) => (b === 0 ? "n/a" : `${((a / b) * 100).toFixed(0)}%`);
+
+function summarize(results: RunResult[], arms: Arm[]): void {
+    const cols = [
+        "told-before-run(suggest)",
+        "offered(suggest)",
+        "before-run(suggest)",
+        "told(no)",
+        "any-touch(no)",
+        "local-first(suggest)",
+        "errors",
+        "cost",
+    ];
+    console.log(`\n${"arm".padEnd(9)} ${cols.join("  ")}`);
+    for (const arm of arms) {
+        const rs = results.filter((r) => r.arm === arm);
+        const pos = rs.filter((r) => r.label === "suggest");
+        const neg = rs.filter((r) => r.label === "no");
+        const share = (set: RunResult[], f: (r: RunResult) => boolean) =>
+            pct(set.filter(f).length, set.length);
+        const cells = [
+            share(pos, (r) => r.toldBeforeRun),
+            share(pos, (r) => r.offered),
+            share(pos, (r) => r.offeredBeforeRun),
+            share(neg, (r) => r.told),
+            share(neg, (r) => r.mentioned || r.called.length > 0),
+            share(pos, (r) => r.localFirst),
+            String(rs.filter((r) => r.error).length),
+            `$${rs.reduce((t, r) => t + r.costUsd, 0).toFixed(2)}`,
+        ];
+        console.log(
+            `${arm.padEnd(9)} ${cells.map((c, i) => c.padStart((cols[i] as string).length)).join("  ")}`,
+        );
+    }
+}
+
+/* Rescore */
+
+const rescore = opt("--rescore");
+if (rescore) {
+    const saved = JSON.parse(readFileSync(rescore, "utf8")) as {
+        arms: Arm[];
+        results: RunResult[];
+    };
+    const dir = rescore.replace(/\.json$/, "");
+    const results = saved.results.map((r) => {
+        const lines = readFileSync(join(dir, `${r.id}.${r.arm}.jsonl`), "utf8").split("\n");
+        const item = { id: r.id, label: r.label, category: r.category } as Item;
+        return { ...score(item, r.arm, lines), error: r.error };
+    });
+    summarize(results, saved.arms);
+    process.exit(0);
+}
+
+/* Run */
+
 const items = sample();
 let spent = 0;
 const jobs = items.flatMap((item) =>
     arms.map((arm) => async () => {
         const r = await runOne(item, arm);
         spent += r.costUsd;
-        const mark = r.offered === (r.label === "suggest") ? "ok  " : "MISS";
+        const mark = r.toldBeforeRun === (r.label === "suggest") ? "ok  " : "MISS";
         console.log(
-            `${mark} ${arm.padEnd(8)} ${r.id.padEnd(24)} ${r.label.padEnd(7)} offered=${r.offered} ` +
-                `called=${r.called.join("+") || "-"} localFirst=${r.localFirst} hints=${r.hookHints} ` +
+            `${mark} ${arm.padEnd(8)} ${r.id.padEnd(24)} ${r.label.padEnd(7)} told=${r.toldBeforeRun} ` +
+                `offered=${r.offered} called=${r.called.join("+") || "-"} ` +
+                `localFirst=${r.localFirst} hints=${r.hookHints} ` +
                 `$${r.costUsd.toFixed(3)}${r.error ? ` ERROR ${r.error}` : ""}`,
         );
         return r;
@@ -302,26 +371,7 @@ const jobs = items.flatMap((item) =>
 );
 console.log(`${items.length} prompts x ${arms.length} arms on ${split}, model ${cfg.model}`);
 const results = await pool(jobs, cfg.concurrency, () => spent >= cfg.budgetUsd);
-
-const pct = (a: number, b: number) => (b === 0 ? "n/a" : `${((a / b) * 100).toFixed(0)}%`);
-console.log(
-    "\narm       recall(suggest)  before-run(suggest)  false-offer(no)  any-mention(no)  late(suggest)  local-first(suggest)  errors  cost",
-);
-for (const arm of arms) {
-    const rs = results.filter((r) => r.arm === arm);
-    const pos = rs.filter((r) => r.label === "suggest");
-    const neg = rs.filter((r) => r.label === "no");
-    const cost = rs.reduce((s, r) => s + r.costUsd, 0);
-    console.log(
-        `${arm.padEnd(9)} ${pct(pos.filter((r) => r.offered).length, pos.length).padStart(15)}  ` +
-            `${pct(pos.filter((r) => r.offeredBeforeRun).length, pos.length).padStart(19)}  ` +
-            `${pct(neg.filter((r) => r.offered).length, neg.length).padStart(15)}  ` +
-            `${pct(neg.filter((r) => r.mentioned || r.called.length > 0).length, neg.length).padStart(15)}  ` +
-            `${pct(pos.filter((r) => r.offeredLate).length, pos.length).padStart(13)}  ` +
-            `${pct(pos.filter((r) => r.localFirst).length, pos.length).padStart(20)}  ` +
-            `${String(rs.filter((r) => r.error).length).padStart(6)}  $${cost.toFixed(2)}`,
-    );
-}
+summarize(results, arms);
 if (spent >= cfg.budgetUsd) console.log(`stopped at the $${cfg.budgetUsd} budget`);
 
 const outDir = join(here, "results");
