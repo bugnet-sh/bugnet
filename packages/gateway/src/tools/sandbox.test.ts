@@ -424,6 +424,21 @@ describe("bugnet_start on a router with PricePackage", () => {
         );
     });
 
+    it("prices with Estimate when PricePackage answers Unimplemented", async () => {
+        const seen = fresh();
+        const { client, deps, payments } = await setup(
+            priced(seen, {
+                pricePackage() {
+                    throw routerError(Code.Unimplemented);
+                },
+            }),
+        );
+        const r = await callTool(client, "bugnet_start", startArgs(signed(deps)));
+        expect(r.isError).toBe(false);
+        expect(seen.estimates).toBe(1);
+        expect(payments.orders).toEqual([expect.objectContaining({ amountMicros: 50_000 })]);
+    });
+
     it("sends no estimate and fetches nothing for a quote without a GitHub source", async () => {
         const seen = fresh();
         const { client, deps } = await setup(priced(seen));
