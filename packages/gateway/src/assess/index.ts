@@ -4,7 +4,7 @@ import { TtlCache } from "./cache.ts";
 import { createSafeFetcher, FetchRefused, type Fetcher } from "./fetch.ts";
 import { readGithub } from "./github.ts";
 import { analyseModel, readHuggingface } from "./huggingface.ts";
-import { scanRepo, shift } from "./scan.ts";
+import { evidence, scanRepo, shift } from "./scan.ts";
 import { readScript, urlFindings } from "./script.ts";
 import { parseSource, sourceName, sourceRef, type Source } from "./source.ts";
 import { combine, type SourceReport } from "./verdict.ts";
@@ -100,7 +100,7 @@ async function readGithubSource(
             id: "binary_download",
             severity: shift("medium", scan.trust),
             title: "The link is a prebuilt release file, not the repo's source code",
-            evidence: src.asset.slice(0, 120),
+            evidence: evidence(src.asset),
         });
     }
 }
@@ -193,7 +193,13 @@ export function createAssessor(config: Config, opts: AssessorOptions = {}): Asse
             if (!report) {
                 report = await readSource(env, src, signal);
                 if (src.kind !== "none" && report.complete) cache.set(src.key, report);
-                if (src.kind === "none" && input.source?.trim()) {
+                if (src.kind === "none" && src.crafted) {
+                    report.findings.push({
+                        id: "crafted_source",
+                        severity: "medium",
+                        title: `The link was not checked because ${src.reason}, a sign it was made to mislead`,
+                    });
+                } else if (src.kind === "none" && input.source?.trim()) {
                     report.findings.push({
                         id: "source_unrecognised",
                         severity: "info",

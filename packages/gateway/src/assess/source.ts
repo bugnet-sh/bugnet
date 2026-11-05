@@ -1,3 +1,5 @@
+import { evidence, invisibleChar } from "./scan.ts";
+
 export type Source =
     | {
           kind: "github";
@@ -10,7 +12,8 @@ export type Source =
       }
     | { kind: "huggingface"; id: string; revision: string | null; key: string }
     | { kind: "url"; url: string; key: string }
-    | { kind: "none"; key: ""; reason: string };
+    // Crafted marks a link built to mislead, such as one hiding a newline or bidi mark in its ref
+    | { kind: "none"; key: ""; reason: string; crafted?: boolean };
 
 const ghOwner = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 const ghRepo = /^[A-Za-z0-9._-]{1,100}$/;
@@ -54,8 +57,16 @@ const huggingfacePages = new Set([
     "tasks",
 ]);
 
+// Git refuses spaces, control characters and ~^:?*[\ in ref names, so a link holding them is no real ref
+const gitRef = /^(?!.*\.\.)(?!-)[A-Za-z0-9._/+@-]{1,200}$/;
+const assetName = /^[A-Za-z0-9._+@~-]{1,200}$/;
+
 function none(reason: string): Source {
     return { kind: "none", key: "", reason };
+}
+
+function crafted(reason: string): Source {
+    return { kind: "none", key: "", reason, crafted: true };
 }
 
 function github(
@@ -70,6 +81,9 @@ function github(
         return none("not a GitHub owner and repo");
     }
     if (githubPages.has(owner.toLowerCase())) return none("a GitHub page, not a repo");
+    if ((ref !== null && !gitRef.test(ref)) || (asset !== null && !assetName.test(asset))) {
+        return crafted("its branch, tag or file name is one GitHub would not accept");
+    }
     const key =
         `github:${owner.toLowerCase()}/${repo.toLowerCase()}` +
         (ref ? `@${ref}` : "") +
@@ -81,6 +95,9 @@ function github(
 function huggingface(org: string | null, name: string, revision: string | null = null): Source {
     if ((org !== null && !hfPart.test(org)) || !hfPart.test(name)) {
         return none("not a Hugging Face model id");
+    }
+    if (revision !== null && !gitRef.test(revision)) {
+        return crafted("its revision is one Hugging Face would not accept");
     }
     const id = org ? `${org}/${name}` : name;
     return {
@@ -159,6 +176,9 @@ export function parseSource(input: string | undefined): Source {
     }
     const host = url.hostname.toLowerCase().replace(/^www\./, "");
     const segs = url.pathname.split("/").filter(Boolean).map(decode);
+    if (segs.some((seg) => invisibleChar.test(seg) || /[^\S ]/.test(seg))) {
+        return crafted("it hides control, bidi or invisible characters");
+    }
     const web = url.protocol === "https:" || url.protocol === "http:";
     if (host === "github.com" && web) return fromGithubUrl(segs);
     if ((host === "huggingface.co" || host === "hf.co") && web) return fromHuggingfaceUrl(segs);
@@ -193,7 +213,7 @@ export function sourceRef(s: Source): string {
             return (
                 `github.com/${s.owner}/${s.repo}` +
                 (s.ref ? `@${s.ref}` : "") +
-                (s.path ? `/${s.path}` : "") +
+                (s.path ? `/${evidence(s.path)}` : "") +
                 (s.asset ? ` release file ${s.asset}` : "")
             );
         case "huggingface":

@@ -1,5 +1,6 @@
 import type { Finding } from "./assessor.ts";
 import { bodyJson, bodyText, type Fetched, type Fetcher } from "./fetch.ts";
+import { safePath } from "./scan.ts";
 
 export interface RepoInfo {
     owner: string;
@@ -257,7 +258,9 @@ export async function readGithub(
         if (snap.complete) limited();
         return snap;
     } else if (treeRes.status === "fulfilled" && treeRes.value.status === 404) {
-        snap.notes.push(note("github_ref_not_found", `Branch, tag or commit ${ref} not found`));
+        snap.notes.push(
+            note("github_ref_not_found", `Branch, tag or commit ${safePath(ref)} not found`),
+        );
         return snap;
     } else {
         snap.notes.push(note("github_tree_unread", "The repo's file list could not be read"));
