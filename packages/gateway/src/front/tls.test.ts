@@ -256,6 +256,18 @@ describe("TLS front", () => {
         expect(errs.some((e) => /within 300 ms/.test(e))).toBe(true);
     });
 
+    it("stays quiet about a connection that closes before sending a byte", async () => {
+        const f = await start();
+        const check = await rawConnect(f.port);
+        check.end();
+        await closedWithin(check, 1000);
+        const cut = await rawConnect(f.port, v4Header.subarray(0, 10));
+        cut.end();
+        await expect
+            .poll(() => f.logs.map((l) => String(l.fields?.err)))
+            .toEqual(["connection closed inside the header"]);
+    });
+
     it("drops a TLS handshake that stalls after the header", async () => {
         const f = await start();
         const stalled = await rawConnect(f.port, v4Header);

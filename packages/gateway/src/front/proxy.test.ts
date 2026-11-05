@@ -305,6 +305,12 @@ describe("reading the header from a socket", () => {
             c.end(tcp4.subarray(0, 20));
         });
         expect(r.error?.message).toMatch(/closed inside the header/);
+        expect((r.error as ProxyHeaderError).empty).toBe(false);
+        const silent = await receive(async (c) => {
+            c.end();
+        });
+        expect(silent.error?.message).toMatch(/closed before the header/);
+        expect((silent.error as ProxyHeaderError).empty).toBe(true);
     });
 
     it("refuses an oversized header before it arrives", async () => {

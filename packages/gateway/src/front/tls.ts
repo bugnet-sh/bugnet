@@ -15,7 +15,7 @@ import type { Log } from "../log.ts";
 import { setPeerAddress } from "../request.ts";
 import type { CertStore } from "./certs.ts";
 import { minVersion } from "./certs.ts";
-import { readProxyHeader } from "./proxy.ts";
+import { ProxyHeaderError, readProxyHeader } from "./proxy.ts";
 
 export const acmeProtocol = "acme-tls/1";
 
@@ -84,7 +84,9 @@ function accept(raw: Socket, o: FrontOptions, pending: Set<Socket>): void {
             handshake(raw, client, o, pending);
         },
         (e: Error) => {
-            o.log.warn("proxy header refused", { err: e.message });
+            if (!(e instanceof ProxyHeaderError && e.empty)) {
+                o.log.warn("proxy header refused", { err: e.message });
+            }
             raw.destroy();
         },
     );

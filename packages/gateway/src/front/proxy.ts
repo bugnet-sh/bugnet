@@ -22,7 +22,15 @@ export type ProxyHeader =
     | { command: "local" }
     | { command: "proxy"; family: "ipv4" | "ipv6"; source: Endpoint; destination: Endpoint };
 
-export class ProxyHeaderError extends Error {}
+export class ProxyHeaderError extends Error {
+    // A connection that closed before sending a byte, as a plain TCP health check does
+    readonly empty: boolean;
+
+    constructor(message: string, empty = false) {
+        super(message);
+        this.empty = empty;
+    }
+}
 
 export interface ParsedHeader {
     header: ProxyHeader;
@@ -139,7 +147,12 @@ export function readProxyHeader(socket: Socket, opts: ReadOptions): Promise<Prox
                 if (parsed) return finish(null, parsed.header, buf.subarray(parsed.length));
             }
         };
-        const onEnd = () => finish(new ProxyHeaderError("connection closed inside the header"));
+        const onEnd = () =>
+            finish(
+                buf.length > 0
+                    ? new ProxyHeaderError("connection closed inside the header")
+                    : new ProxyHeaderError("connection closed before the header", true),
+            );
         const onError = (e: Error) => finish(e);
         const timer = setTimeout(
             () => finish(new ProxyHeaderError(`no complete header within ${opts.timeoutMs} ms`)),
