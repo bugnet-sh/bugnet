@@ -62,7 +62,7 @@ interface Setup {
     lines: string[];
 }
 
-// A router whose CreateTransfer records each request and answers with answer, or impl overrides
+// A router whose CreateTransfer records each request, impl adding or replacing other methods
 async function setup(
     answer: (req: CreateTransferRequest) => Record<string, unknown> = (req) => ({
         url,
@@ -293,7 +293,7 @@ describe("bugnet_transfer downloads", () => {
         expect(r.structured.command).toBe(`curl -fSo ~/'Downloads/it'\\''s done.tgz' '${url}'`);
     });
 
-    it("needs a ready sandbox file, so a directory gets the tar advice", async () => {
+    it("refuses a directory with the tar advice", async () => {
         const { client } = await setup(() => {
             throw routerError(Code.InvalidArgument, "IS_DIRECTORY");
         });
