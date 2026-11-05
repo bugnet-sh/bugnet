@@ -118,6 +118,44 @@ describe.skipIf(!url)("gateway end to end", () => {
         expect((r.structuredContent as { content: string }).content).toBe("abc\n");
     });
 
+    it("lists extensions in status and extends at the quoted price", async () => {
+        const st = await call("bugnet_status", { handle });
+        const status = st.structuredContent as {
+            deadline: string;
+            extensions: {
+                packageId: string;
+                priceUsd: string;
+                minutes: number;
+                available: boolean;
+            }[];
+        };
+        const ext = status.extensions.find((x) => x.available && x.packageId.endsWith("-more"));
+        expect(ext).toBeTruthy();
+        expect(text(st)).toMatch(/Extend with bugnet_extend/);
+        const wrong = await call("bugnet_extend", {
+            handle,
+            packageId: ext!.packageId,
+            confirmPriceUsd: "5",
+        });
+        expect(wrong.isError).toBe(true);
+        expect(text(wrong)).toMatch(/costs \$/);
+        const notExt = await call("bugnet_extend", {
+            handle,
+            packageId: "dev-small-1m",
+            confirmPriceUsd: "0.01",
+        });
+        expect(notExt.isError).toBe(true);
+        expect(text(notExt)).toMatch(/does not extend this sandbox/);
+        const r = await call("bugnet_extend", {
+            handle,
+            packageId: ext!.packageId,
+            confirmPriceUsd: ext!.priceUsd.replace("$", ""),
+        });
+        expect(r.isError).toBeFalsy();
+        const moved = Date.parse((r.structuredContent as { deadline: string }).deadline);
+        expect(moved - Date.parse(status.deadline)).toBe(ext!.minutes * 60_000);
+    });
+
     it("stops, then reports the handle as gone for commands", async () => {
         const s = await call("bugnet_stop", { handle });
         expect((s.structuredContent as { state: string }).state).toBe("ended");

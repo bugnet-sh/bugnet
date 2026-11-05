@@ -5,6 +5,7 @@ import { allowedHosts } from "./config.ts";
 import { instructions } from "./instructions.ts";
 import { registerAssessTool } from "./tools/assess.ts";
 import type { Deps, Register } from "./tools/common.ts";
+import { registerExtendTool } from "./tools/extend.ts";
 import { registerFileTools } from "./tools/files.ts";
 import { registerJobTools } from "./tools/jobs.ts";
 import { registerSandboxTools } from "./tools/sandbox.ts";
@@ -16,6 +17,7 @@ export const registrations: Register[] = [
     registerSandboxTools,
     registerJobTools,
     registerFileTools,
+    registerExtendTool,
 ];
 
 export function buildMcpServer(deps: Deps, extra: Register[] = []): McpServer {

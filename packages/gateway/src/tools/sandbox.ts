@@ -6,6 +6,7 @@ import {
     type PackageOption,
     type Placement,
 } from "../gen/bugnet/router/v1/router_pb.ts";
+import { extensionsFor } from "./extend.ts";
 import { signQuote, verifyQuote, QuoteError, type QuotedPackage } from "../quote.ts";
 import { GatewayError, fromRouter } from "../router.ts";
 import type { OrderResult } from "../payments/port.ts";
@@ -445,12 +446,24 @@ export const registerSandboxTools: Register = (server, deps) => {
                     });
                 }
                 const view = placementView(p, deps.now());
-                const text =
+                const ready = p?.state === PlacementState.READY;
+                const extensions = ready ? await extensionsFor(deps, args.handle) : [];
+                const offer = extensions.filter((x) => x.available);
+                const text = [
                     `Sandbox ${view.state}, package ${view.packageId}, time left ${view.timeLeft}` +
-                    (view.deadline ? ` (deadline ${view.deadline})` : "") +
-                    (view.failureReason ? `, reason ${view.failureReason}` : "") +
-                    ".";
-                return ok(text, view);
+                        (view.deadline ? ` (deadline ${view.deadline})` : "") +
+                        (view.failureReason ? `, reason ${view.failureReason}` : "") +
+                        ".",
+                    offer.length > 0
+                        ? "Extend with bugnet_extend: " +
+                          offer
+                              .map((x) => `${x.packageId} +${x.minutes} min ${x.priceUsd}`)
+                              .join(", ")
+                        : "",
+                ]
+                    .filter(Boolean)
+                    .join("\n");
+                return ok(text, { ...view, extensions });
             } catch (e) {
                 return failure(e, "status");
             }
