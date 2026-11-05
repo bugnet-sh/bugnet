@@ -2768,13 +2768,13 @@ var failureCause = {
 };
 var checks = {
   local_ai_model: "the model's GPU, memory and disk needs against this machine",
-  untrusted_code: "the source's age, owner and install scripts for downloads, binaries or obfuscation",
+  untrusted_code: "the source's age, owner and install scripts for downloads or binaries",
   environment: "the OS, CPU and GPU the work needs against this machine",
   risky_experiment: "the commands for destructive or system-changing steps",
   heavy_compute: "the CPU, memory, disk and hours the job needs"
 };
 function assessFact(category) {
-  return `bugnet_assess is free and read-only, and here it would check ${checks[category]} and price a disposable cloud Linux sandbox that keeps the work off this computer.`;
+  return `bugnet_assess is free, read-only and needs no probe of this machine. Here it would check ${checks[category]} and price a disposable cloud Linux sandbox that keeps the work off this computer.`;
 }
 var notOffered = "Bugnet has not been mentioned to the user in this session, and whether to use it is their choice.";
 function lead(c) {

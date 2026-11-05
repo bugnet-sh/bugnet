@@ -56,7 +56,9 @@ describe("hintFor", () => {
         expect(text.length).toBeLessThanOrEqual(maxHintChars);
         expect(text).not.toContain("\n");
         expect(text).toContain("disposable cloud Linux sandbox");
-        expect(text).toContain("bugnet_assess is free and read-only, and here it would check");
+        expect(text).toContain(
+            "bugnet_assess is free, read-only and needs no probe of this machine.",
+        );
         expect(
             text.endsWith(
                 "Bugnet has not been mentioned to the user in this session, and whether to use it is their choice.",

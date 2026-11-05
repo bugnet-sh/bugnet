@@ -71,8 +71,7 @@ const failureCause: Record<string, string> = {
 // What the free check reads for each kind of request, so the hint names something concrete
 const checks: Record<Category, string> = {
     local_ai_model: "the model's GPU, memory and disk needs against this machine",
-    untrusted_code:
-        "the source's age, owner and install scripts for downloads, binaries or obfuscation",
+    untrusted_code: "the source's age, owner and install scripts for downloads or binaries",
     environment: "the OS, CPU and GPU the work needs against this machine",
     risky_experiment: "the commands for destructive or system-changing steps",
     heavy_compute: "the CPU, memory, disk and hours the job needs",
@@ -80,8 +79,9 @@ const checks: Record<Category, string> = {
 
 function assessFact(category: Category): string {
     return (
-        `bugnet_assess is free and read-only, and here it would check ${checks[category]} and ` +
-        "price a disposable cloud Linux sandbox that keeps the work off this computer."
+        "bugnet_assess is free, read-only and needs no probe of this machine. Here it would " +
+        `check ${checks[category]} and price a disposable cloud Linux sandbox that keeps the ` +
+        "work off this computer."
     );
 }
 

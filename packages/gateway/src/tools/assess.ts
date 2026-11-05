@@ -14,15 +14,16 @@ export const assessDescription =
     "run locally (text to speech, voice cloning, image generation, a local LLM, speech " +
     "recognition, training), an untrusted GitHub repo, script, installer, package or binary, a " +
     "tool that needs Linux, x86, NVIDIA GPUs, CUDA or system-wide installs, a risky or " +
-    "destructive experiment, or a long heavy job. It returns a verdict on whether a disposable " +
-    "Bugnet cloud sandbox is safer or needed, with evidence: repo age, stars and owner, install " +
-    "scripts that download or run binaries, obfuscated code, pickle-only model weights, and the " +
-    "GPU, memory and disk the work needs against the user's machine. It ends with a priced " +
-    "quote, a quoteId for bugnet_start and the one or two sentences that tell the user. Pass " +
-    "what the user wants as task, the repo URL, Hugging Face model id or script URL as source, " +
-    "the commands you plan to run, and the user's os, arch, RAM and GPU when known. Fetched " +
-    "files are never returned, only short findings. It charges nothing and starts nothing. Not " +
-    "for edits, tests or questions in the user's own project.";
+    "destructive experiment, or a long heavy job. It goes on its own, before any local command, " +
+    "and needs no probe of the machine. It returns a verdict on whether a disposable Bugnet " +
+    "cloud sandbox is safer or needed, with evidence: repo age, stars and owner, install scripts " +
+    "that download or run binaries, obfuscated code, pickle-only model weights, and the GPU, " +
+    "memory and disk the work needs against the user's machine. It ends with a priced quote, a " +
+    "quoteId for bugnet_start and the one or two sentences that tell the user. Pass what the " +
+    "user wants as task, the repo URL, Hugging Face model id or script URL as source, the " +
+    "commands you plan to run, and the user's os, arch, RAM and GPU only when already known. " +
+    "Fetched files are never returned, only short findings. It charges nothing and starts " +
+    "nothing. Not for edits, tests or questions in the user's own project.";
 
 const assessInput = z.object({
     task: z.string().max(2000).optional().describe("What the user wants, in their words"),
@@ -81,11 +82,6 @@ function quoteLines(quote: BuiltQuote | null): string[] {
     return lines;
 }
 
-function firstSentence(text: string): string {
-    const end = text.search(/\.(\s|$)/);
-    return end >= 0 ? text.slice(0, end + 1) : text;
-}
-
 function priceText(quote: BuiltQuote | null): string | null {
     const q = quote?.structured;
     const rec = q?.recommended;
@@ -123,8 +119,7 @@ export function userLines(a: Assessment, quote: BuiltQuote | null): string[] {
     return [
         "For the user, in one or two sentences before anything is fetched, installed or run " +
             "locally:",
-        `Verdict: a disposable Bugnet cloud sandbox is ${strength}recommended. ` +
-            firstSentence(a.summary),
+        `Verdict: a disposable Bugnet cloud sandbox is ${strength}recommended. ${a.summary}`,
         priceLine,
         "Question: use the Bugnet sandbox, or their own computer?",
         offerSteps,
