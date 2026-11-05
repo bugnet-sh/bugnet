@@ -1,0 +1,1327 @@
+/**
+ * Command grammar for the Bash command an agent is about to run.
+ *
+ * The command is parsed into simple commands, and each one is matched by its program and
+ * arguments, so a grep that mentions torch.cuda stays quiet while pip install xformers does not.
+ * Install and build steps only count inside a repository cloned in this session.
+ */
+import { find } from "./lexicon.ts";
+import * as L from "./lexicon.ts";
+import { ascii, clip, norm, spaced } from "./normalize.ts";
+import { heavyPackage, isLurePackage, typosquatOf } from "./packages.ts";
+import { parse, type Segment } from "./shell.ts";
+import { finish, hit, none, refuse, type Hit } from "./score.ts";
+import type { Classification, SessionContext } from "./types.ts";
+
+interface State {
+    ctx: SessionContext;
+    hits: Hit[];
+    cloned: boolean;
+    clonedRepo: string | null;
+    clonedFamous: boolean;
+    ranClonedCode: boolean;
+    downloads: Set<string>;
+}
+
+const fetchers = new Set([
+    "curl",
+    "wget",
+    "iwr",
+    "irm",
+    "invoke-webrequest",
+    "invoke-restmethod",
+    "aria2c",
+    "http",
+    "xh",
+]);
+const interpreters = new Set([
+    "sh",
+    "bash",
+    "zsh",
+    "dash",
+    "ksh",
+    "fish",
+    "ash",
+    "python",
+    "python3",
+    "python2",
+    "perl",
+    "ruby",
+    "node",
+    "php",
+    "iex",
+    "invoke-expression",
+    "pwsh",
+    "powershell",
+    "source",
+    ".",
+    "eval",
+]);
+const readOnly = new Set([
+    "grep",
+    "egrep",
+    "rg",
+    "ag",
+    "ls",
+    "ll",
+    "cat",
+    "bat",
+    "less",
+    "more",
+    "head",
+    "tail",
+    "wc",
+    "file",
+    "stat",
+    "du",
+    "df",
+    "tree",
+    "echo",
+    "printf",
+    "which",
+    "type",
+    "whereis",
+    "man",
+    "diff",
+    "jq",
+    "yq",
+    "awk",
+    "sed",
+    "sort",
+    "uniq",
+    "cut",
+    "tr",
+    "find",
+    "fd",
+    "pwd",
+    "cd",
+    "pushd",
+    "popd",
+    "export",
+    "set",
+    "unset",
+    "alias",
+    "history",
+    "true",
+    "false",
+    "test",
+    "[",
+    "read",
+    "sleep",
+    "clear",
+    "open",
+    "code",
+    "tee",
+    "touch",
+    "mkdir",
+    "cp",
+    "mv",
+    "ln",
+    "chmod",
+    "nvm",
+    "pyenv",
+    "deactivate",
+    "activate",
+]);
+
+// Installers people run every day, from their vendors' own hosts
+const mainstream = [
+    "brew.sh",
+    "raw.githubusercontent.com/homebrew/",
+    "sh.rustup.rs",
+    "rustup.rs",
+    "win.rustup.rs",
+    "bun.sh/install",
+    "get.docker.com",
+    "deno.land/install",
+    "deno.land/x/install",
+    "astral.sh/uv",
+    "astral.sh/ruff",
+    "raw.githubusercontent.com/nvm-sh/nvm/",
+    "raw.githubusercontent.com/ohmyzsh/",
+    "get.pnpm.io",
+    "fnm.vercel.app",
+    "get.volta.sh",
+    "starship.rs",
+    "claude.ai/install",
+    "tailscale.com/install",
+    "install.python-poetry.org",
+    "pyenv.run",
+    "mise.run",
+    "get.sdkman.io",
+    "install.determinate.systems",
+    "nixos.org/nix/install",
+    "dot.net/v1/dotnet-install",
+    "deb.nodesource.com/",
+    "rpm.nodesource.com/",
+    "get.scoop.sh",
+    "community.chocolatey.org/install",
+    "chocolatey.org/install",
+    "fly.io/install",
+    "cli.github.com",
+    "sdk.cloud.google.com",
+    "raw.githubusercontent.com/helm/helm/",
+    "get.helm.sh",
+    "opencode.ai/install",
+    "cursor.com/install",
+    "gh.io/copilot-install",
+];
+
+// Owners whose repositories are well known, so a clone of theirs is not unvetted code
+const famousOwners = new Set(
+    `facebook facebookresearch meta-llama microsoft google google-research googleapis vercel openai
+    anthropics huggingface pytorch tensorflow torvalds rust-lang golang nodejs python apple aws
+    awslabs kubernetes docker moby hashicorp ggerganov ggml-org ollama comfyanonymous
+    automatic1111 lllyasviel oobabooga coqui-ai hexgrad suno-ai mozilla apache nvidia intel
+    gitlab-org jetbrains sveltejs vuejs angular nestjs denoland oven-sh astral-sh pallets django
+    tiangolo psf numpy pandas-dev scikit-learn matplotlib jupyter electron flutter dotnet homebrew
+    ohmyzsh nvm-sh neovim vim git curl ffmpeg openssl postgres redis elastic grafana prometheus
+    home-assistant supabase prisma tailwindlabs shadcn-ui langchain-ai run-llama ultralytics
+    stability-ai black-forest-labs wan-video tencent deepseek-ai qwenlm mistralai vllm-project
+    sgl-project expressjs webpack vitejs babel eslint prettier`
+        .split(/\s+/)
+        .filter(Boolean),
+);
+
+// Full URLs, host/path forms, and bare hosts such as get.scoop.sh
+function looksLikeUrl(w: string): boolean {
+    return (
+        /^(?:https?|ftp):\/\//i.test(w) ||
+        /^[\w-]+(?:\.[\w-]+)+\/\S*/.test(w) ||
+        /^[\w-]+\.[\w-]+\.[a-z]{2,}$/i.test(w)
+    );
+}
+
+function hostPath(url: string): string {
+    return url
+        .toLowerCase()
+        .replace(/^[a-z]+:\/\//, "")
+        .replace(/^www\./, "");
+}
+
+function isMainstream(url: string): boolean {
+    const hp = hostPath(url);
+    return mainstream.some((m) => hp.startsWith(m));
+}
+
+function urlArg(seg: Segment): string | null {
+    return seg.argv.slice(1).find(looksLikeUrl) ?? null;
+}
+
+// github.com/owner/repo from any clone or browse URL
+function repoOf(url: string): { short: string; owner: string; host: string } {
+    const u = url
+        .replace(/^git@([^:]+):/, "$1/")
+        .replace(/^[a-z+]+:\/\//i, "")
+        .replace(/^www\./, "")
+        .replace(/\.git$/, "")
+        .replace(/\/+$/, "");
+    const [host = "", owner = "", name = ""] = u.split("/");
+    const short = name ? `${host}/${owner}/${name}` : u;
+    return { short: short.toLowerCase(), owner: owner.toLowerCase(), host: host.toLowerCase() };
+}
+
+function add(st: State, h: Hit): void {
+    st.hits.push(h);
+}
+
+function evidence(seg: Segment, words = 4): string {
+    return seg.argv.slice(0, words).join(" ");
+}
+
+function isLocal(target: string): boolean {
+    return L.privateTarget.test(hostPath(target));
+}
+
+/* Remote scripts piped into an interpreter */
+
+function remoteExec(segs: Segment[], i: number, st: State): void {
+    const seg = segs[i] as Segment;
+    let url: string | null = null;
+    let how = "";
+    let sink: Segment | undefined;
+    for (let j = i + 1; seg.pipesTo && j < segs.length && segs[j]?.pipedFrom; j++) {
+        if (interpreters.has((segs[j] as Segment).head)) {
+            sink = segs[j];
+            break;
+        }
+        if (!(segs[j] as Segment).pipesTo) break;
+    }
+    if (fetchers.has(seg.head) && sink) {
+        url = urlArg(seg);
+        how = `${seg.head} | ${sink.head}`;
+    } else if (
+        fetchers.has(seg.head) &&
+        seg.via === "subst" &&
+        seg.parent !== null &&
+        interpreters.has(seg.parent)
+    ) {
+        url = urlArg(seg);
+        how = `${seg.parent} $(${seg.head})`;
+    } else if (seg.head === "iex" || seg.head === "invoke-expression") {
+        const m = /(https?:\/\/[^\s'")]+)/i.exec(seg.argv.join(" "));
+        if (
+            m &&
+            /downloadstring|iwr|irm|invoke-web|invoke-rest|webclient/i.test(seg.argv.join(" "))
+        ) {
+            url = m[1] as string;
+            how = "iex download";
+        }
+    }
+    if (how === "") return;
+    if (url && isMainstream(url)) {
+        add(st, hit("mainstream_installer", null, 0, hostPath(url).slice(0, 60)));
+        return;
+    }
+    if (url && /ollama\.com\/install/i.test(url)) {
+        add(st, hit("ai_runtime_install", "local_ai_model", 2, "ollama install script", "Ollama"));
+        return;
+    }
+    const subject = url ? hostPath(url).split("?")[0] : "a script from the internet";
+    add(st, hit("pipe_to_shell", "untrusted_code", 6, how, subject));
+}
+
+// curl -o x.sh URL followed by bash x.sh or ./x.sh
+function downloadThenRun(seg: Segment, st: State): void {
+    const file = (p: string) => p.replace(/\\/g, "/").replace(/^\.\//, "");
+    if (fetchers.has(seg.head)) {
+        const url = urlArg(seg);
+        const named = (url ?? "").split(/[?#]/)[0]?.split("/").pop() ?? "";
+        const flagAt = seg.lower.findIndex((a) =>
+            /^(?:-o|--output|--output-document|-outfile)$/.test(a),
+        );
+        const remoteName = seg.head === "wget" ? flagAt === -1 : seg.argv.includes("-O");
+        const out =
+            flagAt !== -1 && seg.argv[flagAt] !== "-O" ? seg.argv[flagAt + 1] : seg.redirects[0];
+        if (out && !out.startsWith("-")) st.downloads.add(file(out));
+        else if (seg.head === "wget" && seg.argv[flagAt] === "-O" && seg.argv[flagAt + 1]) {
+            st.downloads.add(file(seg.argv[flagAt + 1] as string));
+        } else if (remoteName && named) st.downloads.add(named);
+        return;
+    }
+    if (st.downloads.size === 0) return;
+    const runs = interpreters.has(seg.head) ? seg.argv[1] : seg.argv[0];
+    if (runs && st.downloads.has(file(runs))) {
+        add(st, hit("download_then_run", "untrusted_code", 5, evidence(seg), runs));
+    }
+}
+
+/* Clones and the code inside them */
+
+function gitClone(seg: Segment, st: State): void {
+    let url: string | null = null;
+    if (seg.head === "git") {
+        const at = seg.lower.indexOf("clone");
+        if (at === -1) return;
+        const valueFlags =
+            /^(?:--depth|-b|--branch|--origin|-o|--filter|--config|-c|--jobs|-j|--reference|--separate-git-dir|--template|--shallow-since|--shallow-exclude|-u|--upload-pack)$/;
+        for (let j = at + 1; j < seg.argv.length; j++) {
+            const a = seg.argv[j] as string;
+            if (valueFlags.test(a)) j++;
+            else if (!a.startsWith("-")) {
+                url = a;
+                break;
+            }
+        }
+    } else if (seg.head === "gh" && seg.lower[1] === "repo" && seg.lower[2] === "clone") {
+        const target = seg.argv[3];
+        if (target)
+            url = target.includes("/") && !target.includes(":") ? `github.com/${target}` : target;
+    }
+    if (!url || !/^(?:https?:\/\/|git@|ssh:\/\/|git:\/\/|[\w.-]+\.[a-z]{2,}\/)/i.test(url)) return;
+    const repo = repoOf(url);
+    st.cloned = true;
+    st.clonedRepo = repo.short;
+    st.clonedFamous = famousOwners.has(repo.owner);
+    if (repo.host === "huggingface.co") {
+        add(
+            st,
+            hit("model_repo_clone", "local_ai_model", 4, "git clone huggingface.co", repo.short),
+        );
+        return;
+    }
+    if (!st.clonedFamous) add(st, hit("git_clone", "untrusted_code", 2, "git clone", repo.short));
+}
+
+// Steps that execute the code of the project in the current directory
+function projectStep(seg: Segment): string | null {
+    const [h, a1 = "", a2 = ""] = [seg.head, seg.lower[1], seg.lower[2]];
+    const prog = seg.argv[0] ?? "";
+    if (["npm", "pnpm", "yarn", "bun"].includes(h)) {
+        if (h === "yarn" && a1 === "") return "yarn";
+        if (
+            /^(?:install|i|ci|add|start|run|run-script|dev|test|t|exec|build|rebuild|link|x)$/.test(
+                a1,
+            )
+        ) {
+            return `${h} ${a1}`;
+        }
+        return null;
+    }
+    if (h === "pip" || h === "pip3" || (h === "uv" && a1 === "pip")) {
+        const args = h === "uv" ? seg.lower.slice(2) : seg.lower.slice(1);
+        if (args[0] !== "install") return null;
+        if (
+            args.some(
+                (a) =>
+                    a === "-r" ||
+                    a === "-e" ||
+                    a === "." ||
+                    a === "--editable" ||
+                    /^-r\S/.test(a) ||
+                    /requirements[\w.-]*\.txt$/.test(a),
+            )
+        ) {
+            return `${h} install -r`;
+        }
+        return null;
+    }
+    if (/^python[\d.]*$|^py$/.test(h)) {
+        if (a1 === "-m" && /^(?:pip|venv|virtualenv|http\.server|json\.tool)$/.test(a2)) {
+            return a2 === "pip" && seg.lower.includes("-r") ? "python -m pip install -r" : null;
+        }
+        if (a1 && !a1.startsWith("-")) return `python ${seg.argv[1]}`;
+        if (a1 === "-m" && a2) return `python -m ${a2}`;
+        return null;
+    }
+    if (["uv", "poetry", "pipenv", "pdm", "rye", "hatch"].includes(h)) {
+        return /^(?:sync|install|run|add)$/.test(a1) ? `${h} ${a1}` : null;
+    }
+    if ((h === "conda" || h === "mamba" || h === "micromamba") && a1 === "env" && a2 === "create") {
+        return `${h} env create`;
+    }
+    if (
+        ["node", "deno", "tsx", "ts-node", "bunx", "npx"].includes(h) &&
+        a1 !== "" &&
+        !a1.startsWith("-v")
+    ) {
+        return `${h} ${seg.argv[1]}`;
+    }
+    if (["make", "cmake", "meson", "ninja", "gradle", "mvn", "just", "scons", "bazel"].includes(h))
+        return h;
+    if (h === "cargo" && /^(?:build|run|install|test|bench)$/.test(a1)) return `cargo ${a1}`;
+    if (h === "go" && /^(?:run|build|install|generate|test)$/.test(a1)) return `go ${a1}`;
+    if (h === "dotnet" && /^(?:run|build|restore)$/.test(a1)) return `dotnet ${a1}`;
+    if (
+        (h === "docker" || h === "podman") &&
+        (a1 === "build" || (a1 === "compose" && /^(?:up|build|run)$/.test(a2)))
+    ) {
+        return `${h} ${a1}`;
+    }
+    if (h === "docker-compose" && /^(?:up|build|run)$/.test(a1)) return "docker-compose up";
+    if (/^\.\.?\//.test(prog) || (["sh", "bash", "zsh"].includes(h) && /\.(?:sh|bash)$/.test(a1))) {
+        return seg.argv.slice(0, 2).join(" ");
+    }
+    return null;
+}
+
+function clonedCode(seg: Segment, st: State): void {
+    if (st.ranClonedCode || !(st.cloned || st.ctx.clonedThisSession)) return;
+    const step = projectStep(seg);
+    if (!step) return;
+    st.ranClonedCode = true;
+    const subject = st.clonedRepo ?? "a repository cloned in this session";
+    const weight = st.cloned && st.clonedFamous ? 2 : 5;
+    add(st, hit("runs_cloned_code", "untrusted_code", weight, step, subject));
+    if (st.clonedRepo && find(L.aiName, spaced(st.clonedRepo))) {
+        add(st, hit("ai_repo", "local_ai_model", 4, step, st.clonedRepo));
+    }
+}
+
+/* Package installs */
+
+interface Install {
+    manager: "pip" | "npm" | "conda" | "brew" | "system";
+    names: string[];
+    urlDeps: string[];
+    indexUrls: string[];
+    global: boolean;
+    breakSystem: boolean;
+}
+
+const pipValueFlags =
+    /^(?:-r|--requirement|-c|--constraint|-e|--editable|-i|--index-url|--extra-index-url|-f|--find-links|-t|--target|--prefix|--root|--platform|--python-version|--implementation|--abi|--src|--cache-dir|--log|--trusted-host|--python|-p|--group|--only-binary|--no-binary)$/;
+
+function packageName(spec: string): string {
+    return spec
+        .replace(/^['"]|['"]$/g, "")
+        .split(/[\s;]/)[0]!
+        .replace(/\[.*$/, "")
+        .split(/(?:===?|>=|<=|~=|!=|<|>)/)[0]!
+        .trim();
+}
+
+function install(seg: Segment): Install | null {
+    const h = seg.head;
+    const l = seg.lower;
+    let args: string[] | null = null;
+    let manager: Install["manager"] = "pip";
+    if ((h === "pip" || h === "pip3" || h === "pipx") && l[1] === "install")
+        args = seg.argv.slice(2);
+    else if (h === "uv" && l[1] === "pip" && l[2] === "install") args = seg.argv.slice(3);
+    else if (h === "uv" && (l[1] === "add" || (l[1] === "tool" && l[2] === "install"))) {
+        args = seg.argv.slice(l[1] === "add" ? 2 : 3);
+    } else if (/^python[\d.]*$/.test(h) && l[1] === "-m" && l[2] === "pip" && l[3] === "install") {
+        args = seg.argv.slice(4);
+    } else if ((h === "poetry" || h === "pdm") && l[1] === "add") args = seg.argv.slice(2);
+    else if (["conda", "mamba", "micromamba"].includes(h) && l[1] === "install") {
+        args = seg.argv.slice(2);
+        manager = "conda";
+    } else if (
+        ["npm", "pnpm", "yarn", "bun"].includes(h) &&
+        /^(?:install|i|add)$/.test(l[1] ?? "")
+    ) {
+        args = seg.argv.slice(2);
+        manager = "npm";
+    } else if (
+        ["npx", "bunx", "uvx"].includes(h) ||
+        (["pnpm", "yarn"].includes(h) && l[1] === "dlx")
+    ) {
+        const rest = seg.argv.slice(h === "npx" || h === "bunx" || h === "uvx" ? 1 : 2);
+        const first = rest.find((a) => !a.startsWith("-"));
+        args = first ? [first] : [];
+        manager = h === "uvx" ? "pip" : "npm";
+    } else if (h === "brew" && l[1] === "install") {
+        args = seg.argv.slice(2);
+        manager = "brew";
+    } else if (["apt", "apt-get", "dnf", "yum", "zypper", "pacman", "apk"].includes(h)) {
+        if (!/^(?:install|-s|-syu|-sy|add)$/.test(l[1] ?? "")) return null;
+        args = seg.argv.slice(2);
+        manager = "system";
+    }
+    if (args === null) return null;
+    const out: Install = {
+        manager,
+        names: [],
+        urlDeps: [],
+        indexUrls: [],
+        global: false,
+        breakSystem: false,
+    };
+    for (let j = 0; j < args.length; j++) {
+        const a = args[j] as string;
+        const la = a.toLowerCase();
+        if (la === "-g" || la === "--global" || la === "--user") out.global ||= la !== "--user";
+        if (la === "--break-system-packages") out.breakSystem = true;
+        if (/^(?:-i|--index-url|--extra-index-url)$/.test(la))
+            out.indexUrls.push(args[j + 1] ?? "");
+        if (/^--(?:extra-)?index-url=/.test(la)) out.indexUrls.push(a.split("=")[1] ?? "");
+        if (manager === "pip" && pipValueFlags.test(la)) {
+            j++;
+            continue;
+        }
+        if (a.startsWith("-")) continue;
+        if (
+            /^(?:git\+|https?:\/\/|github:|gitlab:|file:)/i.test(a) ||
+            /\.(?:whl|tar\.gz|zip|tgz)$/i.test(a)
+        ) {
+            out.urlDeps.push(a);
+            continue;
+        }
+        if (a === "." || a.startsWith("./") || a.startsWith("/")) continue;
+        const name =
+            manager === "npm"
+                ? a.startsWith("@")
+                    ? a.split("@").slice(0, 2).join("@")
+                    : (a.split("@")[0] as string)
+                : packageName(a);
+        if (name) out.names.push(name);
+    }
+    return out;
+}
+
+const driverPackage =
+    /^(?:nvidia-[\w.-]+|cuda[\w.-]*|[\w.-]*-cuda-[\w.-]*|nvidia|libnvidia[\w.-]*|linux-headers[\w.-]*|[\w.-]+-dkms|dkms|libcudnn[\w.-]*)$/;
+
+function packages(seg: Segment, st: State): void {
+    const inst = install(seg);
+    if (!inst) return;
+    const ctx = st.ctx;
+    const names = inst.names;
+    const shown = names.slice(0, 3).join(" ");
+    if (inst.manager === "system") {
+        const drivers = names.filter((n) => driverPackage.test(n.toLowerCase()));
+        if (drivers.length > 0) {
+            add(
+                st,
+                hit(
+                    "gpu_driver_install",
+                    "environment",
+                    5,
+                    `${seg.head} install ${drivers.slice(0, 2).join(" ")}`,
+                    drivers[0],
+                ),
+            );
+        }
+        return;
+    }
+    if (inst.manager === "brew") {
+        const ai = names.find((n) =>
+            /^(?:ollama|llama\.cpp|whisper-cpp|lm-studio|comfyui)$/i.test(n),
+        );
+        if (ai) add(st, hit("ai_runtime_install", "local_ai_model", 2, `brew install ${ai}`, ai));
+        return;
+    }
+    let best: { name: string; weight: number } | null = null;
+    const groups = new Set<string>();
+    const nvidia: string[] = [];
+    for (const n of names) {
+        const hp = heavyPackage(n);
+        if (hp) {
+            groups.add(hp.group);
+            if (hp.nvidiaOnly) nvidia.push(n);
+            if (!best || hp.weight > best.weight) best = { name: n, weight: hp.weight };
+        }
+    }
+    if (best) {
+        let w = best.weight + (groups.size >= 2 ? 1 : 0);
+        if (
+            groups.has("torch") &&
+            ctx.os === "linux" &&
+            !inst.indexUrls.some((u) => /\/cpu\b/.test(u))
+        )
+            w += 1;
+        add(
+            st,
+            hit(
+                "heavy_ml_install",
+                "local_ai_model",
+                Math.min(w, 6),
+                `${seg.head} install ${shown}`,
+                best.name,
+            ),
+        );
+    }
+    if (nvidia.length > 0 && (ctx.os === "macos" || ctx.os === "windows")) {
+        add(
+            st,
+            hit("nvidia_only_package", "environment", 2, nvidia.slice(0, 2).join(" "), nvidia[0]),
+        );
+    }
+    if (inst.indexUrls.some((u) => /download\.pytorch\.org\/whl\/cu\d+/i.test(u))) {
+        add(st, hit("cuda_wheels", "environment", 1, "pytorch cuda index"));
+    }
+    for (const n of names) {
+        const squat = typosquatOf(n);
+        if (squat) {
+            add(st, hit("typosquat_package", "untrusted_code", 5, `${n} looks like ${squat}`, n));
+            break;
+        }
+        if (isLurePackage(n)) {
+            add(st, hit("lure_package", "untrusted_code", 5, n, n));
+            break;
+        }
+    }
+    if (inst.urlDeps.length > 0) {
+        add(
+            st,
+            hit("url_dependency", "untrusted_code", 3, inst.urlDeps[0] as string, inst.urlDeps[0]),
+        );
+    }
+    const odd = inst.indexUrls.find(
+        (u) => u && !/^https:\/\/(?:pypi\.org|download\.pytorch\.org|test\.pypi\.org)/i.test(u),
+    );
+    if (odd) add(st, hit("foreign_index", "untrusted_code", 3, odd, odd));
+    if (inst.manager === "pip" && seg.sudo)
+        add(st, hit("sudo_pip", "environment", 2, "sudo pip install"));
+    if (inst.breakSystem)
+        add(st, hit("break_system_packages", "environment", 3, "--break-system-packages"));
+    if (inst.manager === "npm" && inst.global && seg.sudo)
+        add(st, hit("sudo_global_npm", "environment", 1, "sudo npm -g"));
+}
+
+/* Model weights and AI runtimes */
+
+function modelWeight(id: string): number {
+    const s = spaced(id.toLowerCase());
+    const size = /(?<![\w.])(\d{1,3}(?:\.\d)?) ?b(?![a-z])/.exec(s);
+    if (size && Number(size[1]) >= 13) return 2;
+    if (
+        /(?<![a-z])(?:minilm|mpnet|bge|e5|gte|bert|distil\w*|tiny\w*|small|mini|nano|embed\w*|t5 small)(?![a-z])/.test(
+            s,
+        )
+    )
+        return 0;
+    if (
+        /(?<![a-z])(?:flux|stable diffusion|sdxl|sd3|wan2|wan|hunyuan\w*|ltx\w*|cogvideo\w*|mochi|whisper large\w*|large v\d|xtts\w*|bark|llama|mistral|mixtral|qwen\w*|deepseek\w*|gemma|phi|falcon|yi|codellama|starcoder\w*)(?![a-z])/.test(
+            s,
+        )
+    )
+        return 1;
+    if (size && Number(size[1]) >= 7) return 1;
+    return 0;
+}
+
+function models(seg: Segment, st: State): void {
+    const h = seg.head;
+    const l = seg.lower;
+    if ((h === "huggingface-cli" || h === "hf") && l[1] === "download" && seg.argv[2]) {
+        const id = seg.argv[2] as string;
+        add(st, hit("model_download", "local_ai_model", 3 + modelWeight(id), `${h} download`, id));
+        return;
+    }
+    if (h === "ollama" && (l[1] === "pull" || l[1] === "run") && seg.argv[2]) {
+        const tag = seg.argv[2] as string;
+        const size = /(\d{1,3}(?:\.\d)?)b\b/i.exec(tag);
+        const w = size ? (Number(size[1]) >= 13 ? 2 : Number(size[1]) <= 4 ? -1 : 0) : 0;
+        add(st, hit("model_download", "local_ai_model", 3 + w, `ollama ${l[1]}`, tag));
+        return;
+    }
+    if (
+        h === "git-lfs" ||
+        (h === "git" && l[1] === "lfs" && /^(?:pull|fetch|clone)$/.test(l[2] ?? ""))
+    ) {
+        add(st, hit("lfs_pull", "local_ai_model", 2, "git lfs pull", st.clonedRepo ?? undefined));
+        return;
+    }
+    if (fetchers.has(h)) {
+        const url = urlArg(seg) ?? "";
+        if (
+            /huggingface\.co\/[^\s]+\/(?:resolve|blob)\/|civitai\.com\/api\/download|\.(?:safetensors|gguf|ckpt|pth)(?:\?|$)/i.test(
+                url,
+            )
+        ) {
+            add(
+                st,
+                hit(
+                    "weights_download",
+                    "local_ai_model",
+                    4,
+                    `${h} ${hostPath(url).slice(0, 40)}`,
+                    hostPath(url).split("/").slice(0, 3).join("/"),
+                ),
+            );
+        }
+        return;
+    }
+    const script = scriptOf(seg);
+    if (
+        script &&
+        /download[\s_-]?(?:all[\s_-]?)?(?:models?|weights|checkpoints?|ckpts?)|(?:get|fetch)[\s_-](?:models?|weights)|download[\s_-]ggml[\s_-]model/i.test(
+            script,
+        )
+    ) {
+        add(st, hit("model_download_script", "local_ai_model", 4, evidence(seg), script));
+    }
+}
+
+// The file a simple command executes, such as train.py in python3 train.py or ./run.sh
+function scriptOf(seg: Segment): string | null {
+    const h = seg.head;
+    const prog = seg.argv[0] ?? "";
+    if (/^(?:python[\d.]*|py|node|deno|bun|ruby|perl|php|bash|sh|zsh|tsx|ts-node)$/.test(h)) {
+        const runIdx = h === "deno" || h === "bun" ? (seg.lower[1] === "run" ? 2 : 1) : 1;
+        const a = seg.argv.slice(runIdx).find((x) => !x.startsWith("-"));
+        return a ?? null;
+    }
+    if (/^\.\.?\/|^\//.test(prog) || /\.(?:sh|py|exe|bat|cmd|ps1|appimage|run|bin)$/i.test(prog))
+        return prog;
+    return null;
+}
+
+function argNumber(seg: Segment, names: RegExp): number | null {
+    for (let j = 0; j < seg.lower.length; j++) {
+        const a = seg.lower[j] as string;
+        const eq = /^-{0,2}([\w-]+)=(\d+)$/.exec(a);
+        if (eq && names.test(eq[1] as string)) return Number(eq[2]);
+        if (
+            /^--?[\w-]+$/.test(a) &&
+            names.test(a.replace(/^-+/, "")) &&
+            /^\d+$/.test(seg.lower[j + 1] ?? "")
+        ) {
+            return Number(seg.lower[j + 1]);
+        }
+    }
+    return null;
+}
+
+function aiRuns(seg: Segment, st: State): void {
+    const h = seg.head;
+    const l = seg.lower;
+    const script = (scriptOf(seg) ?? "").toLowerCase();
+    if (
+        /^(?:whisper|whisperx|faster-whisper|whisper-ctranslate2|insanely-fast-whisper|whisper-cli)$/.test(
+            h,
+        )
+    ) {
+        const media = l.filter((a) => /\.(?:mp3|wav|m4a|mp4|mkv|flac|ogg|webm|opus|mov)$/.test(a));
+        if (media.length === 0) return;
+        let w = 3;
+        if (l.some((a) => /^(?:large|medium|turbo)/.test(a))) w += 1;
+        if (media.length > 1 || media.some((a) => a.includes("*"))) w += 1;
+        add(st, hit("speech_model_run", "local_ai_model", w, evidence(seg, 3), h));
+        return;
+    }
+    if (h === "tts" && l.some((a) => /^--(?:text|model_name|list_models)/.test(a))) {
+        const model = l[l.indexOf("--model_name") + 1] ?? "";
+        add(
+            st,
+            hit(
+                "tts_model_run",
+                "local_ai_model",
+                /xtts|bark|tortoise/.test(model) ? 4 : 3,
+                "tts --text",
+                model.split("/").pop() || "Coqui TTS",
+            ),
+        );
+        return;
+    }
+    if ((h === "accelerate" && l[1] === "launch") || h === "torchrun" || h === "deepspeed") {
+        const target = seg.argv.find((a, j) => j > 0 && /\.py$/.test(a)) ?? h;
+        add(st, hit("training_launch", "local_ai_model", 4, evidence(seg, 3), target));
+        return;
+    }
+    if (h === "yolo" && /^(?:train|detect|predict|val)$/.test(l[1] ?? "")) {
+        const ep = argNumber(seg, /^epochs$/) ?? 0;
+        add(
+            st,
+            hit(
+                "vision_model_run",
+                ep >= 20 ? "heavy_compute" : "local_ai_model",
+                l[1] === "train" ? 4 : 3,
+                evidence(seg, 2),
+                "yolo",
+            ),
+        );
+        return;
+    }
+    if (
+        (h === "vllm" && l[1] === "serve") ||
+        h === "text-generation-launcher" ||
+        /^llama-(?:server|cli|run)$/.test(h) ||
+        (h === "comfy" && /^(?:install|launch)$/.test(l[1] ?? ""))
+    ) {
+        add(st, hit("model_server", "local_ai_model", 4, evidence(seg, 3), seg.argv[2] ?? h));
+        return;
+    }
+    if (/^python[\d.]*$/.test(h) && l[1] === "-m" && /^vllm|^sglang/.test(l[2] ?? "")) {
+        add(st, hit("model_server", "local_ai_model", 4, evidence(seg, 3), l[2]));
+        return;
+    }
+    if (!script) return;
+    const name = spaced(script.split("/").pop() ?? script);
+    const webui = /(?<![a-z])webui(?![a-z])/.test(name);
+    const launcher = /(?<![a-z])(?:launch|entry with update)(?![a-z])/.test(name);
+    if ((webui || launcher) && /\.(?:py|sh|bat)$/.test(script)) {
+        const gpuFlags = l.some((a) =>
+            /^--(?:xformers|medvram|lowvram|no-half\S*|opt-sdp-attention|precision)$/.test(a),
+        );
+        const w = (webui ? 4 : 3) + (gpuFlags ? 1 : 0);
+        add(st, hit("ai_webui", "local_ai_model", w, evidence(seg, 2), script));
+        return;
+    }
+    if (
+        /(?<![a-z])generate(?![a-z])/.test(name) &&
+        l.some((a, j) => a === "--task" && /^(?:t2v|i2v|ti2v|s2v|t2i)/.test(l[j + 1] ?? ""))
+    ) {
+        add(st, hit("video_model_run", "local_ai_model", 4, evidence(seg, 4), script));
+        return;
+    }
+    if (/(?<![a-z])(?:train|finetune|fine tune|dreambooth)/.test(name)) {
+        const epochs = argNumber(seg, /^(?:epochs?|num[-_]train[-_]epochs|n[-_]epochs)$/) ?? 0;
+        const steps =
+            argNumber(seg, /^(?:max[-_]train[-_]steps|max[-_]steps|steps|iters|iterations)$/) ?? 0;
+        if (/dreambooth|lora|sdxl|text to image|network/.test(name)) {
+            add(st, hit("diffusion_training", "local_ai_model", 4, evidence(seg, 2), script));
+        } else if (epochs >= 20 || steps >= 1000) {
+            add(
+                st,
+                hit(
+                    "long_training",
+                    "heavy_compute",
+                    4,
+                    `${script} ${epochs >= 20 ? `${epochs} epochs` : `${steps} steps`}`,
+                    script,
+                ),
+            );
+        }
+    }
+}
+
+/* Containers, drivers, kernels and disks */
+
+function containers(seg: Segment, st: State): void {
+    const h = seg.head;
+    const l = seg.lower;
+    if (h === "nvidia-docker") {
+        add(st, hit("gpu_container", "environment", 4, "nvidia-docker"));
+        return;
+    }
+    if (!(["docker", "podman", "nerdctl"].includes(h) && (l[1] === "run" || l[1] === "create")))
+        return;
+    const image =
+        seg.argv
+            .slice(2)
+            .filter(
+                (a, j, arr) =>
+                    !a.startsWith("-") &&
+                    !/^-[pveiw]$|^--(?:name|env|volume|publish|workdir|network|platform|gpus|runtime|entrypoint|user|mount)$/.test(
+                        arr[j - 1] ?? "",
+                    ),
+            )
+            .shift() ?? "";
+    const joined = l.join(" ");
+    if (/--gpus(?:[= ]|$)|--runtime[= ]nvidia|--device[= ]nvidia/.test(joined)) {
+        add(st, hit("gpu_container", "environment", 4, "docker run --gpus", image || undefined));
+        if (image && find(L.aiName, spaced(image.toLowerCase()))) {
+            add(st, hit("ai_image", "local_ai_model", 1, image));
+        }
+    }
+    let risky = 0;
+    if (l.includes("--privileged")) risky += 4;
+    if (
+        l.some(
+            (a, j) =>
+                (l[j - 1] === "-v" || l[j - 1] === "--volume") &&
+                /^\/(?::|$)|^\/var\/run\/docker\.sock/.test(a),
+        ) ||
+        /-v[= ]\/:\//.test(joined)
+    ) {
+        risky += 3;
+    }
+    if (/--pid[= ]host|--cap-add[= ](?:sys_admin|all)/.test(joined)) risky += 2;
+    if (risky > 0) {
+        add(
+            st,
+            hit(
+                "host_access_container",
+                "untrusted_code",
+                Math.min(risky, 5),
+                "docker run with host access",
+                image || undefined,
+            ),
+        );
+    }
+    if (st.ctx.os === "macos" && /--platform[= ]linux\/amd64/.test(joined)) {
+        add(st, hit("x86_emulation", "environment", 2, "--platform linux/amd64"));
+    }
+}
+
+function drivers(seg: Segment, st: State): void {
+    const h = seg.head;
+    const l = seg.lower;
+    if (h === "ubuntu-drivers" && /^(?:autoinstall|install)$/.test(l[1] ?? "")) {
+        add(st, hit("gpu_driver_install", "environment", 5, "ubuntu-drivers"));
+    } else if (
+        /^(?:cuda_[\w.-]+|nvidia-linux-[\w.-]+)\.run$/.test(h) ||
+        ((h === "sh" || h === "bash") &&
+            /cuda_[\w.-]+\.run|nvidia-linux-[\w.-]+\.run/.test(l[1] ?? ""))
+    ) {
+        add(st, hit("gpu_driver_install", "environment", 5, evidence(seg, 2)));
+    } else if (
+        ["modprobe", "insmod", "rmmod", "kextload", "kmutil"].includes(h) ||
+        (h === "dkms" && /^(?:install|add|build)$/.test(l[1] ?? ""))
+    ) {
+        add(st, hit("kernel_module", "environment", 4, evidence(seg, 2), l[1]));
+    } else if (
+        ["conda", "mamba"].includes(h) &&
+        l[1] === "install" &&
+        l.some((a) => /^(?:cudatoolkit|cuda|cuda-toolkit|pytorch-cuda)(?:=|$)/.test(a))
+    ) {
+        add(st, hit("cuda_toolkit_install", "environment", 3, "conda install cuda"));
+    }
+}
+
+function kernel(seg: Segment, st: State): void {
+    const h = seg.head;
+    const l = seg.lower;
+    const joined = l.join(" ");
+    if (
+        [
+            "grubby",
+            "update-grub",
+            "grub-mkconfig",
+            "grub2-mkconfig",
+            "grub-install",
+            "efibootmgr",
+            "bcdedit",
+            "kernelstub",
+        ].includes(h)
+    ) {
+        add(st, hit("boot_config", "risky_experiment", 5, evidence(seg, 3), h));
+    } else if (h === "sysctl" && (l.includes("-w") || l.some((a) => /^[\w.]+=\S+$/.test(a)))) {
+        add(st, hit("kernel_tuning", "risky_experiment", 3, evidence(seg, 3)));
+    } else if (h === "csrutil" && l[1] === "disable") {
+        add(st, hit("sip_disable", "risky_experiment", 5, "csrutil disable"));
+    }
+    if (/mitigations=off/.test(joined))
+        add(st, hit("mitigations_off", "risky_experiment", 1, "mitigations=off"));
+    const targets = [
+        ...seg.redirects,
+        ...(h === "tee" ? seg.argv.slice(1).filter((a) => !a.startsWith("-")) : []),
+    ];
+    if (
+        targets.some((t) =>
+            /^\/(?:proc\/sys|sys\/|etc\/sysctl|etc\/default\/grub|etc\/modprobe)/.test(t),
+        )
+    ) {
+        add(st, hit("kernel_tuning", "risky_experiment", 3, `> ${targets[0]}`));
+    }
+}
+
+const systemPath =
+    /^(?:\/|\/\*|~|~\/|~\/\*|\$home|\$\{home\}|\/usr|\/etc|\/bin|\/sbin|\/var|\/boot|\/lib|\/lib64|\/opt|\/system|\/users|\/home|c:\\?)\/?$/;
+
+function destructive(seg: Segment, st: State): void {
+    const h = seg.head;
+    const l = seg.lower;
+    const device = (a: string) =>
+        /^\/dev\/(?!null|zero|random|urandom|stdout|stderr|tty|fd)/.test(a);
+    if (h === "dd" && l.some((a) => a.startsWith("of=") && device(a.slice(3)))) {
+        add(
+            st,
+            hit(
+                "disk_write",
+                "risky_experiment",
+                5,
+                evidence(seg, 4),
+                l.find((a) => a.startsWith("of="))?.slice(3),
+            ),
+        );
+    } else if (
+        /^mkfs/.test(h) ||
+        h === "wipefs" ||
+        (["fdisk", "sfdisk", "gdisk", "sgdisk", "parted"].includes(h) &&
+            !l.includes("-l") &&
+            l.some(device))
+    ) {
+        add(st, hit("disk_format", "risky_experiment", 5, evidence(seg, 3)));
+    } else if (h === "shred" && l.some(device)) {
+        add(st, hit("disk_wipe", "risky_experiment", 5, evidence(seg, 3)));
+    } else if (
+        h === "diskutil" &&
+        /^(?:erasedisk|erasevolume|zerodisk|secureerase|partitiondisk|reformat)$/.test(l[1] ?? "")
+    ) {
+        add(st, hit("disk_format", "risky_experiment", 5, evidence(seg, 3)));
+    } else if (
+        h === "rm" &&
+        l.some((a) => /^-[a-z]*r/.test(a) || a === "--recursive") &&
+        l.slice(1).some((a) => !a.startsWith("-") && systemPath.test(a))
+    ) {
+        add(st, hit("delete_system", "risky_experiment", 5, evidence(seg, 4)));
+    } else if (
+        (h === "chmod" || h === "chown") &&
+        l.includes("-r") &&
+        l.some((a) => a === "/" || a === "/usr" || a === "/etc")
+    ) {
+        add(st, hit("system_permissions", "risky_experiment", 4, evidence(seg, 4)));
+    } else if (h === "kill" && l.includes("-9") && l.includes("-1")) {
+        add(st, hit("kill_all", "risky_experiment", 4, "kill -9 -1"));
+    } else if (h === "format" && /^[c-z]:$/.test(l[1] ?? "")) {
+        add(st, hit("disk_format", "risky_experiment", 5, evidence(seg, 2)));
+    }
+    if (seg.redirects.some((t) => /^\/dev\/(?:sd[a-z]|nvme\d|disk\d|hd[a-z]|mmcblk\d)/.test(t))) {
+        add(st, hit("disk_write", "risky_experiment", 5, `> ${seg.redirects[0]}`));
+    }
+    if (seg.redirects.some((t) => t === "/proc/sysrq-trigger")) {
+        add(st, hit("kernel_crash", "risky_experiment", 5, "> /proc/sysrq-trigger"));
+    }
+}
+
+/* Load, stress and long jobs */
+
+function duration(v: string): number {
+    const m = /^(\d+(?:\.\d+)?)(ms|s|m|h|d)?$/.exec(v);
+    if (!m) return 0;
+    const n = Number(m[1]);
+    return n * ({ ms: 0.001, s: 1, m: 60, h: 3600, d: 86400 }[m[2] ?? "s"] ?? 1);
+}
+
+function load(seg: Segment, st: State): void {
+    const h = seg.head;
+    const l = seg.lower;
+    if (
+        ["stress", "stress-ng", "memtester", "s-tui", "y-cruncher", "prime95", "mprime"].includes(h)
+    ) {
+        add(st, hit("stress_tool", "heavy_compute", 4, evidence(seg, 3), h));
+        return;
+    }
+    if (h === "sysbench") {
+        add(st, hit("stress_tool", "heavy_compute", 3, evidence(seg, 3), h));
+        return;
+    }
+    const tools = [
+        "wrk",
+        "wrk2",
+        "ab",
+        "hey",
+        "oha",
+        "bombardier",
+        "vegeta",
+        "siege",
+        "k6",
+        "locust",
+        "artillery",
+        "jmeter",
+        "autocannon",
+        "loadtest",
+        "drill",
+        "gatling",
+    ];
+    if (!tools.includes(h)) return;
+    const target = seg.argv.find((a) => /^https?:\/\//i.test(a));
+    if (target && isLocal(target)) return;
+    let w = 3;
+    let secs = 0;
+    for (let j = 1; j < l.length; j++) {
+        const a = l[j] as string;
+        const flag = /^(?:-d|--duration|-t|--time|-z|--run-time|-duration)$/.test(a)
+            ? l[j + 1]
+            : /^(?:-d|--duration=|-z|--run-time=)(\d.*)$/.exec(a)?.[1];
+        if (flag) secs = Math.max(secs, duration(flag));
+    }
+    const conns = argNumber(seg, /^(?:c|connections|concurrency|u|users|vus|rate)$/) ?? 0;
+    if (secs >= 300) w += 1;
+    if (conns >= 500) w += 1;
+    add(
+        st,
+        hit(
+            "load_test",
+            "heavy_compute",
+            w,
+            evidence(seg, 4),
+            target ? hostPath(target).split("/")[0] : h,
+        ),
+    );
+}
+
+function longJobs(seg: Segment, segs: Segment[], st: State): void {
+    const h = seg.head;
+    const l = seg.lower;
+    const joined = l.join(" ");
+    if (h === "bazel" && l[1] === "build" && /\/\/\.\.\./.test(joined)) {
+        add(st, hit("long_build", "heavy_compute", 3, "bazel build //..."));
+    } else if (h === "docker" && l[1] === "buildx" && /--platform[= ]\S+,\S+/.test(joined)) {
+        add(st, hit("long_build", "heavy_compute", 2, "docker buildx multi-platform"));
+    } else if (
+        h === "ffmpeg" &&
+        /libx265|libaom|libsvtav1|-preset (?:slow|slower|veryslow)/.test(joined)
+    ) {
+        add(
+            st,
+            hit(
+                "video_encode",
+                "heavy_compute",
+                segs.some((s) => s.head === "for" || s.head === "while") ? 4 : 2,
+                evidence(seg, 3),
+            ),
+        );
+    } else if (h === "blender" && (l.includes("-b") || l.includes("--background"))) {
+        add(st, hit("render", "heavy_compute", 3, "blender -b"));
+    } else if ((h === "gmx" && l[1] === "mdrun") || h === "hashcat" || h === "john") {
+        add(st, hit("long_compute", "heavy_compute", 3, evidence(seg, 2), h));
+    } else if (/^python[\d.]*$/.test(h)) {
+        const epochs = argNumber(seg, /^(?:epochs?|num[-_]train[-_]epochs|n[-_]epochs)$/) ?? 0;
+        if (epochs >= 20 && !st.hits.some((x) => x.id === "long_training")) {
+            add(
+                st,
+                hit(
+                    "long_training",
+                    "heavy_compute",
+                    4,
+                    `--epochs ${epochs}`,
+                    scriptOf(seg) ?? undefined,
+                ),
+            );
+        }
+    }
+}
+
+/* Lures, exploits and quarantine removal */
+
+const lureName =
+    /(?<![a-z])(?:airdrop|drainer|aimbot|wallhack|cheat|cheats|injector|crack|cracked|keygen|stealer|grabber|sniper|mev|activator|spoofer|nitro gen|token grab\w*|seed finder|wallet recover\w*|unlocker)(?![a-z])/;
+const pocName =
+    /(?<![a-z])(?:poc|exploit|exploits|sploit|cve \d{4} \d+|lpe|privesc|rce|0day|pwn|rootkit)(?![a-z])/;
+const walletSecret =
+    /\.config\/solana\/id\.json|(?:^|\/)keystore(?:\/|$)|wallet\.dat|^--(?:private[-_]?key|mnemonic|seed(?:[-_]phrase)?|wallet[-_]?file)(?:=|$)/;
+
+function lures(seg: Segment, st: State): void {
+    const script = scriptOf(seg);
+    const h = seg.head;
+    if (script) {
+        const name = spaced((script.split(/[\\/]/).pop() ?? script).toLowerCase());
+        if (lureName.test(name))
+            add(st, hit("lure_script", "untrusted_code", 4, evidence(seg, 2), script));
+        else if (pocName.test(name))
+            add(st, hit("exploit_run", "untrusted_code", 5, evidence(seg, 2), script));
+        if (/\.(?:exe|msi|bat|scr|cmd)$/i.test(script) && !/^(?:python|node)/.test(h)) {
+            add(st, hit("windows_binary", "untrusted_code", 3, script, script));
+        }
+    }
+    if (["gcc", "g++", "cc", "clang", "clang++", "tcc"].includes(h)) {
+        const files = seg.lower.slice(1).filter((a) => !a.startsWith("-"));
+        const named = files.find((a) => pocName.test(spaced(a.split("/").pop() ?? a)));
+        if (named) add(st, hit("exploit_build", "untrusted_code", 4, evidence(seg, 4), named));
+    }
+    if (h === "wine" && /\.(?:exe|msi)$/i.test(seg.argv[1] ?? "")) {
+        add(st, hit("windows_binary", "untrusted_code", 3, evidence(seg, 2), seg.argv[1]));
+    }
+    if (seg.lower.slice(1).some((a) => walletSecret.test(a))) {
+        add(st, hit("wallet_secret", "untrusted_code", 2, "wallet key passed to a script"));
+    }
+}
+
+function quarantine(seg: Segment, st: State): void {
+    const h = seg.head;
+    const l = seg.lower;
+    const joined = l.join(" ");
+    if (
+        h === "xattr" &&
+        (l.includes("com.apple.quarantine") || l.some((a) => /^-[a-z]*[cd][a-z]*$/.test(a)))
+    ) {
+        add(
+            st,
+            hit(
+                "quarantine_removal",
+                "untrusted_code",
+                5,
+                evidence(seg, 3),
+                seg.argv[seg.argv.length - 1],
+            ),
+        );
+    } else if (h === "spctl" && /--master-disable|--global-disable|--add/.test(joined)) {
+        add(st, hit("gatekeeper_off", "untrusted_code", 5, evidence(seg, 2)));
+    } else if (/^(?:set|add)-mppreference$/.test(h) && /-disable|-exclusion/.test(joined)) {
+        add(st, hit("defender_off", "untrusted_code", 5, evidence(seg, 2)));
+    } else if ((h === "7z" || h === "7za") && l[1] === "x" && l.some((a) => /^-p\S/.test(a))) {
+        add(st, hit("password_archive", "untrusted_code", 4, "7z x -p"));
+    } else if (
+        (h === "unzip" && l.includes("-p")) ||
+        (h === "unrar" && l.some((a) => /^-p\S/.test(a)))
+    ) {
+        add(st, hit("password_archive", "untrusted_code", 4, `${h} with a password`));
+    }
+}
+
+/* Never offered */
+
+const abuseHeads = new Set([
+    "xmrig",
+    "cpuminer",
+    "minerd",
+    "nbminer",
+    "t-rex",
+    "lolminer",
+    "phoenixminer",
+    "ethminer",
+    "xmr-stak",
+    "srbminer",
+    "masscan",
+    "zmap",
+    "slowloris",
+    "loic",
+    "hoic",
+    "thc-ssl-dos",
+]);
+const scanHeads = new Set([
+    "nmap",
+    "arp-scan",
+    "netdiscover",
+    "rustscan",
+    "fping",
+    "angryip",
+    "nbtscan",
+]);
+
+function policy(segs: Segment[], text: string): Hit | null {
+    for (const seg of segs) {
+        if (abuseHeads.has(seg.head)) return hit("abuse", null, -10, seg.head);
+        if (
+            seg.head === "hping3" &&
+            seg.lower.some((a) => a === "--flood" || /^-i$|^u\d+$/.test(a))
+        ) {
+            return hit("abuse", null, -10, "hping3 --flood");
+        }
+        if (
+            ["hydra", "medusa", "ncrack", "patator"].includes(seg.head) &&
+            seg.lower.some((a) => /^-[pPlLC]$/.test(a))
+        ) {
+            return hit("abuse", null, -10, `${seg.head} password guessing`);
+        }
+        if (scanHeads.has(seg.head)) {
+            const targets = seg.lower.slice(1).filter((a) => !a.startsWith("-"));
+            if (targets.some((t) => /^0\.0\.0\.0\/0$|\/(?:[0-9]|1[0-5])$/.test(t))) {
+                return hit("abuse", null, -10, `${seg.head} of a wide range`);
+            }
+            if (
+                targets.length === 0 ||
+                targets.some(
+                    (t) =>
+                        L.privateTarget.test(t) ||
+                        /^(?:192\.168|10|172\.(?:1[6-9]|2\d|3[01]))\./.test(t),
+                )
+            ) {
+                return hit("lan_scan", null, -10, `${seg.head} of a local network`);
+            }
+        }
+    }
+    const m = find(L.abuse, text);
+    return m ? hit("abuse", null, -10, m[0]) : null;
+}
+
+export function classifyCommand(command: string, ctx: SessionContext = {}): Classification {
+    const raw = ascii(clip(command)).trim();
+    if (raw === "") return none;
+    const segs = parse(raw);
+    const st: State = {
+        ctx,
+        hits: [],
+        cloned: false,
+        clonedRepo: null,
+        clonedFamous: false,
+        ranClonedCode: false,
+        downloads: new Set(),
+    };
+    const cradle =
+        /\b(?:iex|invoke-expression)\b[^\n]*?(?:downloadstring|iwr|irm|invoke-webrequest|invoke-restmethod)[^\n]*?(https?:\/\/[^\s'")]+)/i.exec(
+            raw,
+        );
+    if (cradle && !isMainstream(cradle[1] as string)) {
+        add(
+            st,
+            hit(
+                "pipe_to_shell",
+                "untrusted_code",
+                6,
+                "iex download",
+                hostPath(cradle[1] as string),
+            ),
+        );
+    }
+    if (/:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/.test(raw)) {
+        add(st, hit("fork_bomb", "risky_experiment", 5, ":(){ :|:& };:"));
+    }
+    for (let i = 0; i < segs.length; i++) {
+        const seg = segs[i] as Segment;
+        destructive(seg, st);
+        kernel(seg, st);
+        if (readOnly.has(seg.head)) continue;
+        remoteExec(segs, i, st);
+        downloadThenRun(seg, st);
+        gitClone(seg, st);
+        clonedCode(seg, st);
+        packages(seg, st);
+        models(seg, st);
+        aiRuns(seg, st);
+        containers(seg, st);
+        drivers(seg, st);
+        load(seg, st);
+        longJobs(seg, segs, st);
+        lures(seg, st);
+        quarantine(seg, st);
+    }
+    if (
+        segs.some((s) => s.head === "make") &&
+        segs.some((s) => s.head === "make" && s.sudo && s.lower[1] === "install")
+    ) {
+        add(st, hit("system_wide_install", "environment", 3, "sudo make install"));
+    } else if (
+        segs.some((s) => s.sudo && /^\.\/(?:install|setup)[\w-]*\.sh$/.test(s.argv[0] ?? ""))
+    ) {
+        add(st, hit("sudo_install_script", "environment", 2, "sudo ./install.sh"));
+    }
+    const stop = policy(segs, norm(raw));
+    if (stop) return refuse(st.hits, stop);
+    return finish(st.hits);
+}
