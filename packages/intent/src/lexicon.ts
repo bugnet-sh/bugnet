@@ -3,7 +3,8 @@
  *
  * Each family is a list of alternatives, one or more per line, bounded so a match never starts or
  * ends inside a word. English comes first in each family, then Turkish, Spanish, German and
- * Portuguese. The families come from the research notes in intent-signals.md, sections 2 and 3.
+ * Portuguese, and a few families add French and Italian. The families come from the research
+ * notes in intent-signals.md, sections 2 and 3.
  */
 
 // Lines are alternatives bounded by non-word characters, and an optional space also allows a hyphen
@@ -54,6 +55,8 @@ export const action = family(String.raw`
     herunterlad\w*|teste\w*
     rodar|roda|rode|rodando|executar|executa|instalar|instala|instale|testar|subir|configurar
     baixar|baixa|baixe|fazer funcionar|por pra rodar
+    faire tourner|fais tourner|executer|executez|lance|lancer|lancez|demarrer|essayer|essaie|telecharger
+    eseguire|esegui|eseguilo|avviare|avvia|lanciare|lancia|provare|provalo|scaricare|scarica|far girare
 `);
 
 // A request aimed at pasted commands, as opposed to editing or explaining them
@@ -68,6 +71,7 @@ export const taskVerb = family(String.raw`
     transcrib\w*|transkribier\w*|desifre\w*|yaziya (?:dok|cevir|aktar)\w*|subtitl\w*|caption\w*|diariz\w*
     clone (?:my|a|his|her|their|this|the|someone'?s) (?:\w+ )?voice|clon(?:ar|a) (?:mi |la |su |a |minha |sua )?voz
     klon\w* (?:meine |die )?stimme|(?:meine|die) stimme (?:zu )?klon\w*|ses(?:imi|ini|i)? klon\w*|sesimi (?:kopyala|taklit)\w*
+    clon\w* (?:(?:la|ma|sa|mia|sua|ta|tua) ){0,2}(?:voce|voix)
     narrate|read (?:it|this) (?:aloud|out loud)|seslendir\w*|vertonen|vorlesen
     (?:generate|create|make|render|produce|animate) (?:[^ \n]+ ){0,4}?(?:images?|pictures?|photos?|art|portraits?|shots?|clips?|videos?|animations?|songs?|music|voiceovers?|speech|audio)
     fine[- ]?tun\w*|finetun\w*|feintun\w*|train|training|trainier\w*|entrenar|treinar|egit\w*
@@ -85,6 +89,7 @@ export const local = family(String.raw`
     en local|localmente|en mi (?:pc|mac|maquina|ordenador|computadora|portatil|laptop|equipo)
     no meu (?:pc|mac|computador|notebook)|na minha maquina
     auf meine\w* (?:rechner|computer|laptop|pc|mac|maschine)|bei mir lokal
+    sur (?:mon|ma) (?:pc|mac|ordinateur|portable|laptop|machine)|in locale|sul mio (?:pc|mac|computer|portatile)
 `);
 
 /* Heavy local AI */
@@ -134,7 +139,7 @@ export const aiTask = family(String.raw`
     tts|stt|voice ?(?:clone|cloner|cloning|changer|conversion|model)|ai voice|ai cover|voice ?over\w*
     stem separation|vocal (?:removal|remover|isolation|separation)|(?:separate|isolate|strip)\w* (?:out )?(?:the )?vocals
     audiobook|sesli kitap|texto a voz|sintesis de voz|clonacion de voz|clonagem de voz|text[- ]?zu[- ]?sprache
-    sprachsynthese|stimmklon\w*|ki[- ]?stimme|horbuch
+    sprachsynthese|stimmklon\w*|ki[- ]?stimme|horbuch|sintesi vocale|synthese vocale
     (?:ai|open[- ]source|local|diffusion) (?:image|video|art|music|voice|speech) (?:model|generator|generation)
     (?:image|video|music) (?:generation|generator|diffusion) model|(?:generative|diffusion|text[- ]to[- ]\w+) (?:image |video )?model
     local (?:llm|model|ai|chatgpt|gpt|language model)|self[- ]host(?:ed)? (?:llm|model|ai)|(?:llm|model) locally
@@ -142,7 +147,7 @@ export const aiTask = family(String.raw`
     (?:llm|modelo) (?:en )?local|ia local|modelo local
     fine[- ]?tun\w*|finetun\w*|feintun\w*|q?lora|ince ayar\w*|ajuste fino
     (?:entrenar|treinar|trainier\w*|egit\w*) (?:un |uma |ein |mein |mi )?(?:modelo|model\w*|lora|voz|stimme)
-    (?:model|lora|ses)\w* egit\w*|train (?:a |an |my |the )?(?:\w+ )?(?:model|lora|network|classifier|detector) (?:from scratch|on)
+    (?:model|lora|ses)\w* egit\w*|train (?:a |an |my |the )?(?:\w+ )?(?:model|lora|network|classifier|detector|gpt|llm|transformer|language model|neural net\w*|gan|vae) (?:from scratch|on)
     transcri(?:be|bing|ption|pt)\w*|transkri\w*|desifre\w*|diariz\w*
     upscal\w*|inpaint\w*|lip ?sync\w*|talking head|face ?swap\w*|deepfake\w*|yuz degistir\w*
     intercambio de caras|gesichtstausch
@@ -157,6 +162,7 @@ export const voiceClone = family(String.raw`
     (?:my|his|her|their|a) voice (?:as|for) (?:a |an )?(?:tts|voice ?over|narrat\w*)
     clon(?:ar|a|e) (?:mi |la |su |minha |sua )?voz|klon\w* (?:meine |die |seine )?stimme|ses(?:imi|ini|i)? klon\w*
     (?:meine|die|seine|ihre) stimme (?:zu )?klon\w*|(?:mi|tu|su|minha|sua) voz clonad[ao]
+    clon\w* (?:(?:la|ma|sa|mia|sua|ta|tua) ){0,2}(?:voce|voix)
 `);
 
 // A chat assistant that runs on the user's own hardware, the local twin of a hosted chatbot
@@ -336,7 +342,7 @@ export const mailed = family(String.raw`
 
 export const codeKind = family(String.raw`
     scripts?|programs?|exe|executables?|binar(?:y|ies)|installers?|javascript|js|python|powershell
-    macros?|apps?|apk|payloads?|skript|programm|programa|ejecutable|executavel
+    macros?|apk|payloads?|skript|programm|programa|ejecutable|executavel
 `);
 
 export const disguisedFile =
@@ -529,11 +535,17 @@ export const heavyPhrase = family(String.raw`
 export const heavyTask = family(String.raw`
     param(?:eter)? (?:sweep|search)|grid search|random search|hyper-?param\w* (?:search|sweep|tuning|optimi[sz]\w*)
     optuna|ray tune|backtest\w*|fuzz\w*|render\w*|monte carlo|benchmark\w*|batch (?:job|process\w*)
+    (?:pre-?)?train\w* (?:[\w-]+ ){0,4}?from scratch|pre-?training
+    (?:process|aggregat|crunch|analy[sz]|index|ingest|transform|dedup|reprocess)\w* (?:[\w.-]+ ){0,6}?(?:datasets?|parquet|csvs?|logs|corpus|tables?|records|rows|dumps?)
     transcod\w*|re-?encod\w*|(?:convert|encode|compress)\w* (?:\w+ ){0,5}?(?:to|into|as|with) (?:av1|hevc|h\.?265|x265|vp9|prores)
 `);
 
 // Data volumes that make a job long, counted only next to another sign of real work
 export const volume = /(?<![\w.])(\d+(?:\.\d+)?) ?(tb|terabytes?|gb|gigabytes?)(?![a-z])/g;
+
+// The data a volume measures, so a database size beside an unrelated task does not count
+export const volumeOf =
+    /^ (?:of )?(?:[\w.-]+ ){0,2}?(?:datasets?|data|parquet|csvs?|logs?|files|images|videos|corpus|dumps?|archives?|tables?|records|rows|footage|recordings|photos)(?![a-z])/;
 
 // A count of items times the time each takes, such as 40k runs at 3s each
 export const perItem =
@@ -541,8 +553,12 @@ export const perItem =
 
 // Builds of projects so large that one local build takes an hour or more
 export const longBuild = family(String.raw`
-    (?:compile|build|compil\w*|derle\w*|kompilier\w*) (?:\w+ ){0,2}?(?:kernel|chromium|llvm|gcc|firefox|aosp|android|webkit|qt|tensorflow|pytorch)
+    (?:compile|build|compil\w*|derle\w*|kompilier\w*) (?:\w+ ){0,3}?(?:chromium|llvm|clang|firefox|aosp|android (?:source|os|platform|rom|tree|system image)|webkit|kernel(?![- ]?modul))
+    (?:compile|build|compil\w*|derle\w*|kompilier\w*) (?:\w+ ){0,2}?(?:kernel|gcc|qt ?\d?|tensorflow|pytorch|libreoffice|electron|node(?:js)?|python|rustc|swift) from source
 `);
+
+// A build that starts from nothing, which makes a big project take hours
+export const fromScratch = /\b(?:from source|from scratch|the (?:entire|whole|full)|everything)\b/;
 
 export const loadTest = family(String.raw`
     load[- ]?test\w*|stress[- ]?test\w*|soak test\w*|(?:\d+k?|thousands of) (?:rps|requests per second|concurrent (?:users|connections))
@@ -556,6 +572,10 @@ export const heat = family(String.raw`
     isiniyor|se calienta|wird hei(?:ss)?|lufter|esquenta
 `);
 
+// A job's own stated length, as in takes about 6 hours, rather than a time of day
+export const statedLength =
+    /(?:takes?|taking|take|lasts?|runs? for) (?:about |around |roughly |like |~|over |more than |at least |up to )?$/;
+
 export const hours =
     /(?<![\w.])(\d+(?:\.\d+)?) ?(?:h|hr|hrs|hours?|horas?|stunden?|std|saat\w*)(?![a-z])/g;
 export const minutes =
@@ -566,7 +586,7 @@ export const batch =
     /(?<![\w.])(\d+(?:[.,]\d+)?)(k)?\+? ?(?:[a-z-]+ ){0,2}?(?:images?|pictures?|photos?|files?|videos?|clips?|recordings?|episodes?|tracks?|songs?|documents?|pdfs?|combos?|combinations?|samples?|shots?|avatars?|lectures?|podcasts?|runs?|configs?|configurations?|hours of (?:audio|video|footage))(?![a-z])/g;
 export const wholeBatch = family(String.raw`
     (?:all|every|whole) (?:of )?(?:my|the|our) (?:\w+ )?(?:backlog|archive|library|recordings|footage|dataset|photos|videos|collection)
-    (?:my|the|our) (?:whole|entire|full) (?:[\w.-]+ ){0,2}?(?:backlog|archive|library|recordings|footage|dataset|photos|videos|collection|catalog)
+    (?:my|the|our) (?:whole|entire|full) (?:[\w.-]+ ){0,2}?(?:backlog|archive|library|recordings|footage|dataset|photos|videos|collection|catalog|dump|corpus)
 `);
 export const epochs = /(?<![\w.])(\d+) epochs?(?![a-z])/g;
 

@@ -256,9 +256,9 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     }
     const post = file || strongFile ? null : find(L.mailed, bare);
     if (post && act) {
-        const clause = clauseOf(starts, post.index);
-        const kind = findAll(L.codeKind, bare).find((m) => clauseOf(starts, m.index) === clause);
-        if (kind) put(post.index, hit("received_file", "untrusted_code", 4, post[0]));
+        const around = bare.slice(Math.max(0, post.index - 50), post.index + post[0].length + 50);
+        if (find(L.codeKind, around))
+            put(post.index, hit("received_file", "untrusted_code", 4, post[0]));
     }
     const av = find(L.avOff, bare);
     if (av) put(av.index as number, hit("security_bypass", "untrusted_code", 4, av[0]));
@@ -380,7 +380,13 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     };
     const atLeast = (re: RegExp, n: number) => findAll(re, bare).find((m) => Number(m[1]) >= n);
     for (const m of findAll(L.heavyPhrase, bare).slice(0, 2)) cue(m, 2, false);
-    cue(atLeast(L.hours, 1), 2, false);
+    const length = atLeast(L.hours, 1);
+    const stated =
+        length &&
+        act &&
+        Number(length[1]) >= 2 &&
+        L.statedLength.test(before(bare, length.index, 30));
+    cue(length, stated ? 3 : 2, false);
     cue(atLeast(L.minutes, 30), 2, false);
     cue(
         findAll(L.perItem, bare).find((m) => perItemSeconds(m) >= 3600),
@@ -388,7 +394,11 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
         false,
     );
     cue(find(L.heavyTask, bare), 1, true);
-    cue(find(L.longBuild, bare), 2, true);
+    const build = find(L.longBuild, bare);
+    if (build) {
+        const rest = bare.slice(build.index, build.index + build[0].length + 40);
+        cue(build, L.fromScratch.test(rest) ? 4 : 3, true);
+    }
     for (const m of findAll(L.loadTest, bare).slice(0, 2)) cue(m, 2, true);
     cue(find(L.heat, bare), 1, true);
     cue(atLeast(L.repeats, 10), 1, true);
@@ -400,11 +410,17 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     cue(find(L.wholeBatch, bare), 1, true);
     cue(atLeast(L.epochs, 20), 2, true);
     if (work > 0) {
-        cue(
-            findAll(L.volume, bare).find((m) => /^t/.test(m[2] as string) || Number(m[1]) >= 200),
-            1,
-            true,
-        );
+        const of = (m: RegExpExecArray) =>
+            L.volumeOf.test(bare.slice(m.index + m[0].length, m.index + m[0].length + 40));
+        const size = findAll(L.volume, bare)
+            .slice(0, maxPasted)
+            .find((m) => /^t/.test(m[2] as string) || Number(m[1]) >= 200);
+        if (size)
+            cue(
+                size,
+                of(size) && (/^t/.test(size[2] as string) || Number(size[1]) >= 500) ? 3 : 1,
+                true,
+            );
     }
     const heavy = work > 0 ? work + time : Math.min(time, 2);
     if (heavy > 0) {

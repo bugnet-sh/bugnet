@@ -560,6 +560,11 @@ describe("names that only look like lures, squats or remote code", () => {
         expect(offers(command, linux)).toBe(true);
     });
 
+    it("reads Chromium's build wrapper as a long build", () => {
+        expect(ids("autoninja -C out/Release chrome")).toContain("long_build");
+        expect(offers("autoninja -C out/Release chrome")).toBe(true);
+    });
+
     it("weighs a clone of a widely known project low", () => {
         const ctx = { ...mac, clonedThisSession: true, clonedRepo: "github.com/tokio-rs/axum" };
         expect(offers("cargo test --workspace", ctx)).toBe(false);

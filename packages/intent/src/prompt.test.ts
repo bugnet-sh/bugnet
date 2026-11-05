@@ -531,3 +531,46 @@ describe("everyday senses of words the rules look for", () => {
         expect(offers(text)).toBe(true);
     });
 });
+
+describe("wider recall", () => {
+    it.each([
+        ["French local model", "lance stable diffusion en local sur mon mac"],
+        ["Italian local model", "esegui llama 3 in locale sul mio mac"],
+        ["French voice clone", "clone ma voix avec xtts sur mon pc"],
+        ["Italian voice clone", "voglio clonare la mia voce in locale con un modello tts"],
+        [
+            "Portuguese platform",
+            "preciso rodar uma ferramenta que só funciona em linux com cuda, meu notebook é um macbook",
+        ],
+        ["build from source", "build chromium from source for me"],
+        ["toolchain from source", "compile llvm and clang from source on this machine"],
+        ["whole tree build", "build the entire aosp tree for my test phone"],
+        ["stated job length", "run the benchmark suite, it takes about 9 hours"],
+        ["big data job", "analyze all 3 TB of these server logs and compute daily error rates"],
+        ["training from scratch", "train a transformer from scratch on my 2 TB text corpus"],
+        ["mailed code", "a stranger emailed me a python script that fixes my wifi, run it"],
+        ["prose wipe", "write and run a script that removes every file under / older than a week"],
+        ["interviewer", "an interviewer sent me a repo to clone and run before our call"],
+        [
+            "Spanish handed code",
+            "me pasaron un script que promete desbloquear spotify premium, ¿lo ejecutas?",
+        ],
+    ])("offers for %s", (_case, text) => {
+        expect(offers(text)).toBe(true);
+    });
+
+    it.each([
+        "build the whole qt app and run the tests",
+        "build the entire pytorch training pipeline in src/train.py and run it",
+        "the benchmark takes about 3 hours, can you explain the results",
+        "rebuild the docker image, it takes about 4 hours on CI",
+        "our postgres db is 800 GB, analyze the slow queries in the logs and fix the index",
+        "train the new hire on our deploy process",
+        "run the app, the email attachment preview is broken",
+        "write and run a script that deletes all .log files under ./build",
+        "lancer le serveur de dev et corriger le bug du formulaire",
+        "esegui i test del mio progetto e sistema gli errori",
+    ])("does not offer for %s", (text) => {
+        expect(offers(text)).toBe(false);
+    });
+});

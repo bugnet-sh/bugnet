@@ -1435,6 +1435,9 @@ function longJobs(seg: Segment, segs: Segment[], st: State): void {
     const joined = l.join(" ");
     if (h === "bazel" && l[1] === "build" && /\/\/\.\.\./.test(joined)) {
         add(st, hit("long_build", "heavy_compute", 3, "bazel build //..."));
+    } else if (h === "autoninja") {
+        // Chromium's build wrapper, used only for trees that take hours to build
+        add(st, hit("long_build", "heavy_compute", 4, evidence(seg, 3), "autoninja"));
     } else if (h === "docker" && l[1] === "buildx" && /--platform[= ]\S+,\S+/.test(joined)) {
         add(st, hit("long_build", "heavy_compute", 2, "docker buildx multi-platform"));
     } else if (
