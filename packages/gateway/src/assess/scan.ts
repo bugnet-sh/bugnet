@@ -21,6 +21,8 @@ export interface TextContext {
     path: string;
     kind: TextKind;
     trust: Trust;
+    // The host a script was fetched from, so fetching more of its own installer counts for less
+    selfHost?: string;
 }
 
 const day = 86_400_000;
@@ -194,12 +196,23 @@ function pipeMatches(text: string): { index: number; line: string }[] {
     return out;
 }
 
+const bareHost = /(?:^|[\s"'(=])((?:[a-z0-9-]{1,63}\.){1,10}[a-z]{2,24})(?=[/:])/gi;
+
+// True when every host the line names is the script's own, such as bun.sh fetching bun.sh/install.ps1
+function onlySelf(line: string, selfHost: string | undefined): boolean {
+    if (!selfHost) return false;
+    const hosts = urlsIn(line).map((u) => u.host);
+    for (const m of line.matchAll(bareHost)) hosts.push((m[1] as string).toLowerCase());
+    const own = (h: string) => h === selfHost || h.endsWith(`.${selfHost}`);
+    return hosts.length > 0 && hosts.every(own);
+}
+
 export function pipeToShell(text: string, ctx: TextContext): Finding[] {
     const hits = pipeMatches(text).map((m): Finding => ({
         id: "pipe_to_shell",
         severity: urlsIn(m.line).some((u) => shadyHost(u.host))
             ? "high"
-            : shift("medium", ctx.trust),
+            : shift(onlySelf(m.line, ctx.selfHost) ? "low" : "medium", ctx.trust),
         title: `${where(ctx)} pipes a downloaded script straight into a shell`,
         evidence: excerpt(text, m.index, ctx.kind === "command" ? undefined : ctx.path),
     }));
@@ -506,19 +519,38 @@ export function walletTheft(text: string, ctx: TextContext): Finding[] {
     return [];
 }
 
+const describes = /^[ \t]*(?:#(?!!)|\/\/)|^[ \t]*(?:echo|printf)\b/;
+
+function maskLine(line: string): string {
+    if (/^[ \t]*(?:#(?!!)|\/\/)/.test(line)) return " ".repeat(line.length);
+    if (!/^[ \t]*(?:echo|printf)\b/.test(line) || /\$\(|`/.test(line)) return line;
+    const lastQuote = Math.max(line.lastIndexOf('"'), line.lastIndexOf("'"));
+    if (lastQuote < 0 || /[|;&<>]/.test(line.slice(lastQuote + 1))) return line;
+    return line.replace(/"[^"]*"|'[^']*'/g, (q) => " ".repeat(q.length));
+}
+
+// Comment lines and echoed text describe commands without running them, as in get.docker.com
+export function runnableView(text: string): string {
+    const lines = text.split("\n");
+    if (!lines.some((l) => describes.test(l))) return text;
+    return lines.map(maskLine).join("\n");
+}
+
 export function scanText(text: string, ctx: TextContext): Finding[] {
+    const script = ctx.kind === "code" || ctx.kind === "workflow";
+    const view = script ? runnableView(text) : text;
     return [
-        ...pipeToShell(text, ctx),
-        ...downloadRun(text, ctx),
+        ...pipeToShell(view, ctx),
+        ...downloadRun(view, ctx),
         ...obfuscatedExec(text, ctx),
         ...remoteExec(text, ctx),
         ...reverseShell(text, ctx),
-        ...windowsLoader(text, ctx),
+        ...windowsLoader(view, ctx),
         ...hiddenWhitespace(text, ctx),
         ...webhooks(text, ctx),
-        ...suspiciousUrls(text, ctx),
+        ...suspiciousUrls(view, ctx),
         ...passwordArchive(text, ctx),
-        ...disableAntivirus(text, ctx),
+        ...disableAntivirus(view, ctx),
         ...walletTheft(text, ctx),
     ];
 }

@@ -93,6 +93,14 @@ export async function readScript(
     facts.lines = text.split("\n").length;
     const name = new URL(res.url).pathname.split("/").pop() || "script";
     const kind = fileKind(name) === "docs" ? "docs" : "code";
-    findings.push(...scanText(text, { path: evidence(name), kind, trust: "normal" }));
+    const selfHost = hostOf(res.url) ?? undefined;
+    findings.push(
+        ...scanText(text, {
+            path: evidence(name),
+            kind,
+            trust: "normal",
+            ...(selfHost ? { selfHost } : {}),
+        }),
+    );
     return { checked: true, complete: true, facts, findings };
 }
