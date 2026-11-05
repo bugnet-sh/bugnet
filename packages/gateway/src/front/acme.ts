@@ -9,7 +9,7 @@
  */
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { Client, crypto as acmeCrypto, type Authorization } from "acme-client";
+import { axios as acmeAxios, Client, crypto as acmeCrypto, type Authorization } from "acme-client";
 import type { Log } from "../log.ts";
 import { loadPair, secureContext, type CertPair, type CertStore } from "./certs.ts";
 
@@ -28,6 +28,8 @@ export interface OrderRequest {
 export type Order = (req: OrderRequest) => Promise<string>;
 
 export function acmeOrder(directoryUrl: string, email: string): Order {
+    // Without it a stalled connection to the CA would hang the order for minutes
+    acmeAxios.defaults.timeout = 30_000;
     return async ({ accountKey, csr, challenges }) => {
         const client = new Client({ directoryUrl, accountKey });
         return client.auto({
@@ -57,11 +59,21 @@ export interface AcmeOptions {
     order: Order;
     log: Log;
     now?: () => number;
+    orderTimeoutMs?: number;
 }
 
 const maxSleepMs = 12 * 3_600_000;
+const orderTimeoutMs = 10 * 60_000;
 const firstRetryMs = 5 * 60_000;
 const maxRetryMs = 6 * 3_600_000;
+
+function deadline<T>(work: Promise<T>, ms: number): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    const late = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`the order took over ${ms / 1000} s`)), ms);
+    });
+    return Promise.race([work, late]).finally(() => clearTimeout(timer));
+}
 
 function writeAtomic(path: string, data: string | Buffer, mode: number): void {
     const tmp = `${path}.${process.pid}.tmp`;
@@ -171,7 +183,10 @@ export class Acme {
             certKey,
         );
         log.info("ordering a certificate", { names: domains });
-        const chain = await this.o.order({ accountKey, csr, challenges: this.challenges });
+        const chain = await deadline(
+            this.o.order({ accountKey, csr, challenges: this.challenges }),
+            this.o.orderTimeoutMs ?? orderTimeoutMs,
+        );
         loadPair(chain, certKey);
         writeAtomic(certs.keyFile, certKey, 0o600);
         writeAtomic(certs.certFile, chain, 0o644);

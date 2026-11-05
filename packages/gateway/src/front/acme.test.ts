@@ -363,6 +363,26 @@ describe("renewal timing", () => {
         });
     });
 
+    it("gives up on an order that never answers, so later renewals still run", async () => {
+        const dir = tempDir();
+        const certs = await store(dir, t0 - 89 * day, t0 + day);
+        const logs: Logged[] = [];
+        const acme = new Acme({
+            dir,
+            domains: [name],
+            renewBeforeMs: 30 * day,
+            certs,
+            order: () => new Promise(() => {}),
+            log: recordLog(logs),
+            now: () => t0,
+            orderTimeoutMs: 50,
+        });
+        cleanups.push(() => acme.stop());
+        await acme.check();
+        expect(logs.at(-1)?.fields?.err).toBe("the order took over 0.05 s");
+        expect(acme.nextCheckAt).toBe(t0 + 5 * 60_000);
+    });
+
     it("refuses a chain that does not match the ordered key", async () => {
         const dir = tempDir();
         const certs = await store(dir, t0 - 89 * day, t0 + day);
