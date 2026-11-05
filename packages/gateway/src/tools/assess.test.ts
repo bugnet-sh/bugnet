@@ -7,7 +7,7 @@ import { silentLog } from "../log.ts";
 import type { Payments } from "../payments/port.ts";
 import type { RouterClient } from "../router.ts";
 import { verifyQuote } from "../quote.ts";
-import { assessDescription, registerAssessTool } from "./assess.ts";
+import { assessDescription, registerAssessTool, unavailableSummary } from "./assess.ts";
 import type { Deps } from "./common.ts";
 import { buildQuote } from "./sandbox.ts";
 
@@ -275,5 +275,18 @@ describe("bugnet_assess tool", () => {
             arguments: { commands: Array.from({ length: 21 }, () => "ls") },
         })) as Result;
         expect(r.isError).toBe(true);
+    });
+});
+
+describe("unavailableSummary", () => {
+    it("never promises a sandbox when no GPU package can start", () => {
+        const gpuWork: Assessment = {
+            ...assessment,
+            needs: { ...assessment.needs, gpu: true },
+            fit: { level: "unknown", findings: [] },
+        };
+        const s = unavailableSummary(gpuWork);
+        expect(s).toMatch(/No Bugnet GPU sandbox is available right now/);
+        expect(s).not.toMatch(/can run/);
     });
 });

@@ -110,6 +110,16 @@ export function tooLargeSummary(a: Assessment): string {
     return `${a.summary} ${tail}`;
 }
 
+// For work that fits a package Bugnet sells but none can start now, such as GPU work without a GPU class
+export function unavailableSummary(a: Assessment): string {
+    const fit = a.fit.level === "does_not_fit" ? sortFindings(a.fit.findings)[0] : undefined;
+    const tail = a.needs.gpu
+        ? "No Bugnet GPU sandbox is available right now, so Bugnet cannot run it yet."
+        : "No Bugnet package can start right now, try again in a minute.";
+    if (fit && a.risk.level !== "high") return `${sentence(fit.title)} ${tail}`;
+    return `${a.summary.replace(/ A Bugnet cloud sandbox can run .*$/, "")} ${tail}`;
+}
+
 function within<T>(work: Promise<T>, ms: number): Promise<T> {
     let timer: NodeJS.Timeout | undefined;
     const late = new Promise<never>((_, reject) => {
@@ -185,6 +195,8 @@ export const registerAssessTool: Register = (server, deps) => {
             }
             if (quote && !quote.structured.largeEnough) {
                 assessment = { ...assessment, summary: tooLargeSummary(assessment) };
+            } else if (quote && !quote.structured.recommended) {
+                assessment = { ...assessment, summary: unavailableSummary(assessment) };
             }
             return ok(renderAssessment(assessment, quote), {
                 assessment,
