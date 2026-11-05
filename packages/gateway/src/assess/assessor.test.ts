@@ -55,7 +55,7 @@ function fakeFetch(routes: Record<string, Route>) {
     const fetch: Fetcher = async (url, opts): Promise<Fetched> => {
         calls.push({ url, opts });
         if (opts.signal.aborted) throw opts.signal.reason;
-        const r = routes[url.split("?")[0] as string];
+        const r = routes[url] ?? routes[url.split("?")[0] as string];
         if (!r) return { status: 404, url, headers: {}, body: new Uint8Array(), truncated: false };
         const body = r.bytes ?? new TextEncoder().encode(r.text ?? JSON.stringify(r.json ?? {}));
         return {
@@ -263,6 +263,42 @@ describe("assessor over GitHub", () => {
             expect(JSON.stringify(r)).not.toMatch(/Setup\.exe|loader\.dll/);
             expect(calls).toHaveLength(1);
         }
+    });
+
+    it("reads the root and workflow folders when the full file list is over the byte cap", async () => {
+        const snap = mainstream();
+        const routes = githubRoutes(snap);
+        const api = "https://api.github.com/repos/pallets/flasky";
+        routes[`${api}/git/trees/main?recursive=1`] = {
+            bytes: new Uint8Array(8 * 1024 * 1024 + 1).fill(0x20),
+        };
+        routes[`${api}/git/trees/main`] = {
+            json: {
+                truncated: false,
+                tree: [
+                    { path: "setup.py", type: "blob", size: 100 },
+                    { path: "README.md", type: "blob", size: 100 },
+                    { path: "src", type: "tree" },
+                    { path: "Setup.exe", type: "blob", size: 100 },
+                ],
+            },
+        };
+        routes[`${api}/contents/.github/workflows`] = {
+            json: [{ path: ".github/workflows/release.yml", type: "file", size: 50 }],
+        };
+        routes[
+            "https://raw.githubusercontent.com/pallets/flasky/main/.github/workflows/release.yml"
+        ] = { text: "on: push\njobs: {}\n" };
+        const { fetch, calls } = fakeFetch(routes);
+        const a = createAssessor(config(), { fetch, now: () => now });
+        const r = await a.assess({ source: "https://github.com/pallets/flasky" }, signal());
+        expect(r.risk.findings.map((f) => f.id)).toContain("committed_binaries");
+        expect(r.risk.findings.map((f) => f.id)).not.toContain("github_tree_unread");
+        expect(r.source.facts).toMatchObject({ treeTruncated: true });
+        expect(r.source.facts.filesChecked).toMatch(/setup\.py, README\.md, \.github\/workflows/);
+        const first = calls.length;
+        await a.assess({ source: "https://github.com/pallets/flasky" }, signal());
+        expect(calls.length).toBe(first);
     });
 
     it("notes a missing repo and keeps going", async () => {

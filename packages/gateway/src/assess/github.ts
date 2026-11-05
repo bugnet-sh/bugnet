@@ -152,6 +152,42 @@ export function pickFiles(
     return picked;
 }
 
+// For listings over the byte cap, as on tensorflow, the root and workflows show what an install does
+async function shallowTree(
+    apiGet: (path: string) => Promise<Fetched>,
+    repoPath: string,
+    ref: string,
+): Promise<{ tree: TreeEntry[]; complete: boolean } | null> {
+    const [rootRes, flowsRes] = await Promise.allSettled([
+        apiGet(`${repoPath}/git/trees/${encodeURIComponent(ref)}`),
+        apiGet(`${repoPath}/contents/.github/workflows?ref=${encodeURIComponent(ref)}`),
+    ]);
+    if (rootRes.status !== "fulfilled" || rootRes.value.status !== 200) return null;
+    let tree: TreeEntry[];
+    try {
+        tree = treeFrom(bodyJson(rootRes.value)).tree;
+    } catch {
+        return null;
+    }
+    let complete = true;
+    const flows = flowsRes.status === "fulfilled" ? flowsRes.value : null;
+    if (flows?.status === 200) {
+        try {
+            const list = bodyJson(flows);
+            for (const e of Array.isArray(list) ? (list as Record<string, unknown>[]) : []) {
+                const path = str(e?.path);
+                if (e?.type !== "file" || !path) continue;
+                tree.push({ path, type: "blob", size: typeof e.size === "number" ? e.size : null });
+            }
+        } catch {
+            complete = false;
+        }
+    } else if (flows?.status !== 404) {
+        complete = false;
+    }
+    return { tree, complete };
+}
+
 function encodePath(path: string): string {
     return path.split("/").map(encodeURIComponent).join("/");
 }
@@ -254,6 +290,16 @@ export async function readGithub(
         const t = treeFrom(bodyJson(treeRes.value));
         snap.tree = t.tree;
         snap.treeTruncated = t.truncated;
+    } else if (treeRes.status === "fulfilled" && treeRes.value.status === 200) {
+        const shallow = await shallowTree(apiGet, repoPath, ref);
+        if (!shallow) {
+            snap.notes.push(note("github_tree_unread", "The repo's file list could not be read"));
+            snap.complete = false;
+            return snap;
+        }
+        snap.tree = shallow.tree;
+        snap.treeTruncated = true;
+        snap.complete &&= shallow.complete;
     } else if (treeRes.status === "fulfilled" && rateLimited(treeRes.value)) {
         if (snap.complete) limited();
         return snap;
