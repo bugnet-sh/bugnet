@@ -42,8 +42,8 @@ var action = family(String.raw`
     baixar|baixa|baixe|fazer funcionar|por pra rodar
 `);
 var taskVerb = family(String.raw`
-    transcrib\w*|transkribier\w*|desifre\w*|yaziya (?:dok|cevir|aktar)\w*
-    clone (?:my|a|his|her|their|this|the|someone'?s) (?:\w+ )?voice|clon(?:ar|a) (?:mi |la |su )?voz
+    transcrib\w*|transkribier\w*|desifre\w*|yaziya (?:dok|cevir|aktar)\w*|subtitl\w*|caption\w*|diariz\w*
+    clone (?:my|a|his|her|their|this|the|someone'?s) (?:\w+ )?voice|clon(?:ar|a) (?:mi |la |su |a |minha |sua )?voz
     klon\w* (?:meine |die )?stimme|ses(?:imi|ini|i)? klon\w*|sesimi (?:kopyala|taklit)\w*
     narrate|read (?:it|this) (?:aloud|out loud)|seslendir\w*|vertonen|vorlesen
     (?:generate|create|make|render|produce|animate) (?:[^ \n]+ ){0,4}?(?:images?|pictures?|photos?|art|portraits?|shots?|clips?|videos?|animations?|songs?|music|voiceovers?|speech|audio)
@@ -149,7 +149,10 @@ var lure = family(String.raw`
     (?:get|unlock|activate)\w* (?:\w+ ){0,3}?(?:premium|pro|plus) (?:\w+ ){0,2}?(?:for free|free|without paying)
     without paying|bypass (?:the )?(?:paywall|license|licensing|activation|drm)
     mod menu|aimbot|wallhack|wall hack|esp hack|triggerbot|spoofer|hwid|dll inject\w*|cheat engine
-    game hack|auto ?farm\w*|autoclicker
+    game (?:hacks?|trainers?|cheats?)|auto ?farm\w*|autoclicker
+    inject\w* (?:\w+ ){0,2}?into (?:the |a )?(?:running )?(?:game|process)
+    (?:crack|cracked|keygen|patch|activator|kms)\w*\b[^\n]{0,30}?\b(?:photoshop|office|windows|adobe|fl studio|capcut|autocad|premiere|illustrator|lightroom|after effects|matlab|ableton|vegas|corel)
+    (?:photoshop|office|windows|adobe|fl studio|capcut|autocad|premiere|illustrator|lightroom|after effects|matlab|ableton|vegas|corel)[^\n]{0,20}?\b(?:crack|cracked|keygen|activator|kirik|crackeado|craqueado)\w*
     (?:roblox|valorant|fortnite|cs2|csgo|counter[- ]strike|apex|warzone|rust|gta|minecraft|pubg|tarkov|overwatch|cod|r6|dota|genshin|free fire) (?:\w+ )?(?:cheats?|hacks?|esp|aimbot|scripts?|executor|injector|mod menu|trainer|exploit|unlocker|spoofer)
     (?:nitro|robux|token|account|gift ?card|v-?bucks) (?:gen|generator)|token (?:grabber|logger|stealer)
     stealer|remote access trojan|rat (?:builder|client|panel|tool)
@@ -283,7 +286,7 @@ var windowsText = family(String.raw`
 `);
 var driverText = family(String.raw`
     (?:install|update|upgrade|set ?up|kur\w*|instal\w*)\w* (?:the )?(?:nvidia|cuda|gpu|graphics) (?:drivers?|toolkit)
-    (?:nvidia|cuda|gpu|graphics card) drivers?|drivers? for (?:my |the |an? )?(?:nvidia|gpu|graphics)
+    (?:(?:nvidia|cuda|gpu|graphics)[- ](?:card )?)+(?:drivers?|toolkit)|drivers? for (?:my |the |an? )?(?:nvidia|gpu|graphics)
     kernel modul\w*|dkms|out[- ]of[- ]tree (?:driver|module)|custom kernel|kernel patch\w*
 `);
 var destructive = family(String.raw`
@@ -310,7 +313,9 @@ var heavyPhrase = family(String.raw`
 var heavyTask = family(String.raw`
     param(?:eter)? sweep|grid search|hyperparameter (?:search|sweep|tuning)|backtest\w*|fuzz\w*|render\w*
     monte carlo|benchmark\w*|batch (?:job|process\w*)
-    (?:compile|build|compil\w*|derle\w*|kompilier\w*) (?:\w+ ){0,2}?(?:kernel|chromium|llvm|gcc|firefox|aosp|android|webkit|qt)
+`);
+var longBuild = family(String.raw`
+    (?:compile|build|compil\w*|derle\w*|kompilier\w*) (?:\w+ ){0,2}?(?:kernel|chromium|llvm|gcc|firefox|aosp|android|webkit|qt|tensorflow|pytorch)
 `);
 var loadTest = family(String.raw`
     load[- ]?test\w*|stress[- ]?test\w*|soak test\w*|(?:\d+k?|thousands of) (?:rps|requests per second|concurrent (?:users|connections))
@@ -329,7 +334,9 @@ var wholeBatch = family(String.raw`
 `);
 var epochs = /(?<![\w.])(\d+) epochs?(?![a-z])/g;
 var concept = family(String.raw`
-    ^(?:what|whats|what's|why|explain|eli5|how come)|how (?:does|do|did|is|are|would) (?:\S+ ){0,6}?(?:work|works|differ|compare|detect\w*|handle\w*)
+    ^(?:what|whats|what's|which|why|explain|eli5|how come|how much|how many|is it (?:possible|worth|safe|true)|should i|would it|do i need)
+    how (?:does|do|did|is|are|would) (?:\S+ ){0,6}?(?:work|works|differ|compare|detect\w*|handle\w*)
+    explain|walk me through
     (?:what'?s|what is) the difference|difference between|pros and cons|just curious|out of curiosity|theoretically|in theory
     nedir|nasil calisir|ne ise yarar|acikla\w*|farki ne\w*|ne kadar [^\n]{0,30}?(?:ister|gerekir|tutar)|merak ediyorum
     que es|como funciona|explica\w*|cual es la diferencia|por que
@@ -620,7 +627,7 @@ function typosquatOf(name) {
   }
   return null;
 }
-var lureWords = /(?:^|[-_.])(?:crack|cracked|keygen|activator|aimbot|wallhack|injector|spoofer|stealer|grabber|drainer|robux|vbucks|nitro-?gen|unlocker|airdrop-?claim)(?:$|[-_.])|(?:^|[-_.])free(?:[-_.][a-z0-9]+)*[-_.](?:pro|premium|plus|vip|nitro|license|activator)(?:$|[-_.])|(?:^|[-_.])(?:pro|premium|plus)[-_.]free(?:$|[-_.])/;
+var lureWords = /(?:^|[-_.])(?:crack|cracked|keygen|activator|aimbot|wallhack|injector|spoofer|stealer|grabber|drainer|robux|vbucks|nitro-?gen(?:erator)?|unlocker|airdrop-?claim)(?:$|[-_.])|(?:^|[-_.])free(?:[-_.][a-z0-9]+)*[-_.](?:pro|premium|plus|vip|nitro|license|activator)(?:$|[-_.])|(?:^|[-_.])(?:pro|premium|plus)[-_.]free(?:$|[-_.])/;
 function isLurePackage(name) {
   return lureWords.test(name.toLowerCase());
 }
@@ -1144,9 +1151,52 @@ function looksLikeUrl(w) {
 function hostPath(url) {
   return url.toLowerCase().replace(/^[a-z]+:\/\//, "").replace(/^www\./, "");
 }
+var mainstreamHosts = [
+  "astral.sh",
+  "rustup.rs",
+  "bun.sh",
+  "deno.land",
+  "brew.sh",
+  "volta.sh",
+  "pnpm.io",
+  "docker.com",
+  "nodesource.com",
+  "tailscale.com",
+  "starship.rs",
+  "claude.ai",
+  "anthropic.com",
+  "python-poetry.org",
+  "pyenv.run",
+  "mise.run",
+  "sdkman.io",
+  "determinate.systems",
+  "nixos.org",
+  "scoop.sh",
+  "chocolatey.org",
+  "fly.io",
+  "helm.sh",
+  "go.dev",
+  "golang.org",
+  "nodejs.org",
+  "yarnpkg.com",
+  "julialang.org",
+  "k3s.io",
+  "rvm.io",
+  "bootstrap.pypa.io",
+  "vercel.com",
+  "netlify.com",
+  "supabase.com",
+  "cloud.google.com",
+  "dl.google.com",
+  "awscli.amazonaws.com",
+  "releases.hashicorp.com",
+  "packages.microsoft.com",
+  "aka.ms"
+];
 function isMainstream(url) {
   const hp = hostPath(url);
-  return mainstream.some((m) => hp.startsWith(m));
+  const host = hp.split(/[/?#:]/)[0] ?? "";
+  return mainstream.some((m) => hp.startsWith(m)) || mainstreamHosts.some((m) => host === m || host.endsWith(`.${m}`));
 }
 function urlArg(seg) {
   return seg.argv.slice(1).find(looksLikeUrl) ?? null;
@@ -1391,7 +1441,7 @@ function install(seg) {
   }
   return out;
 }
-var driverPackage = /^(?:nvidia-[\w.-]+|cuda[\w.-]*|[\w.-]*-cuda-[\w.-]*|nvidia|libnvidia[\w.-]*|linux-headers[\w.-]*|[\w.-]+-dkms|dkms|libcudnn[\w.-]*)$/;
+var driverPackage = /^(?:[\w.+-]*(?:nvidia|cuda|cudnn)[\w.+-]*|linux-headers[\w.-]*|[\w.-]+-dkms|dkms)$/;
 function packages(seg, st) {
   const inst = install(seg);
   if (!inst) return;
@@ -1467,22 +1517,40 @@ function packages(seg, st) {
       break;
     }
   }
-  if (inst.urlDeps.length > 0) {
-    add(
-      st,
-      hit("url_dependency", "untrusted_code", 3, inst.urlDeps[0], inst.urlDeps[0])
-    );
+  const dep = inst.urlDeps[0];
+  if (dep) {
+    const repo = /github|gitlab|bitbucket|codeberg/i.test(dep) ? repoOf(dep.replace(/^git\+/, "")) : null;
+    const w = repo && famousOwners.has(repo.owner) ? 2 : 4;
+    add(st, hit("url_dependency", "untrusted_code", w, dep, repo?.short ?? dep));
   }
   const odd = inst.indexUrls.find(
     (u) => u && !/^https:\/\/(?:pypi\.org|download\.pytorch\.org|test\.pypi\.org)/i.test(u)
   );
   if (odd) add(st, hit("foreign_index", "untrusted_code", 3, odd, odd));
-  if (inst.manager === "pip" && seg.sudo)
-    add(st, hit("sudo_pip", "environment", 2, "sudo pip install"));
+  if (inst.manager === "pip" && seg.sudo) {
+    const whole = seg.lower.some((a) => a === "-r" || /requirements[\w.-]*\.txt$/.test(a));
+    add(st, hit("sudo_pip", "environment", whole ? 4 : 3, "sudo pip install"));
+  }
   if (inst.breakSystem)
     add(st, hit("break_system_packages", "environment", 3, "--break-system-packages"));
   if (inst.manager === "npm" && inst.global && seg.sudo)
     add(st, hit("sudo_global_npm", "environment", 1, "sudo npm -g"));
+}
+function remoteBuild(seg, st) {
+  const h = seg.head;
+  const l = seg.lower;
+  let target;
+  if (h === "go" && l[1] === "install") {
+    target = seg.argv.slice(2).find((a) => /^[\w.-]+\.[a-z]+\/[\w.-]+\/[\w.-]+/.test(a));
+  } else if (h === "cargo" && l[1] === "install" && l.includes("--git")) {
+    target = seg.argv[l.indexOf("--git") + 1];
+  } else if (h === "deno" && l[1] === "run") {
+    target = seg.argv.slice(2).find((a) => /^https?:\/\//i.test(a));
+  }
+  if (!target) return;
+  const repo = repoOf(target.split("@")[0]);
+  if (famousOwners.has(repo.owner) || isMainstream(target)) return;
+  add(st, hit("remote_build", "untrusted_code", 4, evidence(seg, 3), repo.short));
 }
 function modelWeight(id) {
   const s = spaced(id.toLowerCase());
@@ -1503,8 +1571,8 @@ function models(seg, st) {
   const h = seg.head;
   const l = seg.lower;
   if ((h === "huggingface-cli" || h === "hf") && l[1] === "download" && seg.argv[2]) {
-    const id = seg.argv[2];
-    add(st, hit("model_download", "local_ai_model", 3 + modelWeight(id), `${h} download`, id));
+    const id2 = seg.argv[2];
+    add(st, hit("model_download", "local_ai_model", 3 + modelWeight(id2), `${h} download`, id2));
     return;
   }
   if (h === "ollama" && (l[1] === "pull" || l[1] === "run") && seg.argv[2]) {
@@ -1541,7 +1609,25 @@ function models(seg, st) {
     script
   )) {
     add(st, hit("model_download_script", "local_ai_model", 4, evidence(seg), script));
+    return;
   }
+  const id = hubModelArg(seg);
+  if (id) add(st, hit("hub_model", "local_ai_model", 3 + modelWeight(id), `--model ${id}`, id));
+}
+var modelFlag = /^--?(?:model|model[-_]name|model[-_]id|model[-_]path|model[-_]name[-_]or[-_]path|pretrained[-_]model[-_]name[-_]or[-_]path|base[-_]model|repo[-_]id|checkpoint)$/;
+var providerPrefix = /^(?:openai|anthropic|gemini|azure|azure_ai|bedrock|vertex_ai|groq|together_ai|openrouter|cohere|replicate|fireworks_ai|perplexity|xai|mistral|deepseek|ollama|ollama_chat|huggingface)\//;
+function hubModelArg(seg) {
+  for (let j = 1; j < seg.argv.length; j++) {
+    const a = seg.lower[j];
+    const eq = /^(--?[\w-]+)=(.+)$/.exec(a);
+    const flag = eq ? eq[1] : a;
+    if (!modelFlag.test(flag)) continue;
+    const raw = eq ? seg.argv[j].split("=").slice(1).join("=") : seg.argv[j + 1];
+    if (raw && /^[\w.-]+\/[\w.-]+$/.test(raw) && !raw.startsWith(".") && !providerPrefix.test(raw.toLowerCase()) && !/\.(?:gguf|bin|safetensors|pt|pth|onnx|ckpt|json|ya?ml)$/i.test(raw)) {
+      return raw;
+    }
+  }
+  return null;
 }
 function scriptOf(seg) {
   const h = seg.head;
@@ -1566,6 +1652,8 @@ function argNumber(seg, names) {
   }
   return null;
 }
+var aiModule = /^(?:mlx_lm|mlx_vlm|mlx_whisper|piper|kokoro|whisper|whisperx|faster_whisper|tts|f5_tts|bark|axolotl|llama_cpp|vllm|sglang|audiocraft|demucs|comfy|fooocus|invokeai|torch\.distributed|deepspeed|unsloth)(?:\.|$)/;
+var aiAppScript = /(?<![a-z])(?:txt2img|img2img|txt2vid|img2vid|facefusion|sadtalker|wav2lip|liveportrait|animatediff|sample video|infer rvc|rvc infer|gpt sovits|so vits|tortoise tts|deep live cam|roop|run swap)(?![a-z])/;
 function aiRuns(seg, st) {
   const h = seg.head;
   const l = seg.lower;
@@ -1576,7 +1664,7 @@ function aiRuns(seg, st) {
     const media = l.filter((a) => /\.(?:mp3|wav|m4a|mp4|mkv|flac|ogg|webm|opus|mov)$/.test(a));
     if (media.length === 0) return;
     let w = 3;
-    if (l.some((a) => /^(?:large|medium|turbo)/.test(a))) w += 1;
+    if (l.some((a) => /(?:^|[/_-])(?:large|medium|turbo)/.test(a))) w += 1;
     if (media.length > 1 || media.some((a) => a.includes("*"))) w += 1;
     add(st, hit("speech_model_run", "local_ai_model", w, evidence(seg, 3), h));
     return;
@@ -1618,12 +1706,21 @@ function aiRuns(seg, st) {
     add(st, hit("model_server", "local_ai_model", 4, evidence(seg, 3), seg.argv[2] ?? h));
     return;
   }
-  if (/^python[\d.]*$/.test(h) && l[1] === "-m" && /^vllm|^sglang/.test(l[2] ?? "")) {
-    add(st, hit("model_server", "local_ai_model", 4, evidence(seg, 3), l[2]));
+  const module = /^python[\d.]*$/.test(h) && l[1] === "-m" ? l[2] ?? "" : "";
+  if (aiModule.test(module)) {
+    add(st, hit("ai_module", "local_ai_model", 4, evidence(seg, 3), module));
+    return;
+  }
+  if (h === "tune" && l[1] === "run" || h === "axolotl" && /^(?:train|preprocess|inference)$/.test(l[1] ?? "") || h === "autotrain" && l[1] !== void 0 && l[1] !== "--help" || /^f5-tts_infer-(?:cli|gradio)$/.test(h) || /\.llamafile$/.test(h)) {
+    add(st, hit("model_run", "local_ai_model", 4, evidence(seg, 3), h));
     return;
   }
   if (!script) return;
   const name = spaced(script.split("/").pop() ?? script);
+  if (aiAppScript.test(name)) {
+    add(st, hit("ai_script", "local_ai_model", 4, evidence(seg, 2), script));
+    return;
+  }
   const webui = /(?<![a-z])webui(?![a-z])/.test(name);
   const launcher = /(?<![a-z])(?:launch|entry with update)(?![a-z])/.test(name);
   if ((webui || launcher) && /\.(?:py|sh|bat)$/.test(script)) {
@@ -1741,10 +1838,23 @@ function kernel(seg, st) {
     ...seg.redirects,
     ...h === "tee" ? seg.argv.slice(1).filter((a) => !a.startsWith("-")) : []
   ];
-  if (targets.some(
-    (t) => /^\/(?:proc\/sys|sys\/|etc\/sysctl|etc\/default\/grub|etc\/modprobe)/.test(t)
+  const persisted = targets.find((t) => /^\/etc\/(?:sysctl|default\/grub|modprobe)/.test(t));
+  const runtime = targets.find((t) => /^\/(?:proc\/sys|sys)\//.test(t));
+  if (persisted || runtime) {
+    add(
+      st,
+      hit(
+        "kernel_tuning",
+        "risky_experiment",
+        persisted ? 4 : 3,
+        `> ${persisted ?? runtime}`
+      )
+    );
+  }
+  if (l.some(
+    (a) => a.includes("/lib/modules/") || a === "modules_install" || a.startsWith("m=$(pwd")
   )) {
-    add(st, hit("kernel_tuning", "risky_experiment", 3, `> ${targets[0]}`));
+    add(st, hit("kernel_module", "environment", 4, evidence(seg, 3)));
   }
 }
 var systemPath = /^(?:\/|\/\*|~|~\/|~\/\*|\$home|\$\{home\}|\/usr|\/etc|\/bin|\/sbin|\/var|\/boot|\/lib|\/lib64|\/opt|\/system|\/users|\/home|c:\\?)\/?$/;
@@ -1827,7 +1937,7 @@ function load(seg, st) {
   let secs = 0;
   for (let j = 1; j < l.length; j++) {
     const a = l[j];
-    const flag = /^(?:-d|--duration|-t|--time|-z|--run-time|-duration)$/.test(a) ? l[j + 1] : /^(?:-d|--duration=|-z|--run-time=)(\d.*)$/.exec(a)?.[1];
+    const flag = /^(?:-d|--duration|-t|--time|-z|--run-time|-duration)$/.test(a) ? l[j + 1] : /^(?:-d|--?duration=|-z|--run-time=)(\d.*)$/.exec(a)?.[1];
     if (flag) secs = Math.max(secs, duration(flag));
   }
   const conns = argNumber(seg, /^(?:c|connections|concurrency|u|users|vus|rate)$/) ?? 0;
@@ -1853,17 +1963,12 @@ function longJobs(seg, segs, st) {
   } else if (h === "docker" && l[1] === "buildx" && /--platform[= ]\S+,\S+/.test(joined)) {
     add(st, hit("long_build", "heavy_compute", 2, "docker buildx multi-platform"));
   } else if (h === "ffmpeg" && /libx265|libaom|libsvtav1|-preset (?:slow|slower|veryslow)/.test(joined)) {
-    add(
-      st,
-      hit(
-        "video_encode",
-        "heavy_compute",
-        segs.some((s) => s.head === "for" || s.head === "while") ? 4 : 2,
-        evidence(seg, 3)
-      )
-    );
+    const loop = segs.some((s) => s.head === "for" || s.head === "while");
+    const slowest = /-preset (?:veryslow|placebo)|-cpu-used [01]\b/.test(joined);
+    add(st, hit("video_encode", "heavy_compute", loop || slowest ? 4 : 3, evidence(seg, 3)));
   } else if (h === "blender" && (l.includes("-b") || l.includes("--background"))) {
-    add(st, hit("render", "heavy_compute", 3, "blender -b"));
+    const animation = l.includes("-a") || l.includes("--render-anim");
+    add(st, hit("render", "heavy_compute", animation ? 4 : 3, "blender -b"));
   } else if (h === "gmx" && l[1] === "mdrun" || h === "hashcat" || h === "john") {
     add(st, hit("long_compute", "heavy_compute", 3, evidence(seg, 2), h));
   } else if (/^python[\d.]*$/.test(h)) {
@@ -1885,6 +1990,11 @@ function longJobs(seg, segs, st) {
 var lureName = /(?<![a-z])(?:airdrop|drainer|aimbot|wallhack|cheat|cheats|injector|crack|cracked|keygen|stealer|grabber|sniper|mev|activator|spoofer|nitro gen|token grab\w*|seed finder|wallet recover\w*|unlocker)(?![a-z])/;
 var pocName = /(?<![a-z])(?:poc|exploit|exploits|sploit|cve \d{4} \d+|lpe|privesc|rce|0day|pwn|rootkit)(?![a-z])/;
 var walletSecret = /\.config\/solana\/id\.json|(?:^|\/)keystore(?:\/|$)|wallet\.dat|^--(?:private[-_]?key|mnemonic|seed(?:[-_]phrase)?|wallet[-_]?file)(?:=|$)/;
+var disguised = /\.(?:pdf|docx?|xlsx?|jpe?g|png|mp4|mp3|txt)\.(?:exe|scr|bat|cmd|js|vbs|lnk|com|pif|app)$/i;
+function disguisedFile2(seg, st) {
+  const fake = seg.argv.find((a) => disguised.test(a));
+  if (fake) add(st, hit("disguised_file", "untrusted_code", 5, fake, fake));
+}
 function lures(seg, st) {
   const script = scriptOf(seg);
   const h = seg.head;
@@ -2021,12 +2131,14 @@ function classifyCommand(command, ctx = {}) {
     const seg = segs[i];
     destructive2(seg, st);
     kernel(seg, st);
+    disguisedFile2(seg, st);
     if (readOnly2.has(seg.head)) continue;
     remoteExec(segs, i, st);
     downloadThenRun(seg, st);
     gitClone(seg, st);
     clonedCode(seg, st);
     packages(seg, st);
+    remoteBuild(seg, st);
     models(seg, st);
     aiRuns(seg, st);
     containers(seg, st);
@@ -2036,8 +2148,11 @@ function classifyCommand(command, ctx = {}) {
     lures(seg, st);
     quarantine(seg, st);
   }
-  if (segs.some((s) => s.head === "make") && segs.some((s) => s.head === "make" && s.sudo && s.lower[1] === "install")) {
-    add(st, hit("system_wide_install", "environment", 3, "sudo make install"));
+  const sudoInstall = segs.find(
+    (s) => s.sudo && (s.head === "make" && s.lower[1] === "install" || /^python[\d.]*$/.test(s.head) && s.lower[1] === "setup.py" && s.lower[2] === "install")
+  );
+  if (sudoInstall) {
+    add(st, hit("system_wide_install", "environment", 4, evidence(sudoInstall, 3)));
   } else if (segs.some((s) => s.sudo && /^\.\/(?:install|setup)[\w-]*\.sh$/.test(s.argv[0] ?? ""))) {
     add(st, hit("sudo_install_script", "environment", 2, "sudo ./install.sh"));
   }
@@ -2400,6 +2515,7 @@ function classifyPrompt(text, ctx = {}) {
   cue(atLeast(hours, 1), 2, false);
   cue(atLeast(minutes, 30), 2, false);
   cue(find(heavyTask, bare), 1, true);
+  cue(find(longBuild, bare), 2, true);
   for (const m of findAll(loadTest, bare).slice(0, 2)) cue(m, 2, true);
   cue(find(heat, bare), 1, true);
   cue(atLeast(repeats, 10), 1, true);
@@ -2415,7 +2531,8 @@ function classifyPrompt(text, ctx = {}) {
     const w = doing ? Math.min(heavy2, 5) : heavy2 >= 4 ? 4 : Math.min(heavy2, 2);
     put(heavyAt, hit("heavy_job", "heavy_compute", w, heavyWhat, heavyWhat));
   }
-  for (const m of findAll(commandStart, t)) {
+  const typed = (x) => x[0].startsWith("`") || /:\/\//.test(x[0]) || !/^(?:curl|wget|iwr|irm|invoke)/.test(x[0]);
+  for (const m of findAll(commandStart, t).filter(typed)) {
     const c = classifyCommand(m[0].replace(/^`|`$/g, ""), ctx);
     if (c.suggest && c.category) {
       const pts = Math.min(Math.round(c.score * 8), 6);
@@ -2447,7 +2564,10 @@ function classifyPrompt(text, ctx = {}) {
   negate(tests, "writing_tests", -3);
   negate(edit, "editing_code", -2);
   const question = find(concept, bare);
-  if (question) global.push(hit("concept_question", null, act ? -2 : -5, question[0]));
+  if (question) {
+    const firm = !act || question.index === 0 && !iso && !away;
+    global.push(hit("concept_question", null, firm ? -5 : -2, question[0]));
+  }
   if (!iso && !away) {
     const ro = find(readOnly, bare);
     if (ro) global.push(hit("read_only", null, -6, ro[0]));
