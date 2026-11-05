@@ -10,6 +10,7 @@ import { registerExtendTool } from "./tools/extend.ts";
 import { registerFileTools } from "./tools/files.ts";
 import { registerJobTools } from "./tools/jobs.ts";
 import { registerSandboxTools } from "./tools/sandbox.ts";
+import { registerSecretGrantTool } from "./tools/secret-grant.ts";
 
 export const version = "0.1.0";
 
@@ -19,6 +20,7 @@ export const registrations: Register[] = [
     registerJobTools,
     registerFileTools,
     registerExtendTool,
+    registerSecretGrantTool,
 ];
 
 export function buildMcpServer(deps: Deps, extra: Register[] = []): McpServer {
