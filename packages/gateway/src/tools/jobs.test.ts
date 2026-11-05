@@ -267,3 +267,111 @@ describe("bugnet_cancel_job", () => {
         expect(r.text).toMatch(/^cancel: this sandbox has ended/);
     });
 });
+
+describe("out of memory", () => {
+    it("tells bugnet_exec's caller to quote a larger package", async () => {
+        const client = await connect({
+            exec: () => ({
+                jobId: "j1",
+                state: JobState.EXITED,
+                exitCode: 137,
+                oomKilled: true,
+                cursor: "c1",
+            }),
+        });
+        const r = await callTool<JobResult & { oomKilled?: boolean }>(client, "bugnet_exec", {
+            handle: testHandle,
+            cmd: "python train.py",
+        });
+        expect(r.structured.oomKilled).toBe(true);
+        expect(r.structured.message).toBe(
+            "Command exited with exit code 137.\n" +
+                "The command ran out of memory, quote again for a larger package.",
+        );
+    });
+
+    it("gives bugnet_job's caller the peak memory with the out of memory note", async () => {
+        const client = await connect({
+            async *watchJob() {
+                yield {
+                    cursor: "c4",
+                    frame: {
+                        case: "exit",
+                        value: { exitCode: 137, oomKilled: true, peakMemoryMib: 1900 },
+                    },
+                };
+            },
+        });
+        const r = await callTool<JobResult & { oomKilled?: boolean; peakMemoryMib?: number }>(
+            client,
+            "bugnet_job",
+            { handle: testHandle, jobId: "j1" },
+        );
+        expect(r.structured).toEqual(
+            expect.objectContaining({ exitCode: 137, oomKilled: true, peakMemoryMib: 1900 }),
+        );
+        expect(r.structured.message.split("\n").slice(0, 2)).toEqual([
+            "Command exited with code 137.",
+            "The command ran out of memory, quote again for a larger package. Its peak memory " +
+                "was 1900 MiB.",
+        ]);
+    });
+
+    it("leaves the note out of a normal exit and the peak out when it is unknown", async () => {
+        let frame = { exitCode: 0, oomKilled: false, peakMemoryMib: 300 };
+        const client = await connect({
+            async *watchJob() {
+                yield { cursor: "c4", frame: { case: "exit", value: frame } };
+            },
+        });
+        const normal = await callTool<{ oomKilled?: boolean; peakMemoryMib?: number }>(
+            client,
+            "bugnet_job",
+            { handle: testHandle, jobId: "j1" },
+        );
+        expect(normal.structured.oomKilled).toBeUndefined();
+        expect(normal.structured.peakMemoryMib).toBe(300);
+        expect(normal.text).not.toMatch(/memory/);
+        frame = { exitCode: 137, oomKilled: true, peakMemoryMib: 0 };
+        const unknown = await callTool<{ peakMemoryMib?: number }>(client, "bugnet_job", {
+            handle: testHandle,
+            jobId: "j1",
+        });
+        expect(unknown.structured.peakMemoryMib).toBeUndefined();
+        expect(unknown.text).toMatch(/larger package\.\n/);
+        expect(unknown.text).not.toMatch(/peak/);
+    });
+});
+
+describe("bugnet_job errors", () => {
+    it("reports NOT_READY on an ended sandbox as expired", async () => {
+        const client = await connect({
+            watchJob() {
+                throw routerError(Code.FailedPrecondition, "NOT_READY");
+            },
+            getPlacement: () => ({ placement: placement(PlacementState.TERMINATED) }),
+        });
+        const r = await callTool(client, "bugnet_job", { handle: testHandle, jobId: "j1" });
+        expect(r.text).toMatch(/^job: this sandbox has ended and everything in it was deleted/);
+    });
+
+    it("reports a rate limit with its RetryInfo delay", async () => {
+        const client = await connect({
+            watchJob() {
+                throw routerError(Code.ResourceExhausted, "RATE_LIMITED", { retryAfterMs: 1500 });
+            },
+        });
+        const r = await callTool(client, "bugnet_job", { handle: testHandle, jobId: "j1" });
+        expect(r.text).toBe("job: too many requests for now. Retry after 2 s.");
+    });
+
+    it("says a refused request id is reserved", async () => {
+        const client = await connect({
+            exec() {
+                throw routerError(Code.InvalidArgument, "IDEMPOTENCY_KEY_RESERVED");
+            },
+        });
+        const r = await callTool(client, "bugnet_exec", { handle: testHandle, cmd: "true" });
+        expect(r.text).toBe("exec: the request id is reserved for Bugnet's own jobs.");
+    });
+});
