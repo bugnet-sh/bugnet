@@ -14,6 +14,11 @@
  * offer. Settings come from eval/agent/config.json.
  *
  * Usage: tsx eval/agent/run.ts [--split dev|test] [--arms mcp,plugin] [--limit N] [--model M]
+ *   [--suggest N] [--no N] [--ids a,b] [--gateway-url URL] [--plugin-dir DIR] [--tag NAME]
+ *   [--concurrency N] [--budget USD]
+ *
+ * Every run's event stream is saved next to the results file, for reading why an agent did what
+ * it did.
  */
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -46,6 +51,8 @@ interface Item {
 
 interface RunResult {
     id: string;
+    // The event stream, written to the transcripts folder and left out of the results file
+    lines?: string[];
     arm: Arm;
     label: Item["label"];
     category: string;
@@ -74,8 +81,17 @@ const cfg = JSON.parse(readFileSync(join(here, "config.json"), "utf8")) as Confi
 const split = opt("--split") === "test" ? "test" : "dev";
 const arms = (opt("--arms")?.split(",") as Arm[] | undefined) ?? cfg.arms;
 const limit = opt("--limit") ? Number(opt("--limit")) : Infinity;
+const ids = opt("--ids")?.split(",");
+const tag = opt("--tag") ?? "";
 cfg.model = opt("--model") ?? cfg.model;
-const pluginDir = resolve(here, cfg.pluginDir);
+cfg.gatewayUrl = opt("--gateway-url") ?? cfg.gatewayUrl;
+cfg.concurrency = Number(opt("--concurrency") ?? cfg.concurrency);
+cfg.budgetUsd = Number(opt("--budget") ?? cfg.budgetUsd);
+cfg.sample.suggest = Number(opt("--suggest") ?? cfg.sample.suggest);
+cfg.sample.no = Number(opt("--no") ?? cfg.sample.no);
+const pluginDir = opt("--plugin-dir")
+    ? resolve(opt("--plugin-dir") as string)
+    : resolve(here, cfg.pluginDir);
 
 // A stable order by hash, so a sample is the same on every run and spread across lenses
 const rank = (id: string) => createHash("sha256").update(id).digest("hex");
@@ -92,6 +108,7 @@ function sample(): Item[] {
         )
         .filter((i) => i.kind === "prompt" && !i.borderline)
         .sort((a, b) => rank(a.id).localeCompare(rank(b.id)));
+    if (ids) return items.filter((i) => ids.includes(i.id));
     const pick = (label: Item["label"], n: number) =>
         items.filter((i) => i.label === label).slice(0, n);
     return [...pick("suggest", cfg.sample.suggest), ...pick("no", cfg.sample.no)].slice(0, limit);
@@ -169,6 +186,14 @@ function score(item: Item, arm: Arm, lines: string[]): Omit<RunResult, "error"> 
                 if (bashAttempts.length === 0) offeredBeforeBash = true;
             }
             if (c.type !== "tool_use" || !c.name) continue;
+            if (c.name === "Skill") {
+                const skill = String((c.input as { skill?: string })?.skill ?? "");
+                called.push(`Skill:${skill}`);
+                if (/sandbox|bugnet/i.test(skill) && bashAttempts.length === 0) {
+                    offeredBeforeBash = true;
+                }
+                continue;
+            }
             const searched =
                 c.name === "ToolSearch" && /bugnet|sandbox/i.test(JSON.stringify(c.input ?? ""));
             if (/bugnet/i.test(c.name) || searched) {
@@ -230,7 +255,7 @@ function runOne(item: Item, arm: Arm): Promise<RunResult> {
             clearTimeout(timer);
             const s = score(item, arm, out.split("\n"));
             const error = code === 0 ? null : `exit ${code}: ${err.slice(0, 200)}`;
-            done({ ...s, error });
+            done({ ...s, error, lines: out.split("\n") });
         });
     });
 }
@@ -286,8 +311,15 @@ for (const arm of arms) {
 if (spent >= cfg.budgetUsd) console.log(`stopped at the $${cfg.budgetUsd} budget`);
 
 const outDir = join(here, "results");
-mkdirSync(outDir, { recursive: true });
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-const file = join(outDir, `${stamp}-${split}-${cfg.model}.json`);
-writeFileSync(file, JSON.stringify({ split, model: cfg.model, arms, results }, null, 4));
-console.log(`results in ${file}`);
+const name = `${stamp}-${split}-${cfg.model}${tag ? `-${tag}` : ""}`;
+const transcripts = join(outDir, name);
+mkdirSync(transcripts, { recursive: true });
+for (const r of results) {
+    writeFileSync(join(transcripts, `${r.id}.${r.arm}.jsonl`), (r.lines ?? []).join("\n"));
+    delete r.lines;
+}
+const file = join(outDir, `${name}.json`);
+const meta = { split, model: cfg.model, arms, gatewayUrl: cfg.gatewayUrl, pluginDir, tag };
+writeFileSync(file, JSON.stringify({ ...meta, results }, null, 4));
+console.log(`results in ${file}, transcripts in ${transcripts}`);
