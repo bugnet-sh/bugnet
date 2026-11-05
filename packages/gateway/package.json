@@ -19,12 +19,14 @@
         "@connectrpc/connect-node": "2.3.0",
         "@modelcontextprotocol/node": "2.1.2",
         "@modelcontextprotocol/server": "2.4.0",
+        "acme-client": "5.4.0",
         "smol-toml": "1.9.1",
         "undici": "8.12.4",
         "zod": "4.6.7"
     },
     "devDependencies": {
+        "@bufbuild/protoc-gen-es": "2.16.0",
         "@modelcontextprotocol/client": "2.4.0",
-        "@bufbuild/protoc-gen-es": "2.16.0"
+        "@peculiar/x509": "1.14.3"
     }
 }
