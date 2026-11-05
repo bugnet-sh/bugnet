@@ -158,6 +158,64 @@ describe("PROXY v2 header", () => {
     });
 });
 
+// Bytes HAProxy 3.2.26 sent with send-proxy-v2, captured with its log lines for the same connections
+const captured = {
+    v4: hex(`${sig} 2111000c 7f000001 7f000001 9896 6363`),
+    v6: hex(`${sig} 21210024 ${"00".repeat(15)}01 ${"00".repeat(15)}01 cc86 6363`),
+    v4Tlvs: hex(
+        `${sig} 2111002c 7f000001 7f000001 bac8 6363 03 0004 201babb8
+         05 0016 37463030303030313a424143385f3641454430353634`,
+    ),
+    v6Tlvs: hex(
+        `${sig} 2121005c ${"00".repeat(15)}01 ${"00".repeat(15)}01 c2d8 6363 03 0004 6a4ed979
+         05 002e ${Buffer.from("00000000000000000000000000000001:C2D8_6AED0564").toString("hex")}`,
+    ),
+};
+
+// CRC32C over the header with its checksum zeroed, as section 2.2.3 defines it
+function crc32c(b: Buffer): number {
+    let crc = 0xffffffff;
+    for (const byte of b) {
+        crc ^= byte;
+        for (let k = 0; k < 8; k += 1) crc = crc & 1 ? (crc >>> 1) ^ 0x82f63b78 : crc >>> 1;
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+}
+
+describe("headers from a real HAProxy", () => {
+    it("reads what send-proxy-v2 sends over IPv4 and IPv6", () => {
+        expect(parseProxyHeader(captured.v4, max)).toEqual({
+            header: {
+                command: "proxy",
+                family: "ipv4",
+                source: { address: "127.0.0.1", port: 39062 },
+                destination: { address: "127.0.0.1", port: 25443 },
+            },
+            length: 28,
+        });
+        expect(parseProxyHeader(captured.v6, max)?.header).toMatchObject({
+            family: "ipv6",
+            source: { address: "::1", port: 52358 },
+        });
+    });
+
+    it("skips the CRC32C and unique id TLVs that proxy-v2-options adds", () => {
+        for (const [v, port] of [
+            [captured.v4Tlvs, 47816],
+            [captured.v6Tlvs, 49880],
+        ] as const) {
+            const zeroed = Buffer.from(v);
+            const at = v.indexOf(hex("030004")) + 3;
+            zeroed.fill(0, at, at + 4);
+            expect(crc32c(zeroed)).toBe(v.readUInt32BE(at));
+            expect(parseProxyHeader(v, max)).toMatchObject({
+                header: { source: { port } },
+                length: v.length,
+            });
+        }
+    });
+});
+
 describe("reading the header from a socket", () => {
     const servers: Server[] = [];
     afterEach(async () => {
