@@ -43,9 +43,36 @@ describe.skipIf(!url)("gateway end to end", () => {
         expect(q.structuredContent?.message).toBe(text(q));
         const quote = q.structuredContent as {
             quoteId: string;
-            recommended: { packageId: string; priceUsd: string };
+            recommended: { packageId: string } | null;
+            packages: {
+                id: string;
+                priceUsd: string;
+                minutes: number;
+                available: boolean;
+                fits: boolean | null;
+                totalPriceUsd: string;
+            }[];
+            reasons: string[];
+            warnings: string[];
+            floor: unknown;
         };
-        const pkg = quote.recommended.packageId;
+        expect(quote.quoteId).toMatch(/^q3\./);
+        expect(quote.quoteId.length).toBeLessThanOrEqual(56);
+        expect(JSON.stringify(quote)).not.toMatch(/inputs_?sha256/i);
+        expect(Array.isArray(quote.reasons) && Array.isArray(quote.warnings)).toBe(true);
+        // A router without the estimator gives no floor, so no fit and no recommendation
+        if (quote.floor === null) {
+            expect(quote.recommended).toBeNull();
+            expect(quote.packages.every((p) => p.fits === null)).toBe(true);
+        }
+        // Packages come cheapest first, and the run needs one that outlasts the whole suite
+        const open = quote.packages.filter((p) => p.available);
+        const chosen =
+            open.find((p) => p.id === quote.recommended?.packageId) ??
+            open.find((p) => p.minutes >= 10) ??
+            open[0];
+        expect(chosen).toBeTruthy();
+        const pkg = chosen!.id;
         const wrong = await call("bugnet_start", {
             quoteId: quote.quoteId,
             packageId: pkg,
@@ -56,12 +83,19 @@ describe.skipIf(!url)("gateway end to end", () => {
         const s = await call("bugnet_start", {
             quoteId: quote.quoteId,
             packageId: pkg,
-            confirmPriceUsd: quote.recommended.priceUsd,
+            confirmPriceUsd: chosen!.priceUsd,
         });
         expect(s.isError).toBeFalsy();
         handle = (s.structuredContent as { handle: string; state: string }).handle;
         expect(handle).toMatch(/^sbx_[a-z2-7]{26}$/);
         expect((s.structuredContent as { state: string }).state).toBe("ready");
+    });
+
+    it("says why the quoted repo is not fetched for a quote without a source", async () => {
+        const r = await call("bugnet_fetch_source", { handle });
+        const said = text(r);
+        expect(said).toMatch(/not open yet|no GitHub repo|named no source/);
+        expect(said).not.toMatch(/e2b|boat|boxd|koyeb/i);
     });
 
     it("runs a command and cleans its output", async () => {
