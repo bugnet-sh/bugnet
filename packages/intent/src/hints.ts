@@ -70,7 +70,7 @@ const failureCause: Record<string, string> = {
     docker_daemon: "no running Docker daemon on this machine",
 };
 
-// Environment signals about a GPU and about the operating system or CPU, the rest are system-wide changes
+// Environment signals about the GPU or the OS and CPU, any other is a system-wide change
 const gpuSignals =
     /^(?:pasted_)?(?:needs_nvidia|mentions_nvidia|nvidia_only_package|cuda_\w+|gpu_\w+|hardware_gap|cuda_missing)$/;
 const osSignals =
@@ -117,12 +117,10 @@ export function machineSummary(f: MachineFacts, cores = false): string {
     return parts.join(", ");
 }
 
-// Such as "On this Mac (arm64, 24 GiB RAM, 160 GiB free disk, no NVIDIA GPU)"
 function onThis(f: MachineFacts): string {
     return `On ${machineName(f)} (${machineSummary(f)})`;
 }
 
-// The values bugnet_assess takes as its local input
 function localInput(f: MachineFacts): string {
     const parts = [`os ${f.os}`, `arch ${f.arch}`];
     if (f.ramGiB !== null) parts.push(`ramGiB ${f.ramGiB}`);
@@ -138,7 +136,7 @@ function list(items: string[]): string {
 const weights =
     "weights take from under 1 GB for speech models to tens of GB for image, video and LLMs";
 
-// The specific local consequence, built from what the hook read about this computer, longest first
+// Longest first, so a hint over the cap can fall back to a shorter consequence
 function consequences(c: Classification, f: MachineFacts): string[] {
     const text = consequence(c, f);
     return Array.isArray(text) ? text : [text];

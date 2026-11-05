@@ -7,11 +7,11 @@
  * session and whether Bugnet was already used. Everything is computed on this machine; nothing is
  * sent anywhere.
  *
- * A hint is one factual paragraph added to the agent's context, naming what the hook read about this
- * computer (OS, CPU, memory, free disk, NVIDIA driver, credential folders) without running any
- * program. At most one hint per category and
- * two per session are given, none once a Bugnet tool has been used, and BUGNET_HINTS=off turns
- * them all off (quiet keeps only failure hints). Any error exits 0 with no output.
+ * A hint is one factual paragraph added to the agent's context, naming what the hook read about
+ * this computer (OS, CPU, memory, free disk, NVIDIA driver, credential folders) without running
+ * any program. At most one hint per category and two per session are given, none once a Bugnet
+ * tool has been used, and BUGNET_HINTS=off turns them all off (quiet keeps only failure hints).
+ * Any error exits 0 with no output.
  */
 import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

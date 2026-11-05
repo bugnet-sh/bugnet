@@ -16,7 +16,7 @@ export interface MachineFacts {
     cores: number | null;
     freeDiskGiB: number | null;
     usedDiskGiB: number | null;
-    // False on macOS, which has no NVIDIA driver, and null where it cannot be told without a program
+    // False on macOS, which has no NVIDIA driver, and null where only a program could tell
     nvidia: boolean | null;
     // Home folders that hold keys or tokens, such as .ssh, that exist on this computer
     secrets: string[];
