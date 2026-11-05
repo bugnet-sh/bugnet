@@ -3,6 +3,7 @@ import { hostHeaderValidation, toNodeHandler } from "@modelcontextprotocol/node"
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
 import { allowedHosts } from "./config.ts";
 import { instructions } from "./instructions.ts";
+import { peerAddress, withClientAddress } from "./request.ts";
 import { registerAssessTool } from "./tools/assess.ts";
 import type { Deps, Register } from "./tools/common.ts";
 import { registerExtendTool } from "./tools/extend.ts";
@@ -47,7 +48,7 @@ export function startHttp(deps: Deps, extra: Register[] = []): Promise<Server> {
             return;
         }
         if (!validHost(req, res)) return;
-        mcp(req, res).catch((e: Error) => {
+        withClientAddress(peerAddress(req.socket), () => mcp(req, res)).catch((e: Error) => {
             deps.log.error("mcp handler crashed", { err: e.message });
             if (!res.headersSent) res.writeHead(500).end();
         });
