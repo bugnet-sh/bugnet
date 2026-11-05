@@ -156,34 +156,50 @@ const brandSet = new Set([...words(brands), ...popularList]);
 
 const leet: Record<string, string> = { "0": "o", "1": "l", "3": "e", "4": "a", "5": "s", "7": "t" };
 
-function distance(a: string, b: string, max: number): number {
-    if (Math.abs(a.length - b.length) > max) return max + 1;
-    let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
-    let prevPrev = prev;
-    for (let i = 1; i <= a.length; i++) {
-        const cur = [i];
-        let rowMin = i;
-        for (let j = 1; j <= b.length; j++) {
-            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-            let v = Math.min(
-                (prev[j] as number) + 1,
-                (cur[j - 1] as number) + 1,
-                (prev[j - 1] as number) + cost,
-            );
-            if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
-                v = Math.min(v, (prevPrev[j - 2] as number) + 1);
-            }
-            cur.push(v);
-            rowMin = Math.min(rowMin, v);
-        }
-        if (rowMin > max) return max + 1;
-        prevPrev = prev;
-        prev = cur;
-    }
-    return prev[b.length] as number;
+const keyRows = ["qwertyuiop", "asdfghjkl", "zxcvbnm"];
+
+// Keys next to each other on a QWERTY keyboard, the usual fat-finger slip
+function adjacent(a: string, b: string): boolean {
+    const at = (c: string) => keyRows.findIndex((r) => r.includes(c));
+    const [ra, rb] = [at(a), at(b)];
+    if (ra === -1 || rb === -1 || Math.abs(ra - rb) > 1) return false;
+    const [ca, cb] = [(keyRows[ra] as string).indexOf(a), (keyRows[rb] as string).indexOf(b)];
+    return ra === rb ? Math.abs(ca - cb) === 1 : ca - cb >= -1 && ca - cb <= 1;
 }
 
-// The popular name a package imitates, through a one letter slip or a digit for a letter
+// The leftmost index a repeated letter could occupy, so cchardet adds its c at the start
+function leftmost(s: string, i: number): number {
+    let at = i;
+    while (at > 0 && s[at - 1] === s[i]) at--;
+    return at;
+}
+
+// One typing slip from a popular name, as typosquats make it, while a letter added or dropped at
+// either end or a distant letter swapped in usually names another real package
+function slip(name: string, real: string): boolean {
+    if (name.length === real.length) {
+        let i = 0;
+        while (i < name.length && name[i] === real[i]) i++;
+        if (i >= name.length - 1) return false;
+        if (name.slice(i + 1) === real.slice(i + 1)) {
+            return i > 0 && adjacent(name[i] as string, real[i] as string);
+        }
+        return (
+            name[i] === real[i + 1] &&
+            name[i + 1] === real[i] &&
+            name.slice(i + 2) === real.slice(i + 2)
+        );
+    }
+    const [long, short] = name.length > real.length ? [name, real] : [real, name];
+    if (long.length !== short.length + 1) return false;
+    let i = 0;
+    while (i < short.length && long[i] === short[i]) i++;
+    if (long.slice(i + 1) !== short.slice(i)) return false;
+    const at = leftmost(long, i);
+    return at > 0 && at < long.length - 1;
+}
+
+// The popular name a package imitates, through a typing slip or a digit for a letter
 export function typosquatOf(name: string): string | null {
     const n = canonical(name);
     if (popular.has(n) || n.startsWith("@") || n.length < 5) return null;
@@ -194,8 +210,8 @@ export function typosquatOf(name: string): string | null {
         }
     }
     for (const p of popularList) {
-        if (p.length < 5 || p.startsWith("@")) continue;
-        if (distance(n, p, 1) <= 1) return p;
+        if (p.length < 5 || p.startsWith("@") || Math.abs(p.length - n.length) > 1) continue;
+        if (slip(n, p)) return p;
     }
     return null;
 }

@@ -137,6 +137,9 @@ const mainstream = [
     "deno.land/install.sh",
     "deno.land/install.ps1",
     "deno.land/x/install/",
+    "deno.land/std/",
+    "deno.land/std@",
+    "jsr.io/@std/",
     "astral.sh/uv",
     "astral.sh/ruff",
     "raw.githubusercontent.com/nvm-sh/nvm/",
@@ -964,8 +967,20 @@ const modelFlag =
 const providerPrefix =
     /^(?:openai|anthropic|gemini|azure|azure_ai|bedrock|vertex_ai|groq|together_ai|openrouter|cohere|replicate|fireworks_ai|perplexity|xai|mistral|deepseek|ollama|ollama_chat|huggingface)\//;
 
+// Values of a provider or base URL flag that send the model call to a hosted API
+const hostedProvider =
+    /^(?:openai|anthropic|gemini|google|azure|bedrock|vertex\w*|groq|together\w*|openrouter|cohere|replicate|fireworks\w*|perplexity|xai|mistral|deepseek|deepinfra|nebius|novita|sambanova|cerebras|hf[-_]inference|huggingface[-_]inference|https?:\/\/(?!localhost|127\.|0\.0\.0\.0)\S+)$/;
+
 // A Hugging Face repo id given to a program that will download its weights
 function hubModelArg(seg: Segment): string | null {
+    const hosted = seg.lower.some((a, j) => {
+        const eq =
+            /^--?(?:provider|backend|api[-_]?base|base[-_]?url|api[-_]?url|endpoint)(?:=(.+))?$/.exec(
+                a,
+            );
+        return eq !== null && hostedProvider.test(eq[1] ?? seg.lower[j + 1] ?? "");
+    });
+    if (hosted) return null;
     for (let j = 1; j < seg.argv.length; j++) {
         const a = seg.lower[j] as string;
         const eq = /^(--?[\w-]+)=(.+)$/.exec(a);
@@ -1349,7 +1364,20 @@ function load(seg: Segment, st: State): void {
     if (
         ["stress", "stress-ng", "memtester", "s-tui", "y-cruncher", "prime95", "mprime"].includes(h)
     ) {
-        add(st, hit("stress_tool", "heavy_compute", 4, evidence(seg, 3), h));
+        // A stress run of a minute or two is a quick check, not a long load
+        const at = l.findIndex((a) => /^(?:-t|--timeout)(?:=|$)/.test(a));
+        const limit = at === -1 ? "" : (l[at]?.split("=")[1] ?? l[at + 1] ?? "");
+        const secs = duration(limit);
+        add(
+            st,
+            hit(
+                "stress_tool",
+                "heavy_compute",
+                secs > 0 && secs <= 120 ? 2 : 4,
+                evidence(seg, 3),
+                h,
+            ),
+        );
         return;
     }
     if (h === "sysbench") {
@@ -1441,9 +1469,28 @@ function longJobs(seg: Segment, segs: Segment[], st: State): void {
 /* Lures, exploits and quarantine removal */
 
 const lureName =
-    /(?<![a-z])(?:airdrop|drainer|aimbot|wallhack|cheat|cheats|injector|crack|cracked|keygen|stealer|grabber|sniper|mev|activator|spoofer|nitro gen|token grab\w*|seed finder|wallet recover\w*|unlocker)(?![a-z])/;
+    /(?<![a-z])(?:drainer|aimbot|wallhack|cracked|keygen|stealer|activator|spoofer|nitro gen|token grab\w*|seed finder|wallet recover\w*)(?![a-z])/;
 const pocName =
-    /(?<![a-z])(?:poc|exploit|exploits|sploit|cve \d{4} \d+|lpe|privesc|rce|0day|pwn|rootkit)(?![a-z])/;
+    /(?<![a-z])(?:exploit|exploits|sploit|cve \d{4} \d+|lpe|privesc|rce|0day|pwn|rootkit)(?![a-z])/;
+
+// Words with an everyday meaning too, as in cheat sheet, frame grabber or a poc of a feature
+const lureWeak = /^(?:airdrop|cheat|cheats|injector|crack|grabber|sniper|mev|unlocker)$/;
+const pocWeak = /^(?:poc|pocs)$/;
+
+// Words a lure name pairs with, the target it attacks or the filler around it
+const lureCompanion =
+    /^(?:roblox|valorant|fortnite|cs2|csgo|apex|warzone|gta|pubg|tarkov|overwatch|r6|dota|genshin|minecraft|rust|cod|league|lol|steam|discord|token|tokens|nitro|wallet|wallets|dll|nft|sol|solana|eth|crypto|coin|pump|memecoin|account|accounts|password|passwords|cookie|cookies|claim|claimer|game|games|esp|aim|bot|tool|tools|loader|launcher|main|run|start|script|app|free|pro|new|final|latest|setup|install|x64|x86|win|win64|cli|gui|auto|v?\d+|py|js|mjs|cjs|ts|sh|bat|cmd|ps1|exe|rb|pl|php|c|cpp)$/;
+
+// A script name made only of lure or exploit words, or of a weak one beside its target
+function namedLike(name: string, strong: RegExp, weak: RegExp, other: RegExp): boolean {
+    if (strong.test(name)) return true;
+    const words = name.split(" ").filter(Boolean);
+    if (!words.some((w) => weak.test(w))) return false;
+    return words.every((w) => weak.test(w) || lureCompanion.test(w) || other.test(w));
+}
+
+const isLureName = (name: string) => namedLike(name, lureName, lureWeak, lureName);
+const isPocName = (name: string) => namedLike(name, pocName, pocWeak, pocName);
 const walletSecret =
     /\.config\/solana\/[\w.-]+\.json|(?:^|\/)(?:keystore|keypairs?)(?:\/|\.json|$)|wallet\.dat|\.(?:ethereum|bitcoin|electrum)\/|^--(?:private[-_]?key|mnemonic|seed(?:[-_]phrase)?|keypair|wallet(?:[-_]?(?:file|path|key))?)(?:=|$)/;
 
@@ -1462,9 +1509,9 @@ function lures(seg: Segment, st: State): void {
 
     if (script) {
         const name = spaced((script.split(/[\\/]/).pop() ?? script).toLowerCase());
-        if (lureName.test(name))
+        if (isLureName(name))
             add(st, hit("lure_script", "untrusted_code", 4, evidence(seg, 2), script));
-        else if (pocName.test(name))
+        else if (isPocName(name))
             add(st, hit("exploit_run", "untrusted_code", 5, evidence(seg, 2), script));
         if (/\.(?:exe|msi|bat|scr|cmd)$/i.test(script) && !/^(?:python|node)/.test(h)) {
             add(st, hit("windows_binary", "untrusted_code", 3, script, script));
@@ -1472,7 +1519,7 @@ function lures(seg: Segment, st: State): void {
     }
     if (["gcc", "g++", "cc", "clang", "clang++", "tcc"].includes(h)) {
         const files = seg.lower.slice(1).filter((a) => !a.startsWith("-"));
-        const named = files.find((a) => pocName.test(spaced(a.split("/").pop() ?? a)));
+        const named = files.find((a) => isPocName(spaced(a.split("/").pop() ?? a)));
         if (named) add(st, hit("exploit_build", "untrusted_code", 4, evidence(seg, 4), named));
     }
     if (h === "wine" && /\.(?:exe|msi)$/i.test(seg.argv[1] ?? "")) {

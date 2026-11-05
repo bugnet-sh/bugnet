@@ -501,3 +501,67 @@ describe("quoting, heredocs and installer URLs", () => {
         expect(offers(command)).toBe(true);
     });
 });
+
+describe("names that only look like lures, squats or remote code", () => {
+    it.each([
+        "pip install simpy",
+        "pip install cattrs",
+        "pip install markdown2",
+        "pip install pycryptodomex",
+        "npm install colord",
+        "npm install prompt",
+    ])("does not call the real package in %s a typosquat", (command) => {
+        expect(ids(command)).not.toContain("typosquat_package");
+    });
+
+    it.each([
+        ["pip install requestss", "requests"],
+        ["pip install reqests", "requests"],
+        ["pip install reqyests", "requests"],
+        ["npm i crossenv", "cross-env"],
+        ["npm i lodahs", "lodash"],
+    ])("still flags the slip in %s", (command, real) => {
+        expect(classifyCommand(command, mac).signals[0]?.evidence).toContain(real);
+    });
+
+    it.each([
+        "python3 tools/print_cheat_sheet.py",
+        "python3 poc_search_ui.py",
+        "python3 -m pytest tests/test_injector_container.py",
+        "python3 webcam_frame_grabber.py",
+        "python3 crack_width_estimator.py --images data",
+    ])("does not read an everyday script name as a lure in %s", (command) => {
+        expect(offers(command)).toBe(false);
+    });
+
+    it.each([
+        "python3 steam_cheat.py",
+        "python3 cookie_grabber.py",
+        "node sol_sniper.js",
+        "python3 poc.py --target 10.0.0.5",
+    ])("still reads a lure or exploit script name in %s", (command) => {
+        expect(offers(command)).toBe(true);
+    });
+
+    it.each([
+        ["python bench.py --provider together --model meta-llama/Llama-3.3-70B-Instruct", mac],
+        ["python run.py --base-url https://api.example.com/v1 --model Qwen/Qwen2.5-72B", mac],
+        ["deno run --allow-read https://deno.land/std@0.224.0/http/file_server.ts", mac],
+        ["go install github.com/spf13/cobra-cli@latest", mac],
+        ["stress-ng --vm 1 --timeout 30s", linux],
+    ])("does not offer for %s", (command, ctx) => {
+        expect(offers(command, ctx)).toBe(false);
+    });
+
+    it.each([
+        "python run.py --backend vllm --model Qwen/Qwen2.5-72B",
+        "stress-ng --cpu 8 --timeout 2h",
+    ])("still offers for %s", (command) => {
+        expect(offers(command, linux)).toBe(true);
+    });
+
+    it("weighs a clone of a widely known project low", () => {
+        const ctx = { ...mac, clonedThisSession: true, clonedRepo: "github.com/tokio-rs/axum" };
+        expect(offers("cargo test --workspace", ctx)).toBe(false);
+    });
+});
