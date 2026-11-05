@@ -132,6 +132,9 @@ function fromGithubUrl(segs: string[]): Source {
     if (kind === "releases" && rest[0] === "download" && rest.length >= 3) {
         return github(owner, repo, rest[1] ?? null, null, rest.slice(2).join("/"));
     }
+    if (kind === "releases" && rest[0] === "latest" && rest[1] === "download" && rest[2]) {
+        return github(owner, repo, null, null, rest.slice(2).join("/"));
+    }
     return github(owner, repo);
 }
 

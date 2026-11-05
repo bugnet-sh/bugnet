@@ -41,6 +41,12 @@ describe("parseSource", () => {
         expect(s.kind === "github" && s.asset).toBe("tool-setup.exe");
     });
 
+    it("keeps the asset of a latest release download", () => {
+        const s = parseSource("https://github.com/acme/tool/releases/latest/download/stealer.exe");
+        expect(s).toMatchObject({ kind: "github", owner: "acme", repo: "tool", ref: null });
+        expect(s.kind === "github" && s.asset).toBe("stealer.exe");
+    });
+
     it("normalises the cache key so URL forms share one entry", () => {
         const keys = [
             "https://github.com/OpenAI/Whisper",

@@ -145,7 +145,7 @@ function shadyHost(host: string): boolean {
 // Each pipe tail is found first and the download is looked for behind it on the same line
 const pipeTails: { tail: RegExp; head: RegExp }[] = [
     {
-        tail: /\|[ \t]*(?:sudo[ \t]+(?:-\S{1,20}[ \t]+){0,4})?(?:(?:ba|z|k|da|fi)?sh\b|(?:python(?:\d(?:\.\d+)?)?|perl|ruby|node)\b(?![ \t]+-m[ \t]+json))/gi,
+        tail: /\|[ \t]*(?:sudo[ \t]+(?:-\S{1,20}[ \t]+){0,4})?(?:(?:\/[\w.-]{1,30}){0,4}\/)?(?:env[ \t]+(?:-\S{1,20}[ \t]+){0,3}(?:(?:\/[\w.-]{1,30}){0,4}\/)?)?(?:(?:ba|z|k|da|fi)?sh\b|(?:python(?:\d(?:\.\d+)?)?|perl|ruby|node)\b(?![ \t]+-m[ \t]+json))/gi,
         head: /\b(?:curl|wget)\b[^\n|;&]*$/i,
     },
     {
@@ -157,6 +157,8 @@ const pipeInline: RegExp[] = [
     /\b(?:iex|Invoke-Expression)\b[\s(]{0,10}(?:New-Object\s+(?:System\.)?Net\.WebClient\)?\.DownloadString|(?:iwr|irm|Invoke-WebRequest|Invoke-RestMethod)\b)/gi,
     /\b(?:ba|z)?sh\s+<\(\s*(?:curl|wget)\b/gi,
     /\b(?:ba|z)?sh\s+-c\s+["']\$\(\s*(?:curl|wget)\b/gi,
+    /(?:\bsource|(?:^|[\s;&|(])\.)[ \t]+<\([ \t]*(?:curl|wget)\b/gim,
+    /\beval[ \t]+["']?(?:\$\(|`)[ \t]*(?:curl|wget)\b/gi,
 ];
 const lookBehind = 400;
 
@@ -205,7 +207,7 @@ export function pipeToShell(text: string, ctx: TextContext): Finding[] {
 }
 
 const decodeExec =
-    /\b(?:eval|exec|Function|Invoke-Expression|iex)\s*\(\s*(?:(?:[\w$]{1,40}\.){0,4}(?:atob|b64decode|b32decode|b85decode|a85decode|unhexlify|fromhex|decompress|loads|FromBase64String)\s*\(|Buffer\.from\s*\(|__import__\s*\(\s*['"](?:base64|zlib|marshal|codecs|binascii)['"])/i;
+    /\b(?:eval|exec|Function|Invoke-Expression|iex|os\.system|os\.popen|subprocess\.\w{1,20}|exec(?:Sync|File|FileSync)|spawn(?:Sync)?)\s*\(\s*(?:compile\s*\(\s*)?(?:(?:[\w$]{1,40}\.){0,4}(?:atob|b64decode|b32decode|b85decode|a85decode|unhexlify|fromhex|decompress|loads|FromBase64String)\s*\(|Buffer\.from\s*\(|__import__\s*\(\s*['"](?:base64|zlib|marshal|codecs|binascii)['"])/i;
 const encodedPowershell =
     /\b(?:powershell|pwsh)(?:\.exe)?\b[^\n]{0,80}?\s-e(?:nc(?:odedcommand)?)?\s+[A-Za-z0-9+/=]{40,}/i;
 // Maximal runs keep the search linear, hex digits fall inside the base64 class
@@ -243,6 +245,122 @@ export function obfuscatedExec(text: string, ctx: TextContext): Finding[] {
                     evidence: excerpt(text, at, prefix),
                 },
             ];
+        }
+    }
+    return [];
+}
+
+const remoteRead =
+    /\b(?:exec|eval|Function)\s*\(\s*(?:await\s+)?\(?\s*(?:await\s+)?(?:(?:requests|httpx|urllib3?|urllib\.request|aiohttp|session|https?|axios)\.(?:get|post|request|urlopen)|urlopen|fetch)\s*\(|\.then\(\s*(?:eval|Function|exec)\s*\)/i;
+
+export function remoteExec(text: string, ctx: TextContext): Finding[] {
+    const m = remoteRead.exec(text);
+    if (!m) return [];
+    return [
+        {
+            id: "remote_exec",
+            severity: ctx.kind === "docs" ? shift("medium", ctx.trust) : "high",
+            title: `${where(ctx)} downloads code and runs it with exec or eval`,
+            evidence: excerpt(text, m.index, ctx.kind === "command" ? undefined : ctx.path),
+        },
+    ];
+}
+
+const reverseShells = [
+    /(?:>&?|<>?)[ \t]*\/dev\/(?:tcp|udp)\/[\w.-]{1,253}\/\d{1,5}/,
+    /\b(?:nc|ncat|netcat)(?:\.exe)?\b[^\n|;&]{0,100}?[ \t]-[ce][ \t]+["']?(?:\/[\w.-]{1,30}){0,4}\/?(?:(?:ba|z|k|da)?sh|cmd(?:\.exe)?|powershell(?:\.exe)?)\b/i,
+    /\bsocat\b[^\n]{0,100}?\bexec:/i,
+];
+
+export function reverseShell(text: string, ctx: TextContext): Finding[] {
+    for (const re of reverseShells) {
+        const m = re.exec(text);
+        if (!m) continue;
+        return [
+            {
+                id: "reverse_shell",
+                severity: ctx.kind === "docs" ? shift("medium", ctx.trust) : "high",
+                title: `${where(ctx)} opens a shell that a remote host controls`,
+                evidence: excerpt(text, m.index, ctx.kind === "command" ? undefined : ctx.path),
+            },
+        ];
+    }
+    return [];
+}
+
+// Built-in Windows programs that fetch or run remote code, a common way past antivirus
+const windowsLoaders: { re: RegExp; base: Severity }[] = [
+    {
+        re: /\b(?:mshta|wscript|cscript)(?:\.exe)?[ \t]+["']?(?:https?:|vbscript:|javascript:)/i,
+        base: "high",
+    },
+    { re: /\bregsvr32(?:\.exe)?\b[^\n]{0,80}?\/i:["']?https?:/i, base: "high" },
+    { re: /\brundll32(?:\.exe)?\b[^\n]{0,80}?\bjavascript:/i, base: "high" },
+    { re: /\bcertutil(?:\.exe)?\b[^\n]{0,80}?[-/]urlcache\b/i, base: "medium" },
+    { re: /\bbitsadmin(?:\.exe)?\b[^\n]{0,40}?\/transfer\b/i, base: "medium" },
+];
+
+export function windowsLoader(text: string, ctx: TextContext): Finding[] {
+    for (const { re, base } of windowsLoaders) {
+        const m = re.exec(text);
+        if (!m) continue;
+        return [
+            {
+                id: "windows_loader",
+                severity:
+                    base === "high" && ctx.kind !== "docs" ? "high" : shift("medium", ctx.trust),
+                title: `${where(ctx)} uses a built-in Windows program to fetch or run remote code`,
+                evidence: excerpt(text, m.index, ctx.kind === "command" ? undefined : ctx.path),
+            },
+        ];
+    }
+    return [];
+}
+
+const downloadTo =
+    /\b(?:curl|wget)\b[^\n;&|]{0,300}?[ \t](?:-o|-O|--output|--output-document)(?:[ \t]+|=)["']?([^\s"';&|]{1,200})/gi;
+const runner =
+    /^[ \t]*(?:&&|;|\|\|)[ \t]*(?:sudo[ \t]+)?(?:(?:ba|z|k|da)?sh|python3?|perl|ruby|node|source|\.|chmod[ \t]+\S{1,10}[ \t]+\S{1,200}[ \t]*(?:&&|;)[ \t]*)?[ \t]*(\S{1,200})/;
+
+function baseName(path: string): string {
+    return (
+        path
+            .replace(/^["']|["']$/g, "")
+            .split("/")
+            .pop() ?? path
+    );
+}
+
+// A download saved to a file and run in the same command, such as curl -o x.sh && bash x.sh
+export function downloadRun(text: string, ctx: TextContext): Finding[] {
+    let seen = 0;
+    for (const m of text.matchAll(downloadTo)) {
+        if (++seen > 200) break;
+        const file = baseName(m[1] as string);
+        if (!file || file === "-" || file === "/dev/null") continue;
+        const end = m.index + m[0].length;
+        const rest = (text.slice(end, end + 400).split("\n")[0] ?? "").replace(/^["']/, "");
+        for (let at = 0; at < rest.length; at++) {
+            if (rest[at] !== "&" && rest[at] !== ";" && rest[at] !== "|") continue;
+            const run = runner.exec(rest.slice(at));
+            if (run && baseName(run[1] as string) === file) {
+                const line = text.slice(m.index, end + 300).split("\n")[0] ?? "";
+                return [
+                    {
+                        id: "download_run",
+                        severity: urlsIn(line).some((u) => shadyHost(u.host))
+                            ? "high"
+                            : shift("medium", ctx.trust),
+                        title: `${where(ctx)} downloads a script and runs it in the same command`,
+                        evidence: excerpt(
+                            text,
+                            m.index,
+                            ctx.kind === "command" ? undefined : ctx.path,
+                        ),
+                    },
+                ];
+            }
+            break;
         }
     }
     return [];
@@ -391,7 +509,11 @@ export function walletTheft(text: string, ctx: TextContext): Finding[] {
 export function scanText(text: string, ctx: TextContext): Finding[] {
     return [
         ...pipeToShell(text, ctx),
+        ...downloadRun(text, ctx),
         ...obfuscatedExec(text, ctx),
+        ...remoteExec(text, ctx),
+        ...reverseShell(text, ctx),
+        ...windowsLoader(text, ctx),
         ...hiddenWhitespace(text, ctx),
         ...webhooks(text, ctx),
         ...suspiciousUrls(text, ctx),
@@ -962,7 +1084,11 @@ export function scanCommand(cmd: string): Finding[] {
     const ctx: TextContext = { path: "command", kind: "command", trust: "normal" };
     const out: Finding[] = [
         ...pipeToShell(cmd, ctx),
+        ...downloadRun(cmd, ctx),
         ...obfuscatedExec(cmd, ctx),
+        ...remoteExec(cmd, ctx),
+        ...reverseShell(cmd, ctx),
+        ...windowsLoader(cmd, ctx),
         ...webhooks(cmd, ctx),
         ...suspiciousUrls(cmd, ctx),
         ...walletTheft(cmd, ctx),
