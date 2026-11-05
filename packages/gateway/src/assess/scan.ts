@@ -680,7 +680,7 @@ export function fileKind(path: string): TextKind {
     return "code";
 }
 
-// File names come from the repo and end up in titles, so they get the same cleaning as evidence
+// Names from repos and model cards end up in titles and facts, so they get the same cleaning as evidence
 export function safePath(path: string): string {
     const clean = evidence(path);
     return clean.length <= 60 ? clean : `${clean.slice(0, 57)}...`;
@@ -838,9 +838,9 @@ export function scanRepo(snap: RepoSnapshot, now: number): RepoScan {
         sizeMiB: Math.round((info.sizeKiB / 1024) * 10) / 10,
         archived: info.archived,
         fork: info.fork,
-        license: info.license ?? "none",
-        language: info.language ?? "unknown",
-        defaultBranch: info.defaultBranch,
+        license: info.license ? safePath(info.license) : "none",
+        language: info.language ? safePath(info.language) : "unknown",
+        defaultBranch: safePath(info.defaultBranch),
         files: snap.tree.filter((e) => e.type === "blob").length,
         filesChecked: evidence(snap.files.map((f) => f.path).join(", ")),
     };

@@ -1,6 +1,6 @@
 import type { Finding } from "./assessor.ts";
 import { bodyJson, type Fetcher } from "./fetch.ts";
-import { evidence } from "./scan.ts";
+import { evidence, safePath } from "./scan.ts";
 
 export interface HfFile {
     name: string;
@@ -200,8 +200,8 @@ export function modelSize(m: HfModel): {
 export function analyseModel(m: HfModel, now: number): ModelReport {
     const { parameters, weightsBytes, totalBytes } = modelSize(m);
     const facts: ModelReport["facts"] = { model: m.id, files: m.files.length };
-    if (m.pipelineTag) facts.pipelineTag = m.pipelineTag;
-    if (m.library) facts.library = m.library;
+    if (m.pipelineTag) facts.pipelineTag = safePath(m.pipelineTag);
+    if (m.library) facts.library = safePath(m.library);
     if (parameters) {
         facts.parameters = humanCount(parameters);
         facts.parameterCount = parameters;
@@ -213,7 +213,7 @@ export function analyseModel(m: HfModel, now: number): ModelReport {
     if (m.likes !== null) facts.likes = m.likes;
     if (m.createdAt) facts.createdAt = m.createdAt.slice(0, 10);
     const license = m.tags.find((t) => t.startsWith("license:"));
-    if (license) facts.license = license.slice("license:".length);
+    if (license) facts.license = safePath(license.slice("license:".length));
 
     const findings: Finding[] = [];
     const pickles = m.files.filter((f) => pickle.test(f.name));
