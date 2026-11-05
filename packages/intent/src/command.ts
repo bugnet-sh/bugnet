@@ -125,7 +125,7 @@ const readOnly = new Set([
     "activate",
 ]);
 
-// Installers people run every day, from their vendors' own hosts
+// Installers people run every day, as an exact host and a path prefix on it
 const mainstream = [
     "brew.sh",
     "raw.githubusercontent.com/homebrew/",
@@ -134,8 +134,9 @@ const mainstream = [
     "win.rustup.rs",
     "bun.sh/install",
     "get.docker.com",
-    "deno.land/install",
-    "deno.land/x/install",
+    "deno.land/install.sh",
+    "deno.land/install.ps1",
+    "deno.land/x/install/",
     "astral.sh/uv",
     "astral.sh/ruff",
     "raw.githubusercontent.com/nvm-sh/nvm/",
@@ -189,7 +190,6 @@ const mainstreamHosts = [
     "astral.sh",
     "rustup.rs",
     "bun.sh",
-    "deno.land",
     "brew.sh",
     "volta.sh",
     "pnpm.io",
@@ -228,12 +228,18 @@ const mainstreamHosts = [
     "aka.ms",
 ];
 
+// Hosts compare exactly, so brew.sh-install.com or get.docker.com.evil.ru are not the vendor
 function isMainstream(url: string): boolean {
     const hp = hostPath(url);
-    const host = hp.split(/[/?#:]/)[0] ?? "";
+    const cut = hp.search(/[/?#]/);
+    const host = (cut === -1 ? hp : hp.slice(0, cut)).replace(/:\d+$/, "");
+    const path = cut === -1 ? "/" : hp.slice(cut);
     return (
-        mainstream.some((m) => hp.startsWith(m)) ||
-        mainstreamHosts.some((m) => host === m || host.endsWith(`.${m}`))
+        mainstream.some((m) => {
+            const slash = m.indexOf("/");
+            if (slash === -1) return host === m;
+            return host === m.slice(0, slash) && path.startsWith(m.slice(slash));
+        }) || mainstreamHosts.some((m) => host === m || host.endsWith(`.${m}`))
     );
 }
 
@@ -304,6 +310,106 @@ function remoteExec(segs: Segment[], i: number, st: State): void {
     }
     const subject = url ? hostPath(url).split("?")[0] : "a script from the internet";
     add(st, hit("pipe_to_shell", "untrusted_code", 6, how, subject));
+}
+
+// A base64 or hex payload decoded straight into an interpreter, which hides what runs
+function decodedExec(segs: Segment[], i: number, st: State): void {
+    const seg = segs[i] as Segment;
+    const l = seg.lower;
+    const decodes =
+        (seg.head === "base64" && l.some((a) => /^(?:-d|--decode|-di)$/.test(a))) ||
+        (seg.head === "openssl" && l.includes("base64") && l.includes("-d")) ||
+        (seg.head === "xxd" && l.some((a) => /^-r/.test(a)));
+    if (!decodes) return;
+    let sink: string | null = null;
+    const last = Math.min(segs.length, i + 4);
+    for (let j = i + 1; seg.pipesTo && j < last && segs[j]?.pipedFrom; j++) {
+        if (interpreters.has((segs[j] as Segment).head)) {
+            sink = (segs[j] as Segment).head;
+            break;
+        }
+        if (!(segs[j] as Segment).pipesTo) break;
+    }
+    if (!sink && seg.via === "subst" && seg.parent !== null && interpreters.has(seg.parent))
+        sink = seg.parent;
+    if (sink) {
+        add(
+            st,
+            hit(
+                "decoded_exec",
+                "untrusted_code",
+                6,
+                `${seg.head} -d | ${sink}`,
+                "an encoded script",
+            ),
+        );
+    }
+}
+
+const scriptHosts = /^(?:python[\d.]*|py|node|deno|bun|perl|ruby|php)$/;
+
+// Inline Python, Node, Perl or Ruby that downloads code and runs it, or runs a decoded payload
+function inlineCode(seg: Segment, st: State): void {
+    if (!scriptHosts.test(seg.head)) return;
+    const flag = seg.lower.findIndex((a, j) => j > 0 && /^-(?:c|e|-eval|r|p)$/.test(a));
+    const code = (flag !== -1 ? seg.argv[flag + 1] : seg.stdin)?.toLowerCase();
+    if (!code) return;
+    const runs =
+        /\b(?:exec|eval|system|popen|subprocess|spawn|execsync|child_process|runpy|new function)\b/.test(
+            code,
+        );
+    if (!runs) return;
+    const url = /https?:\/\/[^\s'"()]+/.exec(code)?.[0];
+    const fetches =
+        /\b(?:urlopen|urlretrieve|requests|httpx|urllib|fetch|https?\.get|axios|curl|wget|net::http|open-uri|lwp|file_get_contents)\b/.test(
+            code,
+        );
+    if (url && fetches && !isMainstream(url)) {
+        add(
+            st,
+            hit(
+                "inline_remote_exec",
+                "untrusted_code",
+                6,
+                `${seg.head} inline code`,
+                hostPath(url),
+            ),
+        );
+    } else if (/b64decode|base64|atob|frombase64string|fromcharcode|codecs\.decode/.test(code)) {
+        add(
+            st,
+            hit(
+                "decoded_exec",
+                "untrusted_code",
+                5,
+                `${seg.head} decodes and runs`,
+                "an encoded script",
+            ),
+        );
+    }
+}
+
+// PowerShell told to skip its script signing policy, which matters most for installers
+function policyBypass(seg: Segment, st: State): void {
+    const l = seg.lower;
+    if (seg.head === "set-executionpolicy") {
+        if (l.some((a) => a === "bypass" || a === "unrestricted"))
+            add(st, hit("policy_bypass", "untrusted_code", 2, "Set-ExecutionPolicy Bypass"));
+        return;
+    }
+    if (seg.head !== "powershell" && seg.head !== "pwsh") return;
+    const at = l.findIndex((a) => /^-(?:executionpolicy|exec\w*|ep|ex)$/.test(a));
+    if (at === -1 || !/^(?:bypass|unrestricted)$/.test(l[at + 1] ?? "")) return;
+    const fileAt = l.findIndex((a) => a === "-file" || a === "-f");
+    const script = fileAt !== -1 ? seg.argv[fileAt + 1] : seg.argv.find((a) => /\.ps1$/i.test(a));
+    const risky =
+        script !== undefined &&
+        (/(?:^|[\\/])(?:install|setup|bootstrap|get)[\w-]*\.ps1$/i.test(script) ||
+            /downloads|temp|appdata/i.test(script) ||
+            st.cloned ||
+            st.ctx.clonedThisSession === true);
+    const w = script === undefined ? 2 : risky ? 4 : 3;
+    add(st, hit("policy_bypass", "untrusted_code", w, "-ExecutionPolicy Bypass", script));
 }
 
 // curl -o x.sh URL followed by bash x.sh or ./x.sh
@@ -1341,7 +1447,7 @@ function quarantine(seg: Segment, st: State): void {
 // PowerShell that downloads a script and runs it with iex, in either order on one line
 function downloadCradle(raw: string): string | null {
     for (const line of raw.split("\n")) {
-        if (!/\b(?:iex|invoke-expression)\b/i.test(line)) continue;
+        if (!/\b(?:iex|invoke-expression)\b|\[scriptblock\]::create/i.test(line)) continue;
         if (!/downloadstring|\b(?:iwr|irm)\b|invoke-webrequest|invoke-restmethod/i.test(line))
             continue;
         const url = /https?:\/\/[^\s'")]+/i.exec(line);
@@ -1444,6 +1550,9 @@ export function classifyCommand(command: string, ctx: SessionContext = {}): Clas
         disguisedFile(seg, st);
         if (readOnly.has(seg.head)) continue;
         remoteExec(segs, i, st);
+        decodedExec(segs, i, st);
+        inlineCode(seg, st);
+        policyBypass(seg, st);
         downloadThenRun(seg, st);
         gitClone(seg, st);
         clonedCode(seg, st);

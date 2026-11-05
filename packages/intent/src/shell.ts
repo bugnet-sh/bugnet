@@ -2,8 +2,9 @@
  * A light POSIX-ish shell parser, enough to read the commands coding agents run.
  *
  * It splits on the list and pipe operators and on newlines outside quotes, keeps $( ) and <( ) as
- * words and parses their contents too, unwraps sh -c strings, records > targets and strips
- * leading sudo, env assignments and wrappers such as time or nohup. It never evaluates anything.
+ * words and parses their contents too, unwraps sh -c strings and heredocs or echoed text fed to a
+ * shell, records > targets and stdin text, and strips leading sudo, env assignments and wrappers
+ * such as time or nohup. It never evaluates anything.
  */
 
 export interface Segment {
@@ -20,6 +21,8 @@ export interface Segment {
     // Head of the command this segment was nested in, and whether it came from $( ) or sh -c
     parent: string | null;
     via: "subst" | "string" | null;
+    // Heredoc or here-string text given to the command on stdin
+    stdin: string | null;
 }
 
 interface Raw {
@@ -27,6 +30,7 @@ interface Raw {
     redirects: string[];
     pipedFrom: boolean;
     pipesTo: boolean;
+    stdin: string | null;
 }
 
 const maxDepth = 3;
@@ -53,16 +57,16 @@ const plainPrefixes = new Set([
 ]);
 const sudoValueFlags = new Set(["-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-T", "-U"]);
 
-// Index of the newline that ends a heredoc's closing line, scanning each line once
-function heredocEnd(cmd: string, from: number, delim: string): number {
+// Where a heredoc's closing line starts and the newline after it, scanning each line once
+function heredocEnd(cmd: string, from: number, delim: string): { close: number; end: number } {
     let at = from;
     while (at < cmd.length) {
         const nl = cmd.indexOf("\n", at);
         const end = nl === -1 ? cmd.length : nl;
-        if (cmd.slice(at, end).trim() === delim) return end;
+        if (cmd.slice(at, end).trim() === delim) return { close: at, end };
         at = end + 1;
     }
-    return cmd.length;
+    return { close: cmd.length, end: cmd.length };
 }
 
 function split(cmd: string): Raw[] {
@@ -74,13 +78,16 @@ function split(cmd: string): Raw[] {
     let quote: string | null = null;
     let depth = 0;
     let subQuote: string | null = null;
-    let target: "out" | "in" | null = null;
+    let target: "out" | "in" | "here" | null = null;
     let pipedFrom = false;
     let heredoc: string | null = null;
+    let heredocOwner = -1;
+    let stdin: string | null = null;
 
     const endWord = () => {
         if (inWord) {
             if (target === "out") redirects.push(word);
+            else if (target === "here") stdin = word;
             else if (target === null) words.push(word);
             target = null;
         }
@@ -90,13 +97,14 @@ function split(cmd: string): Raw[] {
     const endSeg = (pipe: boolean) => {
         endWord();
         if (words.length > 0 || redirects.length > 0) {
-            out.push({ words, redirects, pipedFrom, pipesTo: pipe });
+            out.push({ words, redirects, pipedFrom, pipesTo: pipe, stdin });
             pipedFrom = pipe;
         } else if (!pipe) {
             pipedFrom = false;
         }
         words = [];
         redirects = [];
+        stdin = null;
     };
 
     for (let i = 0; i < cmd.length; i++) {
@@ -126,7 +134,11 @@ function split(cmd: string): Raw[] {
         }
         if (c === "\\") {
             if (next === "\n") i++;
-            else {
+            else if (/[\w.-]/.test(next)) {
+                // Windows paths such as .\install.ps1 keep their backslash
+                word += c;
+                inWord = true;
+            } else {
                 word += next;
                 inWord = true;
                 i++;
@@ -160,7 +172,10 @@ function split(cmd: string): Raw[] {
         if (c === "\n") {
             endSeg(false);
             if (heredoc !== null) {
-                i = heredocEnd(cmd, i + 1, heredoc) - 1;
+                const { close, end } = heredocEnd(cmd, i + 1, heredoc);
+                const owner = out[heredocOwner];
+                if (owner) owner.stdin = cmd.slice(i + 1, close);
+                i = end - 1;
                 heredoc = null;
             }
             continue;
@@ -205,13 +220,18 @@ function split(cmd: string): Raw[] {
                 inWord = false;
             }
             endWord();
+            if (c === "<" && next === "<" && cmd[i + 2] === "<") {
+                target = "here";
+                i += 2;
+                continue;
+            }
             if (c === "<" && next === "<") {
                 let j = i + 2;
-                if (cmd[j] === "<") j++;
                 if (cmd[j] === "-") j++;
-                const m = /^\s*(['"]?)([\w.-]+)\1/.exec(cmd.slice(j));
+                const m = /^[ \t]*(['"]?)([\w.-]{1,64})\1/.exec(cmd.slice(j, j + 80));
                 if (m) {
                     heredoc = m[2] as string;
+                    heredocOwner = out.length;
                     i = j + m[0].length - 1;
                 } else i = j - 1;
                 continue;
@@ -323,10 +343,12 @@ export function parse(
     via: Segment["via"] = null,
 ): Segment[] {
     const segs: Segment[] = [];
-    for (const raw of split(cmd)) {
+    const raws = split(cmd).map((raw) => {
         const { rest, sudo } = strip(raw.words);
         const argv = rest.length > 0 ? rest : raw.words;
-        const head = basename(argv[0] ?? "");
+        return { raw, argv, sudo, head: basename(argv[0] ?? "") };
+    });
+    raws.forEach(({ raw, argv, sudo, head }, i) => {
         segs.push({
             argv,
             lower: argv.map((a) => a.toLowerCase()),
@@ -337,10 +359,19 @@ export function parse(
             pipesTo: raw.pipesTo,
             parent,
             via,
+            stdin: raw.stdin,
         });
-        if (depth < maxDepth) {
-            for (const n of nested(argv, head)) segs.push(...parse(n.text, depth + 1, head, n.via));
+        if (depth >= maxDepth) return;
+        const inner = nested(argv, head);
+        if (raw.stdin !== null && shellNames.has(head))
+            inner.push({ text: raw.stdin, via: "string" });
+        // Text echoed or catted into a shell is a script that shell runs
+        const sink = raw.pipesTo ? raws[i + 1]?.head : undefined;
+        if (sink && shellNames.has(sink) && /^(?:echo|printf|cat)$/.test(head)) {
+            const text = head === "cat" ? raw.stdin : argv.slice(1).join(" ");
+            if (text) segs.push(...parse(text, depth + 1, sink, "string"));
         }
-    }
+        for (const n of inner) segs.push(...parse(n.text, depth + 1, head, n.via));
+    });
     return segs;
 }
