@@ -321,6 +321,16 @@ describe("manifest and workflow rules", () => {
             '  - run: curl -H "token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/a/b/releases',
         );
         expect(workflowSecrets(github, "normal")).toEqual([]);
+        const signing = file(
+            ".github/workflows/release.yml",
+            [
+                "  - run: |",
+                "      curl -fsSL https://go.microsoft.com/fwlink/?linkid=2196127 -o sign.zip",
+                "      sign --key ${{ secrets.AZURE_SIGNING_KEY }}",
+                "      curl -u x:${{ secrets.PYPI }} https://upload.pypi.org/legacy/",
+            ].join("\n"),
+        );
+        expect(workflowSecrets(signing, "normal")).toEqual([]);
     });
 });
 

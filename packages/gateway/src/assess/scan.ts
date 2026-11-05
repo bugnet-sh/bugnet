@@ -637,6 +637,9 @@ export function pyprojectHooks(file: RepoFile, trust: Trust): Finding[] {
 
 const githubHost =
     /(?:^|\.)(?:github\.com|githubusercontent\.com|ghcr\.io|github\.io|githubassets\.com)$/i;
+// Cloud, signing and registry services whose own tools take a secret as part of normal CI work
+const vendorHost =
+    /(?:^|\.)(?:microsoft\.com|azure\.com|azure\.net|windows\.net|amazonaws\.com|googleapis\.com|cloud\.google\.com|apple\.com|docker\.com|docker\.io|npmjs\.org|npmjs\.com|pypi\.org|crates\.io|rubygems\.org|nuget\.org|anaconda\.org|codecov\.io|coveralls\.io|sonarcloud\.io|cloudflare\.com|digicert\.com|sigstore\.dev|huggingface\.co)$/i;
 const sender =
     /\b(?:curl|wget|nc|ncat|Invoke-WebRequest|Invoke-RestMethod|requests\.post|fetch)\b/i;
 
@@ -658,7 +661,9 @@ export function workflowSecrets(file: RepoFile, trust: Trust): Finding[] {
         if (!secret) continue;
         const win = lines.slice(Math.max(0, i - 6), i + 7).join("\n");
         if (!sender.test(win)) continue;
-        const outside = urlsIn(win).filter((u) => !githubHost.test(u.host));
+        const outside = urlsIn(win).filter(
+            (u) => !githubHost.test(u.host) && !vendorHost.test(u.host),
+        );
         const first = outside[0];
         if (!first) continue;
         const bad = outside.some(
