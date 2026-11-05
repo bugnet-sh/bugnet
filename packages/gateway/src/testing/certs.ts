@@ -31,3 +31,41 @@ export async function selfSigned(
     const pkcs8 = await crypto.subtle.exportKey("pkcs8", keys.privateKey);
     return { cert: cert.toString("pem"), key: x509.PemConverter.encode(pkcs8, "PRIVATE KEY") };
 }
+
+export interface TestCa {
+    cert: string;
+    // Signs a certificate for the request's key and names, as a CA finalising an order does
+    issue(csrPem: string | Buffer, validity: { notBefore: Date; notAfter: Date }): Promise<string>;
+}
+
+export async function testCa(): Promise<TestCa> {
+    const keys = await crypto.subtle.generateKey(alg, true, ["sign", "verify"]);
+    const ca = await x509.X509CertificateGenerator.createSelfSigned({
+        name: "CN=Bugnet test CA",
+        notBefore: new Date(Date.now() - 86_400_000),
+        notAfter: new Date(Date.now() + 3650 * 86_400_000),
+        signingAlgorithm: alg,
+        keys,
+        extensions: [new x509.BasicConstraintsExtension(true, undefined, true)],
+    });
+    return {
+        cert: ca.toString("pem"),
+        async issue(csrPem, validity) {
+            const csr = new x509.Pkcs10CertificateRequest(csrPem.toString());
+            const san = csr.getExtension("2.5.29.17");
+            const leaf = await x509.X509CertificateGenerator.create({
+                subject: csr.subject,
+                issuer: ca.subject,
+                publicKey: csr.publicKey,
+                signingKey: keys.privateKey,
+                signingAlgorithm: alg,
+                ...validity,
+                extensions: [
+                    new x509.BasicConstraintsExtension(false, undefined, true),
+                    ...(san ? [san] : []),
+                ],
+            });
+            return `${leaf.toString("pem")}\n${ca.toString("pem")}\n`;
+        },
+    };
+}
