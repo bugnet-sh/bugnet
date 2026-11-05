@@ -93,6 +93,7 @@ interface PlacementView {
     timeLeft: string;
     failureReason?: string;
     refundable?: boolean;
+    sshAlias?: string;
     [key: string]: unknown;
 }
 
@@ -105,6 +106,8 @@ function placementView(p: Placement | undefined, now: number): PlacementView {
         timeLeft: p && ended(p.state) ? "none, the sandbox has ended" : timeLeft(deadline, now),
         ...(p?.failureReason ? { failureReason: p.failureReason } : {}),
         ...(p?.state === PlacementState.FAILED ? { refundable: p.refundable } : {}),
+        // Names the key file for bugnet_ssh before the key exists
+        ...(p?.sshAlias && !ended(p.state) ? { sshAlias: p.sshAlias } : {}),
     };
 }
 
