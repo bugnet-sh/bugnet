@@ -23,8 +23,8 @@ import {
     type Register,
 } from "./common.ts";
 
-const workloads = ["tests", "build", "script", "serve", "inference", "other"] as const;
-const needs = ["ssh", "preview", "secrets", "gpu"] as const;
+export const workloads = ["tests", "build", "script", "serve", "inference", "other"] as const;
+export const needs = ["ssh", "preview", "secrets", "gpu"] as const;
 
 export const stateName: Record<PlacementState, string> = {
     [PlacementState.UNSPECIFIED]: "unknown",
@@ -135,6 +135,89 @@ const startInput = z.object({
 
 const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
 
+export interface QuoteRequest {
+    source?: string | undefined;
+    workload: (typeof workloads)[number];
+    expectedMinutes?: number | undefined;
+    needs?: (typeof needs)[number][] | undefined;
+}
+
+export interface BuiltQuote {
+    text: string;
+    structured: {
+        quoteId: string;
+        expiresAt: string;
+        packages: (QuotedPackage & { priceUsd: string })[];
+        recommended: { packageId: string; priceUsd: string; why: string } | null;
+        warnings: string[];
+    };
+}
+
+// Prices the packages that can start now and signs them into a quoteId bugnet_start accepts
+export async function buildQuote(deps: Deps, args: QuoteRequest): Promise<BuiltQuote> {
+    const wantGpu = args.needs?.includes("gpu") ?? false;
+    const requirements = {
+        ssh: args.needs?.includes("ssh") ?? false,
+        preview: args.needs?.includes("preview") ?? false,
+        gpu: wantGpu,
+    };
+    const est = await deps.router.estimate({ requirements });
+    const all = est.options.map(quoted);
+    const available = est.options.filter((o) => o.available).map(quoted);
+    const warnings: string[] = [];
+    if (wantGpu && !available.some((p) => p.gpuCount > 0)) {
+        warnings.push("No GPU package is available right now, GPU work cannot start");
+    }
+    if (args.needs?.includes("secrets")) {
+        warnings.push("Secrets go in with bugnet_secret_link or the bridge, never in arguments");
+    }
+    const rec = recommend(
+        wantGpu ? available.filter((p) => p.gpuCount > 0) : available,
+        args.workload,
+        args.expectedMinutes,
+    );
+    const expiresAt = deps.now() + deps.config.limits.quote_ttl;
+    const quoteId = signQuote(deps.config.secrets.quoteKey, {
+        packages: available,
+        requirements,
+        source: args.source ?? "",
+        expiresAt,
+    });
+    const lines = [...available]
+        .sort((a, b) => a.priceMicros - b.priceMicros)
+        .map(
+            (p) =>
+                `- ${p.id}: ${describeSize(p)}, ${p.minutes} min, ${usd(p.priceMicros)} USDC` +
+                (rec?.pkg.id === p.id ? " (recommended)" : ""),
+        );
+    const unavailable = all.length - available.length;
+    const text = [
+        available.length > 0
+            ? "Bugnet packages, paid per run in USDC on Solana:"
+            : "No package can start right now. Try again in a minute.",
+        ...lines,
+        rec ? `Recommended: ${rec.pkg.id} because ${rec.why}.` : "",
+        unavailable > 0 ? `${unavailable} more packages are unavailable now.` : "",
+        ...warnings.map((w) => `Warning: ${w}.`),
+        `quoteId (valid 10 min): ${quoteId}`,
+        "Tell the user the price and get their go-ahead before bugnet_start.",
+    ]
+        .filter(Boolean)
+        .join("\n");
+    return {
+        text,
+        structured: {
+            quoteId,
+            expiresAt: new Date(expiresAt).toISOString(),
+            packages: available.map((p) => ({ ...p, priceUsd: usd(p.priceMicros) })),
+            recommended: rec
+                ? { packageId: rec.pkg.id, priceUsd: usd(rec.pkg.priceMicros), why: rec.why }
+                : null,
+            warnings,
+        },
+    };
+}
+
 export function paymentRequiredResult(r: Extract<OrderResult, { status: "payment_required" }>) {
     const guide = [
         `Payment required for order ${r.orderId}.`,
@@ -190,64 +273,8 @@ export const registerSandboxTools: Register = (server, deps) => {
         },
         async (args) => {
             try {
-                const wantGpu = args.needs?.includes("gpu") ?? false;
-                const requirements = {
-                    ssh: args.needs?.includes("ssh") ?? false,
-                    preview: args.needs?.includes("preview") ?? false,
-                    gpu: wantGpu,
-                };
-                const est = await deps.router.estimate({ requirements });
-                const all = est.options.map(quoted);
-                const available = est.options.filter((o) => o.available).map(quoted);
-                const warnings: string[] = [];
-                if (wantGpu && !available.some((p) => p.gpuCount > 0)) {
-                    warnings.push("No GPU package is available right now, GPU work cannot start");
-                }
-                if (args.needs?.includes("secrets")) {
-                    warnings.push(
-                        "Secrets go in with bugnet_secret_link or the bridge, never in arguments",
-                    );
-                }
-                const rec = recommend(
-                    wantGpu ? available.filter((p) => p.gpuCount > 0) : available,
-                    args.workload,
-                    args.expectedMinutes,
-                );
-                const expiresAt = deps.now() + deps.config.limits.quote_ttl;
-                const quoteId = signQuote(deps.config.secrets.quoteKey, {
-                    packages: available,
-                    requirements,
-                    source: args.source ?? "",
-                    expiresAt,
-                });
-                const lines = available
-                    .sort((a, b) => a.priceMicros - b.priceMicros)
-                    .map(
-                        (p) =>
-                            `- ${p.id}: ${describeSize(p)}, ${p.minutes} min, ${usd(p.priceMicros)} USDC` +
-                            (rec?.pkg.id === p.id ? " (recommended)" : ""),
-                    );
-                const unavailable = all.length - available.length;
-                const text = [
-                    available.length > 0
-                        ? "Bugnet packages, paid per run in USDC on Solana:"
-                        : "No package can start right now. Try again in a minute.",
-                    ...lines,
-                    rec ? `Recommended: ${rec.pkg.id} because ${rec.why}.` : "",
-                    unavailable > 0 ? `${unavailable} more packages are unavailable now.` : "",
-                    ...warnings.map((w) => `Warning: ${w}.`),
-                    `quoteId (valid 10 min): ${quoteId}`,
-                    "Tell the user the price and get their go-ahead before bugnet_start.",
-                ]
-                    .filter(Boolean)
-                    .join("\n");
-                return ok(text, {
-                    quoteId,
-                    expiresAt: new Date(expiresAt).toISOString(),
-                    packages: available.map((p) => ({ ...p, priceUsd: usd(p.priceMicros) })),
-                    recommended: rec ? { packageId: rec.pkg.id, why: rec.why } : null,
-                    warnings,
-                });
+                const q = await buildQuote(deps, args);
+                return ok(q.text, q.structured);
             } catch (e) {
                 return failure(e, "quote");
             }
