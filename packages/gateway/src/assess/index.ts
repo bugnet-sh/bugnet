@@ -6,7 +6,7 @@ import { readGithub } from "./github.ts";
 import { analyseModel, readHuggingface } from "./huggingface.ts";
 import { evidence, safePath, scanRepo, shift } from "./scan.ts";
 import { readScript, urlFindings } from "./script.ts";
-import { parseSource, sourceName, sourceRef, type Source } from "./source.ts";
+import { githubAlternative, parseSource, sourceName, sourceRef, type Source } from "./source.ts";
 import { combine, type SourceReport } from "./verdict.ts";
 
 export const cacheEntries = 500;
@@ -166,11 +166,7 @@ async function readUrlSource(
     report.findings.push(...res.findings);
 }
 
-export async function readSource(
-    env: ReadEnv,
-    src: Source,
-    signal: AbortSignal,
-): Promise<SourceReport> {
+async function readOne(env: ReadEnv, src: Source, signal: AbortSignal): Promise<SourceReport> {
     const report = emptyReport(src);
     try {
         if (src.kind === "github") await readGithubSource(env, src, report, signal);
@@ -182,6 +178,30 @@ export async function readSource(
         report.complete = report.complete && note.complete;
     }
     return report;
+}
+
+export async function readSource(
+    env: ReadEnv,
+    src: Source,
+    signal: AbortSignal,
+): Promise<SourceReport> {
+    const report = await readOne(env, src, signal);
+    const alt = githubAlternative(src);
+    if (!alt || report.findings[0]?.id !== "hf_not_found") return report;
+    const gh = await readOne(env, alt, signal);
+    if (gh.findings[0]?.id !== "github_not_found") return gh;
+    return {
+        ...report,
+        categories: [],
+        workload: null,
+        findings: [
+            {
+                id: "source_not_found",
+                severity: "info",
+                title: "Not found as a Hugging Face model or a GitHub repo, or it is private",
+            },
+        ],
+    };
 }
 
 export function createAssessor(config: Config, opts: AssessorOptions = {}): Assessor {

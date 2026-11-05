@@ -270,7 +270,11 @@ export function summarise(s: SummaryInput): string {
         }
         return `${sentence(phrase)} A Bugnet sandbox keeps that off the user's machine.`;
     }
-    if (!s.checked) return "No source or commands to check, so there is no evidence either way.";
+    if (!s.checked) {
+        const why = s.report.findings.find((f) => f.severity === "info");
+        if (why) return `${sentence(why.title)} There is no evidence either way.`;
+        return "No source or commands to check, so there is no evidence either way.";
+    }
     return `No risk signals found${name ? ` in ${name}` : ""}${factText(s.report)}. Running it locally looks fine.`;
 }
 

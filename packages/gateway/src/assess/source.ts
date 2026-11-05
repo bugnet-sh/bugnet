@@ -10,7 +10,8 @@ export type Source =
           asset: string | null;
           key: string;
       }
-    | { kind: "huggingface"; id: string; revision: string | null; key: string }
+    // Bare marks an owner/name given without a host, which may as well be a GitHub repo
+    | { kind: "huggingface"; id: string; revision: string | null; key: string; bare?: boolean }
     | { kind: "url"; url: string; key: string }
     // Crafted marks a link built to mislead, such as one hiding a newline or bidi mark in its ref
     | { kind: "none"; key: ""; reason: string; crafted?: boolean };
@@ -164,7 +165,11 @@ export function parseSource(input: string | undefined): Source {
             s = `https://${s}`;
         } else {
             const bare = /^([A-Za-z0-9][\w.-]*)\/([\w.-]+)$/.exec(s);
-            if (bare) return huggingface(bare[1] as string, bare[2] as string);
+            if (bare) {
+                const hf = huggingface(bare[1] as string, bare[2] as string);
+                if (hf.kind !== "huggingface") return hf;
+                return { ...hf, bare: true, key: `bare:${hf.id.toLowerCase()}` };
+            }
             return none("not a URL, GitHub repo or Hugging Face model id");
         }
     }
@@ -188,6 +193,15 @@ export function parseSource(input: string | undefined): Source {
     }
     url.hash = "";
     return { kind: "url", url: url.href, key: `url:${url.href}` };
+}
+
+// The GitHub reading of a bare owner/name, tried when Hugging Face has no such model
+export function githubAlternative(s: Source): Source | null {
+    if (s.kind !== "huggingface" || !s.bare) return null;
+    const [owner, repo] = s.id.split("/");
+    if (!owner || !repo) return null;
+    const gh = github(owner, repo);
+    return gh.kind === "github" ? gh : null;
 }
 
 // Short name for summaries, never the full URL with its query string

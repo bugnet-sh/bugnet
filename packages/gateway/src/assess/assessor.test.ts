@@ -386,9 +386,24 @@ describe("assessor over Hugging Face", () => {
             },
         });
         const a = createAssessor(config(), { fetch, now: () => now });
-        const r = await a.assess({ source: "hexgrad/Kokoro-82M" }, signal());
+        const r = await a.assess({ source: "huggingface.co/hexgrad/Kokoro-82M" }, signal());
         expect(r.risk.findings).toMatchObject([{ id: "hf_not_found" }]);
         expect(r.source.facts).toEqual({});
+    });
+
+    it("tries GitHub when a bare owner/name is not a Hugging Face model", async () => {
+        const { fetch } = fakeFetch(githubRoutes(mainstream()));
+        const a = createAssessor(config(), { fetch, now: () => now });
+        const r = await a.assess({ source: "pallets/flasky" }, signal());
+        expect(r).toMatchObject({ recommendation: "local_ok", source: { kind: "github" } });
+        expect(r.categories).not.toContain("local_ai_model");
+        expect(r.summary).toMatch(/No risk signals found in pallets\/flasky/);
+        const none = await a.assess({ source: "nobody/nothing" }, signal());
+        expect(none.risk.findings).toMatchObject([{ id: "source_not_found" }]);
+        expect(none.categories).toEqual([]);
+        expect(none.summary).toMatch(/^Not found as a Hugging Face model or a GitHub repo/);
+        const url = await a.assess({ source: "https://huggingface.co/nobody/nothing" }, signal());
+        expect(url.risk.findings).toMatchObject([{ id: "hf_not_found" }]);
     });
 
     it("strongly recommends a sandbox for image generation that does not fit a 16 GiB Mac", async () => {
@@ -417,7 +432,7 @@ describe("assessor over Hugging Face", () => {
             "https://huggingface.co/api/models/acme/none": { status: 401 },
         });
         const a = createAssessor(config(), { fetch, now: () => now });
-        const r = await a.assess({ source: "acme/none" }, signal());
+        const r = await a.assess({ source: "huggingface.co/acme/none" }, signal());
         expect(r.risk.findings).toMatchObject([{ id: "hf_not_found" }]);
     });
 });
