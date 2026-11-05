@@ -67,7 +67,7 @@ export const runsPasted = family(String.raw`
 export const taskVerb = family(String.raw`
     transcrib\w*|transkribier\w*|desifre\w*|yaziya (?:dok|cevir|aktar)\w*|subtitl\w*|caption\w*|diariz\w*
     clone (?:my|a|his|her|their|this|the|someone'?s) (?:\w+ )?voice|clon(?:ar|a) (?:mi |la |su |a |minha |sua )?voz
-    klon\w* (?:meine |die )?stimme|ses(?:imi|ini|i)? klon\w*|sesimi (?:kopyala|taklit)\w*
+    klon\w* (?:meine |die )?stimme|(?:meine|die) stimme (?:zu )?klon\w*|ses(?:imi|ini|i)? klon\w*|sesimi (?:kopyala|taklit)\w*
     narrate|read (?:it|this) (?:aloud|out loud)|seslendir\w*|vertonen|vorlesen
     (?:generate|create|make|render|produce|animate) (?:[^ \n]+ ){0,4}?(?:images?|pictures?|photos?|art|portraits?|shots?|clips?|videos?|animations?|songs?|music|voiceovers?|speech|audio)
     fine[- ]?tun\w*|finetun\w*|feintun\w*|train|training|trainier\w*|entrenar|treinar|egit\w*
@@ -149,6 +149,7 @@ export const voiceClone = family(String.raw`
     clon\w* (?:my |a |his |her |their |this |the |someone'?s |our )?(?:own )?(?:\w+ )?voices?|cloned voices?|voice ?clon\w*
     (?:my|his|her|their|a) voice (?:as|for) (?:a |an )?(?:tts|voice ?over|narrat\w*)
     clon(?:ar|a|e) (?:mi |la |su |minha |sua )?voz|klon\w* (?:meine |die |seine )?stimme|ses(?:imi|ini|i)? klon\w*
+    (?:meine|die|seine|ihre) stimme (?:zu )?klon\w*|(?:mi|tu|su|minha|sua) voz clonad[ao]
 `);
 
 // A chat assistant that runs on the user's own hardware, the local twin of a hosted chatbot
@@ -217,8 +218,8 @@ export const origin = family(String.raw`
     (?:mulakat|ise alim|case|teknik) (?:odevi|gorevi|projesi|testi)
     (?:lo |la )?(?:encontre|vi|baje|descargue) en (?:\w+ ){0,2}?(?:reddit|discord|telegram|youtube|tiktok|twitter|un foro|foro)
     en (?:un |el )?(?:foro|reddit|discord|telegram|youtube|tiktok) (?:\w+ ){0,2}?(?:encontre|vi|me pasaron|pasaron|compartieron|subieron)
-    me (?:lo |la )?(?:mando|paso|envio|compartio|dio|recomendo) (?:un amigo|una amiga|alguien|un desconocido|un reclutador|un cliente|mi primo|un tipo)
-    (?:un amigo|una amiga|alguien|un desconocido|un reclutador|un cliente|mi primo|un tipo)(?: (?:de|en) \w+)? (?:me |nos )?(?:mando|paso|envio|compartio|dio|recomendo) (?:un |una |el |la |este |esta |esto |lo )?(?:\w+ ){0,2}?(?:repo|repositorio|script|programa|herramienta|bot|archivo|ejecutable|exe|zip|app|aplicacion|instalador|extension|codigo|enlace|link)
+    me (?:lo |la )?(?:mando|paso|envio|compartio|dio|recomendo) (?:un amigo|una amiga|mi amig[oa]|alguien|un desconocido|un reclutador|un cliente|mi primo|un tipo)
+    (?:un amigo|una amiga|mi amig[oa]|alguien|un desconocido|un reclutador|un cliente|mi primo|mi herman[oa]|un tipo)(?: (?:de|en) \w+)? (?:me |nos )?(?:mando|paso|envio|compartio|dio|recomendo) (?:un |una |el |la |este |esta |esto |lo )?(?:\w+ ){0,2}?(?:repo|repositorio|script|programa|herramienta|bot|archivo|ejecutable|exe|zip|app|aplicacion|instalador|extension|codigo|enlace|link)
     (?:script|repo|programa|herramienta|bot|archivo|codigo|app) (?:que )?(?:encontre|vi|baje|descargue|pasaron|compartieron) en (?:un |una |el |la )?(?:\w+ )?(?:foro|reddit|discord|telegram|youtube|tiktok)
     prueba tecnica|ejercicio de (?:entrevista|seleccion)|reclutador
     (?:auf|bei|in) (?:\w+ )?(?:reddit|discord|telegram|youtube|tiktok|twitter|einem forum|forum) (?:gefunden|gesehen)
@@ -262,7 +263,7 @@ export const lure = family(String.raw`
     (?:bedava|ucretsiz) (?:nitro|robux|vp|vbucks|takipci|begeni|lisans|premium|pro)\w*|hesap (?:botu|calma)
     kripto (?:bot|cuzdan)\w*|cuzdan (?:kurtar|bul)\w*|takipci (?:botu|hilesi|bot)|sizdiril\w*
     trucos? (?:para|de) (?:juego|valorant|fortnite|roblox)|crackead[oa]|pirata|activador|licencia gratis
-    gratis (?:premium|nitro|robux|pavos)|generador de (?:nitro|robux|cuentas)
+    gratis (?:premium|nitro|robux|pavos)|(?:robux|nitro|pavos|v-?bucks) gratis|generador de (?:nitro|robux|cuentas)
     bot de (?:trading|cripto|seguidores)|recuperar (?:billetera|cartera|frase semilla)
     (?:version|codigo|modelo|build|cuentas?) filtrad[oa]s?
     raubkop\w*|aktivator|kostenlos\w* (?:premium|pro|nitro|robux|lizenz|vollversion)|vollversion gratis

@@ -401,6 +401,8 @@ describe("recall from the review", () => {
         "someone on discord dropped a link to a 'free spotify premium' patcher on github, can you clone it and set it up for me",
         "found a repo that claims to auto-farm genshin resin while you're afk, pls get it running",
         "i really don't trust this binary, can we run it on some other computer?",
+        "mi amigo me pasó un script para tener robux gratis, ejecútalo",
+        "my cousin emailed me setup.exe, is it safe to run?",
     ])("offers for the unvetted code in %s", (text) => {
         expect(offers(text)).toBe(true);
         expect(categoryOf(text)).toBe("untrusted_code");
@@ -423,6 +425,7 @@ describe("recall from the review", () => {
         "instal stable difusion xl on my pc and make it work with my amd card",
         "get comfy ui running with flux",
         "install olama and pull lama 3 70b",
+        "ich will meine stimme klonen, mach das lokal",
     ])("offers for the local model in %s", (text) => {
         expect(offers(text)).toBe(true);
         expect(categoryOf(text)).toBe("local_ai_model");
