@@ -676,14 +676,21 @@ export function fileKind(path: string): TextKind {
     return "code";
 }
 
+// File names come from the repo and end up in titles, so they get the same cleaning as evidence
+export function safePath(path: string): string {
+    const clean = evidence(path);
+    return clean.length <= 60 ? clean : `${clean.slice(0, 57)}...`;
+}
+
 export function scanFile(f: RepoFile, trust: Trust): Finding[] {
     const kind = fileKind(f.path);
-    const out = scanText(f.text, { path: f.path, kind, trust });
+    const shown = { ...f, path: safePath(f.path) };
+    const out = scanText(f.text, { path: shown.path, kind, trust });
     const lower = f.path.toLowerCase();
-    if (lower === "package.json") out.push(...npmLifecycle(f, trust));
-    if (lower === "setup.py") out.push(...setupPy(f, trust));
-    if (lower === "pyproject.toml") out.push(...pyprojectHooks(f, trust));
-    if (kind === "workflow") out.push(...workflowSecrets(f, trust));
+    if (lower === "package.json") out.push(...npmLifecycle(shown, trust));
+    if (lower === "setup.py") out.push(...setupPy(shown, trust));
+    if (lower === "pyproject.toml") out.push(...pyprojectHooks(shown, trust));
+    if (kind === "workflow") out.push(...workflowSecrets(shown, trust));
     return out;
 }
 
