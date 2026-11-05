@@ -5,7 +5,7 @@ import { isAbsolute, join, resolve } from "node:path";
 
 // packages/intent/src/lexicon.ts
 function family(src) {
-  const body = src.split("\n").map((l) => l.trim()).filter((l) => l !== "").join("|");
+  const body = src.split("\n").map((l) => l.trim()).filter((l) => l !== "").join("|").replace(/([a-z]) \?(?=[a-z(])/g, "$1[- ]?");
   return new RegExp(`(?<![a-z0-9_])(?:${body})(?![a-z0-9_])`, "g");
 }
 function find(re, s) {
@@ -41,15 +41,22 @@ var action = family(String.raw`
     rodar|roda|rode|rodando|executar|executa|instalar|instala|instale|testar|subir|configurar
     baixar|baixa|baixe|fazer funcionar|por pra rodar
 `);
+var runsPasted = family(String.raw`
+    (?:run|execute|exec|try|install|launch|start|paste|ejecut\w*|corre|correr|calistir\w*|ausfu(?:e)?hr\w*|rodar|roda|executar|instala\w*)(?: (?:it|this|that|these|them|those|the))?(?: (?:above|below|following|same))?(?: (?:install )?(?:commands?|scripts?|snippet|lines?|one[- ]liners?|installer|steps?|code|block))?(?= *(?:$|[\n,.!?:;]|(?:for|please|pls|on|in|here|now|again|first|and|then|so|to|from|locally|myself|anyway)(?![a-z])))
+    (?:set|fire|boot) (?:it|this|that|them) up|get (?:it|this|that|them) (?:running|working|going)
+    safe to (?:run|install|execute)|is (?:this|it|that) safe
+`);
 var taskVerb = family(String.raw`
     transcrib\w*|transkribier\w*|desifre\w*|yaziya (?:dok|cevir|aktar)\w*|subtitl\w*|caption\w*|diariz\w*
     clone (?:my|a|his|her|their|this|the|someone'?s) (?:\w+ )?voice|clon(?:ar|a) (?:mi |la |su |a |minha |sua )?voz
-    klon\w* (?:meine |die )?stimme|ses(?:imi|ini|i)? klon\w*|sesimi (?:kopyala|taklit)\w*
+    klon\w* (?:meine |die )?stimme|(?:meine|die) stimme (?:zu )?klon\w*|ses(?:imi|ini|i)? klon\w*|sesimi (?:kopyala|taklit)\w*
     narrate|read (?:it|this) (?:aloud|out loud)|seslendir\w*|vertonen|vorlesen
     (?:generate|create|make|render|produce|animate) (?:[^ \n]+ ){0,4}?(?:images?|pictures?|photos?|art|portraits?|shots?|clips?|videos?|animations?|songs?|music|voiceovers?|speech|audio)
     fine[- ]?tun\w*|finetun\w*|feintun\w*|train|training|trainier\w*|entrenar|treinar|egit\w*
     ince ayar\w*|ajuste fino|generar|gerar|generieren|erzeugen|olustur\w*|uret\w*|animar
     upscal\w*|inpaint\w*|chat with (?:it|the model|a model|llama|[a-z]+ \d+b)
+    (?:strip|separate|isolate|remove|split|extract|pull)\w* (?:out )?(?:the )?(?:\w+ )?(?:vocals|stems|instrumentals?|drums|backing tracks?)
+    (?:make|let|have|get) (?:my |the |this )?(?:computer|mac|laptop|pc|machine) (?:talk|speak|read)\w*
 `);
 var local = family(String.raw`
     locally|local|offline|self[- ]?host\w*|my own (?:gpu|hardware|machine)
@@ -61,22 +68,22 @@ var local = family(String.raw`
     auf meine\w* (?:rechner|computer|laptop|pc|mac|maschine)|bei mir lokal
 `);
 var aiName = family(String.raw`
-    xtts\w*|coqui|f5[- ]?tts|e2[- ]?tts|kokoro|piper[- ]?tts|styletts2?|openvoice|parler[- ]?tts
+    xtts\w*|coqui|f5[- ]?tts|e2[- ]?tts|kok[oe]ro|piper[- ]?tts|styletts2?|openvoice|parler[- ]?tts
     chatterbox|orpheus[- ]?tts|csm[- ]?1b|dia[- ]?1\.6b|nari[- ]?labs|zonos|fish[- ]?speech
     spark[- ]?tts|vibevoice|higgs[- ]?audio|index[- ]?tts\w*|cosyvoice\w*|melo[- ]?tts
     qwen3?[- ]?tts|tortoise[- ]?tts|gpt[- ]?sovits|rvc|so[- ]?vits\w*|applio|alltalk|suno[- ]bark
-    stable[- ]?diffusion|sd ?1\.5|sdxl|sd ?3(?:\.5)?|flux[.-]?[12](?:\.\d)?(?:[- ](?:dev|schnell|klein|kontext|pro))?
-    flux[- ](?:dev|schnell|kontext|klein)|comfy ?ui|automatic1111|a1111|sd[- ]?webui|sd[- ]forge
+    stab(?:le|el)[- ]?dif{1,2}u?s{1,2}i?on|sd ?1\.5|sdxl|sd ?3(?:\.5)?|flux[.-]?[12](?:\.\d)?(?:[- ](?:dev|schnell|klein|kontext|pro))?
+    flux[- ](?:dev|schnell|kontext|klein)|co[mn]f[iy] ?ui|automatic ?1111|a1111|sd[- ]?webui|sd[- ]forge
     forge webui|webui forge|fooocus|invoke ?ai|qwen[- ]?image|z[- ]image|hidream|kohya\w*
     controlnet|civitai|txt2img|img2img|real[- ]?esrgan|diffusers
     wan ?2(?:\.\d)?|hunyuan ?video|ltx[- ]?(?:video|2(?:\.\d)?)|cogvideo\w*|mochi[- ]?1|animatediff
     stable video diffusion|svd[- ]xt|framepack|wav2lip|sadtalker|liveportrait|facefusion|roop
     deep[- ]?live[- ]?cam|open[- ]?sora
-    ollama|llama\.?cpp|llamafile|lm ?studio|text[- ]generation[- ]webui|oobabooga|koboldcpp|vllm
+    ol{1,2}am{1,2}a|l{1,2}ama[.-]?cpp|llamafile|lm ?studio|text[- ]generation[- ]webui|oobabooga|koboldcpp|vllm
     sglang|text[- ]generation[- ]inference|exllama\w*|gguf|ggml|mlx(?:[- ]lm)?|gpt4all
-    (?:llama(?![- ]?index)|llava|qwen|mistral|mixtral|gemma|deepseek|codellama|nemotron|gpt[- ]oss|starcoder|vicuna)(?:[- ]?(?:r|v|coder)?\d+(?:\.\d+)?)?(?:[- :]?\d+(?:\.\d+)?b)?
+    (?:llama(?![- ]?index)|lama(?=[- ]?\d)|llava|qwen|mistral|mixtral|gemma|deep[- ]?seek|codellama|nemotron|gpt[- ]oss|starcoder|vicuna)(?:[- ]?(?:r|v|coder)?\d+(?:\.\d+)?)?(?:[- :]?\d+(?:\.\d+)?b)?
     (?:phi|yi|granite|falcon|olmo)[- ]?\d+(?:\.\d+)?(?:[- :]?\d+(?:\.\d+)?b)?
-    whisper(?:x|\.cpp|[- ]large\w*)?|faster[- ]whisper|distil[- ]whisper|insanely[- ]fast[- ]whisper
+    (?:whisper|wisper|whipser)(?:x|\.cpp|[- ]large\w*)?|faster[- ]whisper|distil[- ]whisper|insanely[- ]fast[- ]whisper
     parakeet|nvidia canary|wav2vec2?|vosk|pyannote
     musicgen|audiocraft|stable audio|riffusion|ace[- ]step|diffrhythm|audioldm|demucs|uvr5?
     yolov?\d+\w*|ultralytics|detectron2|mmdetection|segment anything|sam ?2|nanogpt|dreambooth
@@ -92,6 +99,7 @@ var aiContext = family(String.raw`
 var aiTask = family(String.raw`
     text[- ]to[- ](?:speech|image|video|music|audio)|image[- ]to[- ](?:video|image)|speech[- ]to[- ]text
     tts|stt|voice ?(?:clone|cloner|cloning|changer|conversion|model)|ai voice|ai cover|voice ?over\w*
+    stem separation|vocal (?:removal|remover|isolation|separation)|(?:separate|isolate|strip)\w* (?:out )?(?:the )?vocals
     audiobook|sesli kitap|texto a voz|sintesis de voz|clonacion de voz|clonagem de voz|text[- ]?zu[- ]?sprache
     sprachsynthese|stimmklon\w*|ki[- ]?stimme|horbuch
     (?:ai|open[- ]source|local|diffusion) (?:image|video|art|music|voice|speech) (?:model|generator|generation)
@@ -109,6 +117,17 @@ var aiTask = family(String.raw`
     (?:imagenes?|imagens?|videos?) con ia|(?:bilder?|video) (?:\w+ )?(?:generieren|erzeugen|erstellen)
     (?:resim|gorsel|video)\w* (?:olustur|uret)\w*|yapay zeka (?:ile )?(?:resim|gorsel|video|ses)\w*
 `);
+var voiceClone = family(String.raw`
+    clon\w* (?:my |a |his |her |their |this |the |someone'?s |our )?(?:own )?(?:\w+ )?voices?|cloned voices?|voice ?clon\w*
+    (?:my|his|her|their|a) voice (?:as|for) (?:a |an )?(?:tts|voice ?over|narrat\w*)
+    clon(?:ar|a|e) (?:mi |la |su |minha |sua )?voz|klon\w* (?:meine |die |seine )?stimme|ses(?:imi|ini|i)? klon\w*
+    (?:meine|die|seine|ihre) stimme (?:zu )?klon\w*|(?:mi|tu|su|minha|sua) voz clonad[ao]
+`);
+var localAssistant = family(String.raw`
+    (?:private|offline|local|self[- ]?hosted|personal) (?:ai |chat ?|llm |gpt )?(?:assistant|chatbot|chat ?gpt|gpt|llm|copilot)
+    (?:chatgpt|gpt|claude|copilot|perplexity|gemini)[- ]?(?:like|style|alternative|clone|replacement)
+    (?:assistant|chatbot|chat ?gpt|llm) (?:\w+ ){0,3}?(?:on|in) my (?:own )?(?:computer|machine|laptop|mac|pc|hardware|server)
+`);
 var videoName = family(String.raw`
     wan ?2(?:\.\d)?|hunyuan ?video|ltx[- ]?(?:video|2)|cogvideo\w*|mochi[- ]?1|animatediff
     stable video diffusion|framepack|text[- ]to[- ]video|image[- ]to[- ]video|video model
@@ -119,60 +138,81 @@ var weightsCue = family(String.raw`
 `);
 var repoUrl = /(?:https?:\/\/)?(?:www\.)?(?:github\.com|gitlab\.com|codeberg\.org|bitbucket\.org|gitee\.com|sourceforge\.net)\/[\w.-]+\/[\w.-]*[\w-]|git@(?:github\.com|gitlab\.com|bitbucket\.org):[\w.-]+\/[\w.-]*[\w-]/g;
 var hfUrl = /(?:https?:\/\/)?huggingface\.co\/(?:spaces\/|datasets\/)?[\w.-]+\/[\w.-]*[\w-]/g;
-var anyUrl = /https?:\/\/[^\s'"<>)\]]*[^\s'"<>)\].,;:!?]/g;
-var scriptUrl = /https?:\/\/[^\s'"<>)\]]+\.(?:sh|bash|ps1|py|js|bat|cmd|vbs)(?![\w])/g;
+var anyUrl = /https?:\/\/[^\s'"<>)\]]{0,400}[^\s'"<>)\].,;:!?]/g;
+var scriptUrl = /https?:\/\/[^\s'"<>)\]]{1,400}\.(?:sh|bash|ps1|py|js|bat|cmd|vbs)(?![\w])/g;
 var ownRepoBefore = family(String.raw`
     (?:my|our|mine|benim|kendi|mi|nuestro|meu|nosso|mein\w*|unser\w*) (?:own |propio |eigene\w* )?(?:\w+ )?(?:repo|repository|fork|project|app|site|code|repom|projem|proyecto|projeto|projekt)\w*[ :]*(?:at |on |from |is |here |-)?$
 `);
+var codeNoun = String.raw`(?:repo|repos|repository|script|scripts|(?<!(?:csv|json|pdf|data|log|text|config|excel|word|design|figma|image|video|audio) )files?|binary|binaries|tool|tools|bot|bots|exe|executable|zip|archive|app|apk|dmg|msi|installer|program|plugin|extension|package|mod|mods|patcher|crack|cheat|hack|cli|one[- ]liner|take[- ]home|mcp server|\w[\w-]{0,40}\.(?:exe|zip|rar|7z|apk|dmg|pkg|app|msi|jar|sh|py|js|ps1|bat))(?![a-z0-9_])`;
+var person = String.raw`(?:an? |my |some |this |that |the |random )?(?:random )?(?:friend|buddy|mate|cousin|brother|sister|someone|somebody|some ?one|guy|dude|stranger|recruiter|client|vendor|person|user|redditor|youtuber|streamer|seller|account|anon)s?(?! (?:on|from|in|at) (?:my|our) (?:team|company|org|work|office|department))`;
+var handed = String.raw`(?:sent|sends|send|shared|shares|gave|gives|linked|links|dropped|drops|posted|posts|dm'?d|dmed|messaged|emailed|uploaded|recommended|recommends|passed|forwarded|handed)`;
+var place = String.raw`(?:reddit|subreddit|discord|telegram|youtube|tiktok|twitter|tweet|x\.com|forum|forums|hacker news|4chan|facebook|instagram|whatsapp|pastebin|gist|medium|blog|random (?:site|website|page)|website|video|livestream|stream|group chat|channel|thread|comments?|dms?|github|gitlab)`;
+var pronoun = String.raw`(?:this|it|these|them|that)(?= *(?:$|[\n,.!?:;]|(?:on|over|via|in|from|earlier|yesterday|today|last|and|but|to|so|which|for)(?![a-z])))`;
+var handedObject = String.raw`(?: (?:me|us|him|her|them))?(?: (?:${pronoun}|(?:(?:a|an|the|this|that|these|those|their|his|her|some|over|along) )?(?:link to (?:(?:a|an|the|this|their|his|her|some) )?)?(?:[\w'.-]{1,40} ){0,3}?${codeNoun}))`;
 var origin = family(String.raw`
-    (?:found|saw|seen|got|spotted|came across)\b[^\n]{0,40}?\b(?:on|in|at|from|via) (?:a |an |the |some )?(?:\w+ ){0,2}?(?:reddit|discord|telegram|youtube|tiktok|twitter|tweet|x\.com|forum|thread|blog|medium|pastebin|hacker news|4chan|facebook|instagram|whatsapp|random site|website|video|stream|server|group|channel)
-    from (?:a |an |the |some )?(?:\w+ ){0,2}?(?:reddit|discord|telegram|youtube|tiktok|twitter|tweet|forum|thread|pastebin|hacker news|4chan|random site|blog comment)
-    (?:a friend|my friend|friend|someone|somebody|some guy|a guy|a stranger|my cousin|my brother|a recruiter|the recruiter|recruiter|a client|a vendor|a person|this guy)\b[^\n]{0,40}?\b(?:sent|shared|linked|gave|dm'?d|dmed|emailed|posted|recommended|uploaded|said)
+    ${person}\b[^\n.?!]{0,40}?\b${handed}${handedObject}
+    (?:this|that|the|a|an|some|these) (?:[\w'.-]{1,40} ){0,3}?${codeNoun} (?:that |which )?(?:i |we )?(?:got |received )?(?:from )?${person}[^\n.?!]{0,30}? ${handed}
+    ${codeNoun} (?:[\w'.-]{1,40} ){0,3}?(?:from|by) ${person}
+    (?:found|saw|seen|got|spotted|came across|stumbled (?:on|upon|across)|downloaded|grabbed|picked up) (?:${pronoun}|(?:a|an|the|this|that|some) (?:[\w'.-]{1,40} ){0,3}?${codeNoun})(?: [\w'.-]{1,40}){0,4}? (?:on|in|at|from|via|off) (?:a |an |the |some |this )?(?:[\w'.-]{1,40} ){0,2}?${place}
+    ${codeNoun} (?:that |which )?(?:i |we |someone |somebody |a guy |some guy )?(?:found|saw|seen|got|spotted|came across|downloaded|grabbed|posted|shared|linked|dropped)(?: it)? (?:on|in|at|from|via|off) (?:a |an |the |some |this )?(?:[\w'.-]{1,40} ){0,2}?${place}
+    ${codeNoun} (?:from|off|via) (?:a |an |the |some |this |that )?(?:[\w'.-]{1,40} ){0,2}?${place}
+    ${codeNoun} (?:[\w'.-]{1,40} ){0,3}?(?:that |which )?(?:supposedly|apparently|allegedly|claims? to|claiming to|promises to|promising to|is supposed to|swears it)
     take[- ]home|coding (?:test|challenge|assignment|exercise)|interview (?:task|project|assignment|test)
     tech(?:nical)? (?:test|assessment)
-    (?:reddit|discord|telegram|youtube|tiktok|twitter|forum|eksi|instagram)\w*'?(?:te|ta|de|da|ten|tan|den|dan|deki|daki)
-    (?:arkadasim|biri|birisi|kuzenim|ise alimci|musteri)\w* [^\n]{0,30}?(?:gonderdi|atti|yolladi|paylasti|verdi)
+    (?:reddit|discord|telegram|youtube|tiktok|twitter|forum|eksi|instagram|github)\w*'?(?:te|ta|de|da|ten|tan|den|dan|deki|daki)\b[^\n.?!]{0,40}?(?:buldum|gordum|rastladim|paylas\w*|atti\w*|gonder\w*|yolla\w*|indir\w*|onerdi\w*|verdi\w*)
+    (?:arkadasim|biri|birisi|kuzenim|ise alimci|musteri|tanimadigim biri)\w* [^\n.?!]{0,30}?(?:repo|script|program|arac|uygulama|dosya|exe|zip|bot|link|baglanti|kod|hile)\w* [^\n.?!]{0,20}?(?:gonderdi|atti|yolladi|paylasti|verdi)
     (?:mulakat|ise alim|case|teknik) (?:odevi|gorevi|projesi|testi)
-    (?:lo |la )?(?:encontre|vi) en (?:\w+ ){0,2}?(?:reddit|discord|telegram|youtube|tiktok|twitter|un foro|foro)
-    (?:en|de) (?:un |el )?(?:foro|reddit|discord|telegram|youtube|tiktok)
-    me (?:lo |la )?(?:mando|paso|envio|compartio) (?:un amigo|alguien|un reclutador|un cliente|mi primo)
+    (?:lo |la )?(?:encontre|vi|baje|descargue) en (?:\w+ ){0,2}?(?:reddit|discord|telegram|youtube|tiktok|twitter|un foro|foro)
+    en (?:un |el )?(?:foro|reddit|discord|telegram|youtube|tiktok) (?:\w+ ){0,2}?(?:encontre|vi|me pasaron|pasaron|compartieron|subieron)
+    me (?:lo |la )?(?:mando|paso|envio|compartio|dio|recomendo) (?:un amigo|una amiga|mi amig[oa]|alguien|un desconocido|un reclutador|un cliente|mi primo|un tipo)
+    (?:un amigo|una amiga|mi amig[oa]|alguien|un desconocido|un reclutador|un cliente|mi primo|mi herman[oa]|un tipo)(?: (?:de|en) \w+)? (?:me |nos )?(?:mando|paso|envio|compartio|dio|recomendo) (?:un |una |el |la |este |esta |esto |lo )?(?:\w+ ){0,2}?(?:repo|repositorio|script|programa|herramienta|bot|archivo|ejecutable|exe|zip|app|aplicacion|instalador|extension|codigo|enlace|link)
+    (?:script|repo|programa|herramienta|bot|archivo|codigo|app) (?:que )?(?:encontre|vi|baje|descargue|pasaron|compartieron) en (?:un |una |el |la )?(?:\w+ )?(?:foro|reddit|discord|telegram|youtube|tiktok)
     prueba tecnica|ejercicio de (?:entrevista|seleccion)|reclutador
     (?:auf|bei|in) (?:\w+ )?(?:reddit|discord|telegram|youtube|tiktok|twitter|einem forum|forum) (?:gefunden|gesehen)
-    (?:ein freund|ein kumpel|jemand|ein recruiter|ein kunde)[^\n]{0,30}?(?:geschickt|gesendet|geteilt)
+    (?:ein freund|eine freundin|ein kumpel|jemand|ein fremder|ein recruiter|ein kunde)[^\n.?!]{0,40}?(?:skript|script|programm|tool|repo|datei|exe|zip|bot|app|link|installer|code|das|es|dies)\b[^\n.?!]{0,30}?(?:geschickt|gesendet|geteilt|gegeben|empfohlen)
     (?:probe|test|bewerbungs)aufgabe|vorstellungsgesprach
-    (?:achei|vi|encontrei)[^\n]{0,40}?(?:no|num|na|em um|em uma) (?:\w+ ){0,2}?(?:youtube|reddit|discord|telegram|tiktok|twitter|forum)
-    (?:um amigo|alguem|meu primo|um recrutador)[^\n]{0,30}?(?:mandou|enviou|passou|compartilhou)
+    (?:achei|vi|encontrei|baixei) (?:um |uma |esse |essa |este |esta |isso |isto )(?:\w+ ){0,2}?(?:no|num|na|numa|em um|em uma|do|da) (?:\w+ ){0,2}?(?:youtube|reddit|discord|telegram|tiktok|twitter|forum)
+    (?:um amigo|uma amiga|alguem|meu primo|um recrutador|um desconhecido)[^\n.?!]{0,30}?(?:mandou|enviou|passou|compartilhou) (?:um |uma |o |a |esse |essa |este |isso |isto )?(?:\w+ ){0,2}?(?:repo|repositorio|script|programa|ferramenta|bot|arquivo|executavel|exe|zip|app|aplicativo|instalador|extensao|codigo|link)
 `);
+var paidApp = String.raw`(?:photoshop|office|windows|adobe|fl studio|capcut|autocad|premiere|illustrator|lightroom|after effects|matlab|ableton|vegas|corel|spotify|netflix|youtube)`;
+var aiApp = String.raw`(?:claude code|claude|copilot|cursor|chatgpt|sora|kling|seedance|midjourney|elevenlabs|voicemod)`;
+var game = String.raw`(?:roblox|valorant|fortnite|cs2|csgo|counter[- ]strike|apex legends|warzone|gta|pubg|tarkov|overwatch|r6|dota|genshin|free fire|minecraft|rust|apex|cod)`;
 var lure = family(String.raw`
-    cracked|keygen|serial key|activator|kms ?pico|pirated|warez|nulled|unlocker
-    crack(?:s)? (?:for|of|version|download|setup|apk|exe)|free (?:\w+ )?(?:nitro|robux|v-?bucks|followers|likes|netflix|vip)
-    (?:get|unlock|activate)\w* (?:\w+ ){0,3}?(?:premium|pro|plus) (?:\w+ ){0,2}?(?:for free|free|without paying)
-    without paying|bypass (?:the )?(?:paywall|license|licensing|activation|drm)
-    mod menu|aimbot|wallhack|wall hack|esp hack|triggerbot|spoofer|hwid|dll inject\w*|cheat engine
-    game (?:hacks?|trainers?|cheats?)|auto ?farm\w*|autoclicker
+    cracked|keygen|serial key|activator|kms ?pico|kms ?auto|pirated|warez|nulled|unlocker
+    crack(?:s)? (?:for|of|version|download|setup|apk|exe|patch)
+    free (?:\w+ )?(?:nitro|robux|v-?bucks|followers|likes|vip|premium)(?! (?:trial|tier|plan|plans|features?|period|month|week|users?|members?))
+    (?:get|unlock|activate|gives?|giving)\w* (?:\w+ ){0,3}?(?:premium|pro|plus|vip) (?:\w+ ){0,2}?(?:for free|free|without paying|for nothing|gratis)
+    bypass (?:the )?(?:paywall|license|licensing|activation|drm|anti[- ]?cheat)|(?:license|licensing|activation|drm) (?:bypass|crack|patch)
+    mod menu|aimbot|wallhack|wall hack|esp hack|triggerbot|spoofer|hwid (?:spoof\w*|ban\w*)|dll inject\w*|cheat engine
+    game (?:hacks?|trainers?|cheats?)|auto[- ]?farm\w*|auto[- ]?clicker
     inject\w* (?:\w+ ){0,2}?into (?:the |a )?(?:running )?(?:game|process)
-    (?:crack|cracked|keygen|patch|activator|kms)\w*\b[^\n]{0,30}?\b(?:photoshop|office|windows|adobe|fl studio|capcut|autocad|premiere|illustrator|lightroom|after effects|matlab|ableton|vegas|corel)
-    (?:photoshop|office|windows|adobe|fl studio|capcut|autocad|premiere|illustrator|lightroom|after effects|matlab|ableton|vegas|corel)[^\n]{0,20}?\b(?:crack|cracked|keygen|activator|kirik|crackeado|craqueado)\w*
-    (?:roblox|valorant|fortnite|cs2|csgo|counter[- ]strike|apex|warzone|rust|gta|minecraft|pubg|tarkov|overwatch|cod|r6|dota|genshin|free fire) (?:\w+ )?(?:cheats?|hacks?|esp|aimbot|scripts?|executor|injector|mod menu|trainer|exploit|unlocker|spoofer)
+    (?:crack|cracked|keygen|activator)\w*\b[^\n]{0,30}?\b${paidApp}
+    ${paidApp}[^\n]{0,20}?\b(?:crack|cracked|keygen|activator|kirik|crackeado|craqueado)\w*
+    ${paidApp} (?:premium |pro |plus )?(?:patcher|unlocker|mod apk)
+    ${game} (?:\w+ )?(?:cheats?|hacks?|aimbot|executor|injector|mod menu|trainer|unlocker|spoofer)
     (?:nitro|robux|token|account|gift ?card|v-?bucks) (?:gen|generator)|token (?:grabber|logger|stealer)
     stealer|remote access trojan|rat (?:builder|client|panel|tool)
     (?:wallet|seed phrase|seed|mnemonic|private key) (?:recover\w*|finder|cracker|checker|drainer|brute\w*)
     drainer|(?:recover|find|brute ?force|crack)\w* (?:\w+ ){0,3}?(?:seed phrase|mnemonic|wallet)
     airdrop (?:claim\w*|bot|farmer|farming|hunter|checker)|claim\w* (?:\w+ ){0,2}?airdrop
     (?:sniper|mev|sandwich|arbitrage|arb|pump|copy[- ]?trade|copytrade|volume|memecoin|crypto|forex|trading) (?:\w+ )?bots?
-    (?:instagram|insta|tiktok|youtube|twitter|twitch|spotify) (?:\w+ )?(?:bot|booster|liker|viewer bot|follow bot|follower bot)
-    (?:view|follower|like|follow)s? ?(?:bot|booster)|captcha (?:solver|bypass)
-    (?:leaked|cracked|unlock\w*|free|premium|uncensored|jailbroken)\b[^\n]{0,30}?\b(?:claude code|copilot|cursor|chatgpt|sora|kling|seedance|ltx|z[_ -]?image|voicemod|comfyui|midjourney|elevenlabs|photoshop|adobe|capcut|fl studio)
+    (?:instagram|insta|tiktok|youtube|twitter|twitch|spotify|discord|kick) (?:\w+ )?(?:views?|viewers?|follows?|followers?|likes?|likers?|subs|subscribers?|streams?|listeners?|plays?|comments?|members?|engagement) ?(?:bot|booster|farm\w*|gen\w*)
+    (?:view|viewer|follower|like|follow|subscriber)s? ?(?:bot|booster)|captcha (?:solver|bypass)
+    (?:leaked|cracked|jailbroken)\b[^\n]{0,30}?\b${aiApp}
+    ${aiApp} (?:premium|pro|plus|max|ultra) (?:\w+ ){0,2}?(?:for free|free|without paying|for nothing|unlocked|crack\w*|keygen)
+    free ${aiApp} (?:premium|pro|plus|max|ultra|accounts?|licen[cs]es?|keys?|subscriptions?|access)
     leaked (?:source|build|version|code|model)|uncensored (?:image|model|generator|ai)
     hile\w*|kirik (?:surum|program)\w*|korsan\w*|lisans (?:anahtari|kirma)\w*
     (?:bedava|ucretsiz) (?:nitro|robux|vp|vbucks|takipci|begeni|lisans|premium|pro)\w*|hesap (?:botu|calma)
     kripto (?:bot|cuzdan)\w*|cuzdan (?:kurtar|bul)\w*|takipci (?:botu|hilesi|bot)|sizdiril\w*
     trucos? (?:para|de) (?:juego|valorant|fortnite|roblox)|crackead[oa]|pirata|activador|licencia gratis
-    gratis (?:premium|nitro|robux|pavos)|generador de (?:nitro|robux|cuentas)
-    bot de (?:trading|cripto|seguidores)|recuperar (?:billetera|cartera|frase semilla)|filtrad[oa]
+    gratis (?:premium|nitro|robux|pavos)|(?:robux|nitro|pavos|v-?bucks) gratis|generador de (?:nitro|robux|cuentas)
+    bot de (?:trading|cripto|seguidores)|recuperar (?:billetera|cartera|frase semilla)
+    (?:version|codigo|modelo|build|cuentas?) filtrad[oa]s?
     raubkop\w*|aktivator|kostenlos\w* (?:premium|pro|nitro|robux|lizenz|vollversion)|vollversion gratis
     generator fu(?:e)?r (?:nitro|robux)|krypto[- ]?(?:bot|wallet)|trading[- ]?bot|wallet (?:wiederherstell\w*|knacken)
     geleakt\w*|craqueado|ativador|gerador de (?:robux|nitro)|hack\w* (?:de|pra|para) (?:minecraft|roblox|free fire)
+    (?:premium|pro|plus|vip) (?:de graca|gratis|gratuito|kostenlos|bedava|ucretsiz)
 `);
 var ownBefore = /(?:^|[\s(])(?:my|our|mine|mi|mis|meu|minha|nosso|benim|kendi|mein\w*|unser\w*|nuestro)\s(?:\S+\s){0,2}$/;
 var createBefore = /(?:build|write|create|make|code|develop|implement|scaffold|program)\s(?:me\s)?(?:a|an|my|our|the)\s(?:\S+\s){0,2}$/;
@@ -226,7 +266,11 @@ var explicit = family(String.raw`
     virtuelle\w* maschine|isoliert\w* umgebung|in der cloud|entfernte\w* (?:server|maschine)|wegwerf\w*
 `);
 var notIsolation = family(String.raw`
-    iframe|stripe|paypal|braintree|plaid|adyen|sandbox (?:attribute|attr|flag|mode|account|keys?|credentials|api|url|domain)
+    iframe|stripe|paypal|braintree|plaid|adyen|square|razorpay|mollie|klarna|checkout|payments?|merchant
+    test (?:cards?|card numbers?|mode|merchants?|accounts?|users?)|card numbers?|credit cards?
+    in-app purchases?|iap|storekit|app store|testflight|google play|play console|ios build|android build
+    salesforce|apex|sfdx|scratch orgs?|crm|hubspot|zoho|netsuite|shopify|ebay|amazon pay|twilio|docusign|coinbase
+    sandbox (?:attribute|attr|flag|mode|accounts?|keys?|credentials|api|url|domain|orgs?|tenant|instance|users?|testers?|store)
 `);
 var notMine = family(String.raw`
     (?:don'?t|dont|do not|rather not|would rather not|wouldn'?t|won'?t|never) (?:want|wanna|need|like|trust)[^\n]{0,50}?(?:on|in|onto|near|to touch) (?:my|this) (?:own )?(?:machine|laptop|computer|mac|macbook|pc|system|box|disk|drive|ssd|host)
@@ -234,6 +278,7 @@ var notMine = family(String.raw`
     (?:keep|stay) (?:it |this |that )?(?:off|away from) my (?:machine|laptop|computer|mac|pc|system)
     (?:instead of|not on|outside(?: of)?|away from|other than|that isn'?t|that is not|isn'?t|is not|but not on) (?:on )?my (?:own )?(?:machine|laptop|computer|mac|macbook|pc|system|box)
     (?:run|test|try|execute|install|do|put|host|detonate)\w* (?:[^ \n]+ ){0,4}?(?:(?:somewhere|someplace) (?:else|safe|isolated)|elsewhere)
+    (?:run|test|try|execute|install|build|open|detonate|do|put)\w* (?:[^ \n]+ ){0,4}?(?:on|in|onto) (?:some |an? )?(?:other|another|different|separate|second|spare|someone else'?s) (?:computer|machine|box|pc|laptop|device|system|host)
     (?:bilgisayarim|makinem|laptopum|sistemim)\w*[^\n]{0,40}?(?:kurmak istemiyorum|calistirmak istemiyorum|bulasmasin|bozul\w*|kirlen\w*|zarar\w*)
     baska bir (?:makine|yer)\w*
     no quiero (?:instalar|ejecutar|correr|tener)\w*[^\n]{0,30}?en mi (?:pc|computadora|ordenador|maquina|portatil|laptop|mac|sistema)
@@ -293,7 +338,8 @@ var destructive = family(String.raw`
     rm -[a-z]*r[a-z]*f?[a-z]* (?:--no-preserve-root )?(?:/|~|\$home|/\*|/usr|/etc|/bin|/var|/system)(?=\s|$)
     dd(?:[- ]based)? [^\n]{0,40}?(?:/dev/|disk|drive|ssd|speed test)
     mkfs\w*|wipefs|wipe (?:the |my )?(?:disk|drive|ssd|partition)|format (?:the |my )?(?:disk|drive|ssd|partition|c:)
-    fork ?bomb|kernel panic|fill (?:up )?the disk|oom killer|break (?:my|the) (?:system|machine|os|install)
+    fork ?bomb|(?:cause|trigger|force|induce|provoke)\w* (?:a |the )?kernel panic|oom killer|break (?:my|the) (?:system|machine|os|install)
+    fill\w* (?:up )?(?:the |my |all )?(?:disk|drive|ssd)(?: space)? (?:until|till|on purpose|to (?:see|test|check|simulate))|simulate (?:a )?full disk|disk[- ]full (?:test|scenario|simulation)
     chaos (?:test|engineering|monkey)|(?:disk|ssd)\w* (?:\w+ )?(?:sil|bicimlendir|formatla)\w*|sistemi bozabilir
     borrar el disco|formate(?:ar|o) (?:el |mi )?(?:disco|ssd|unidad)|romper el sistema
     festplatte (?:lo(?:e)?schen|formatieren)|formatier\w* (?:\w+ )?festplatte|system kaputt
@@ -304,16 +350,22 @@ var kernelText = family(String.raw`
     cpufreq|hugepages|swappiness|selinux|apparmor|secure boot
 `);
 var heavyPhrase = family(String.raw`
-    overnight|over night|while i sleep|(?:just )?(?:let|leave) it (?:go|run|running|cook|churn)
-    leave it running|kick (?:it |this )?off|for (?:a few |several |many )?hours|takes? (?:hours|forever|days|ages)
-    all night|for days|keep (?:it )?running|run for (?:like |about |around )?\d+ ?(?:h|hrs?|hours|days)
+    overnight|over night|over the weekend|while i(?:'?m)? (?:sleep\w*|away|out|at work)|all night|all day
+    (?:let|leave|keep) (?:it|this|that|them|everything) (?:go|going|run|running|cook|cooking|churn\w*|chug\w*|grind\w*|crunch\w*|on)
+    (?:run|running) (?:it |this |them )?(?:in the background|unattended)
+    for (?:a few |several |many |\d+ )?(?:hours|days)|takes? (?:hours|forever|days|ages)
+    (?:will|would|might|could|it'?ll|gonna|going to) take (?:hours|forever|days|ages|all night)
+    run for (?:like |about |around )?\d+ ?(?:h|hrs?|hours|days)
     toda la noche|durante horas|tarda horas|u(?:e)?ber nacht|stundenlang|gece boyunca|saatlerce
     a noite toda|durante a noite|por horas|demora horas|for (?:an|one|a full) hour|all day|for a day
 `);
 var heavyTask = family(String.raw`
-    param(?:eter)? sweep|grid search|hyperparameter (?:search|sweep|tuning)|backtest\w*|fuzz\w*|render\w*
-    monte carlo|benchmark\w*|batch (?:job|process\w*)
+    param(?:eter)? (?:sweep|search)|grid search|random search|hyper-?param\w* (?:search|sweep|tuning|optimi[sz]\w*)
+    optuna|ray tune|backtest\w*|fuzz\w*|render\w*|monte carlo|benchmark\w*|batch (?:job|process\w*)
+    transcod\w*|re-?encod\w*|(?:convert|encode|compress)\w* (?:\w+ ){0,5}?(?:to|into|as|with) (?:av1|hevc|h\.?265|x265|vp9|prores)
 `);
+var volume = /(?<![\w.])(\d+(?:\.\d+)?) ?(tb|terabytes?|gb|gigabytes?)(?![a-z])/g;
+var perItem = /(?<![\w.])(\d+(?:[.,]\d+)?)(k)?\+? (?:[a-z-]+ ){0,2}?[a-z]+s?\b[^\n]{0,24}?\b(?:at |@ |~|about |around )*~?(\d+(?:\.\d+)?) ?(s|sec|secs|seconds?|m|mins?|minutes?|h|hrs?|hours?)(?: each| apiece| per | a piece)/g;
 var longBuild = family(String.raw`
     (?:compile|build|compil\w*|derle\w*|kompilier\w*) (?:\w+ ){0,2}?(?:kernel|chromium|llvm|gcc|firefox|aosp|android|webkit|qt|tensorflow|pytorch)
 `);
@@ -322,26 +374,32 @@ var loadTest = family(String.raw`
     yuk testi|prueba de carga|lasttest\w*|teste de carga
 `);
 var heat = family(String.raw`
-    laptop (?:overheats|gets hot|heats up)|fans? (?:spin|scream|go crazy|get loud)|drains? (?:my )?battery
+    (?:laptop|mac|macbook|machine|computer|pc|cpu|gpu) (?:\w+ )?(?:overheat\w*|gets hot|heats up|melt\w*|cook\w*|fry\w*|on fire|throttl\w*)
+    melt\w* (?:my |the )?(?:laptop|mac|macbook|machine|computer|pc|cpu|gpu)|thermal throttl\w*
+    fans? (?:spin|scream|go crazy|get loud)|drains? (?:my )?battery
     isiniyor|se calienta|wird hei(?:ss)?|lufter|esquenta
 `);
 var hours = /(?<![\w.])(\d+(?:\.\d+)?) ?(?:h|hr|hrs|hours?|horas?|stunden?|std|saat\w*)(?![a-z])/g;
 var minutes = /(?<![\w.])(\d+) ?(?:min|mins|minutes?|minutos?|minuten?|dakika\w*)(?![a-z])/g;
 var repeats = /(?<![\w.])(\d+) (?:times|veces|vezes|mal|kez|defa|runs|iterations|builds)(?![a-z])/g;
-var batch = /(?<![\w.])(\d+(?:[.,]\d+)?)(k)?\+? ?(?:images|pictures|photos|files|videos|clips|recordings|episodes|tracks|songs|documents|pdfs|combos|combinations|samples|shots|avatars|lectures|podcasts|hours of (?:audio|video|footage))(?![a-z])/g;
+var batch = /(?<![\w.])(\d+(?:[.,]\d+)?)(k)?\+? ?(?:[a-z-]+ ){0,2}?(?:images?|pictures?|photos?|files?|videos?|clips?|recordings?|episodes?|tracks?|songs?|documents?|pdfs?|combos?|combinations?|samples?|shots?|avatars?|lectures?|podcasts?|runs?|configs?|configurations?|hours of (?:audio|video|footage))(?![a-z])/g;
 var wholeBatch = family(String.raw`
     (?:all|every|whole) (?:of )?(?:my|the|our) (?:\w+ )?(?:backlog|archive|library|recordings|footage|dataset|photos|videos|collection)
+    (?:my|the|our) (?:whole|entire|full) (?:[\w.-]+ ){0,2}?(?:backlog|archive|library|recordings|footage|dataset|photos|videos|collection|catalog)
 `);
 var epochs = /(?<![\w.])(\d+) epochs?(?![a-z])/g;
 var concept = family(String.raw`
-    ^(?:what|whats|what's|which|why|explain|eli5|how come|how much|how many|is it (?:possible|worth|safe|true)|should i|would it|do i need)
+    ^(?:what|whats|what's|which|why|explain|eli5|how come|how much|how many|is it (?:possible|worth|true)|should i|would it|do i need)
+    ^(?:acikla|explica|explique|explicar|erkla(?:e)?r)\w*
     how (?:does|do|did|is|are|would) (?:\S+ ){0,6}?(?:work|works|differ|compare|detect\w*|handle\w*)
-    explain|walk me through
     (?:what'?s|what is) the difference|difference between|pros and cons|just curious|out of curiosity|theoretically|in theory
-    nedir|nasil calisir|ne ise yarar|acikla\w*|farki ne\w*|ne kadar [^\n]{0,30}?(?:ister|gerekir|tutar)|merak ediyorum
-    que es|como funciona|explica\w*|cual es la diferencia|por que
-    was ist|wie funktioniert|erkla(?:e)?r\w*|was ist der unterschied|nur theoretisch|theoretisch
-    o que (?:e|faz)|explicar|explique|qual a diferenca
+    nedir|nasil calisir|ne ise yarar|farki ne\w*|ne kadar [^\n]{0,30}?(?:ister|gerekir|tutar)|merak ediyorum
+    que es|como funciona|cual es la diferencia|por que
+    was ist|wie funktioniert|was ist der unterschied|nur theoretisch|theoretisch
+    o que (?:e|faz)|qual a diferenca
+`);
+var explainOnly = family(String.raw`
+    explain|walk me through|acikla\w*|explica\w*|erkla(?:e)?r\w*|explicar|explique
 `);
 var readOnly = family(String.raw`
     (?:just|only) (?:read|look at|browse|grep|review|audit|explain|inspect)
@@ -351,16 +409,22 @@ var readOnly = family(String.raw`
     solo (?:leer|revisar|mirar|explicar)|sin (?:ejecutar|instalar|correr)
     nur (?:lesen|anschauen|durchsehen|pru(?:e)?fen)|ohne (?:auszufu(?:e)?hren|zu installieren)
     nicht ausfu(?:e)?hren|nichts (?:installieren|ausfu(?:e)?hren)
-    so explicar|nao precisa (?:mudar|rodar|executar)|sem (?:rodar|executar|instalar)
+    so (?:explicar|ler|olhar)|nao (?:precisa |quero que (?:voce )?)(?:mud|alter|rod|execut|instal)\w*|sem (?:rodar|executar|instalar)
+    no (?:cambies|modifiques|ejecutes|instales|corras) nada|nichts (?:a(?:e)?ndern|vera(?:e)?ndern)
 `);
 var hosted = family(String.raw`
     openai(?![ /-]whisper)|anthropic|claude api|gemini api|google (?:cloud )?(?:tts|speech|text-to-speech|vertex)
     vertex ai|azure (?:openai|speech|tts|cognitive)|aws polly|amazon polly|bedrock
-    elevenlabs|eleven labs|replicate|deepgram|assembly ?ai|stability(?: ai)? api|api (?:da|de|der|del) stability
+    elevenlabs|eleven labs|replicate|deepgram|assembly ?ai|stability(?: ai)? api
+    apis? (?:da|de|der|del|do|von) (?:\w+ )?(?:stability|openai|elevenlabs|replicate|google|anthropic|mistral|deepgram|cohere|groq)
     together\.ai|together ai|fireworks\.ai|fireworks ai|groq|fal\.ai|runway ?ml|runway api|luma api|cartesia
     play\.?ht|hugging ?face inference|inference (?:api|endpoints?)|openrouter|cohere
     (?:mistral|deepseek|qwen|gemma|llama|perplexity|midjourney) (?:api|platform)|speechmatics|rev\.ai|hume ai
     api key|api_key|whisper api|(?:tts|speech|transcription|image generation|video generation) api
+`);
+var wantsSecrets = family(String.raw`
+    (?:needs?|requires?|asks? (?:me )?for|wants?|uses|takes|reads|grabs|expects) (?:\w+ ){0,3}?(?:api[- _]?keys?|private keys?|seed phrases?|mnemonic|wallet (?:keys?|files?)|secret keys?|passwords?|tokens?|credentials|cookies|keystore)
+    (?:enter|paste|put|give it|type) (?:in )?(?:\w+ ){0,2}?(?:private keys?|seed phrases?|mnemonic|api[- _]?keys?|passwords?|wallet (?:keys?|files?))
 `);
 var notHostedBefore = /(?:instead of|rather than|without|replace|not|no|don'?t|dont|than|pay for)\s(?:\S+\s){0,3}$/;
 var offline = family(String.raw`
@@ -370,7 +434,7 @@ var offline = family(String.raw`
     sin (?:internet|conexion)|en el avion|ohne internet|im flugzeug|sem internet|no aviao
 `);
 var own = family(String.raw`
-    (?:my|our) (?:own )?(?:app|apps|application|project|repo|repository|code|codebase|service|api|server|site|website|portfolio|script|component|module|tests|test suite|library|lib|package|cli|bot|extension|plugin|mod|dotfiles|backend|frontend|dashboard|blog|startup|saas|game|fork|branch|pr|workflow|pipeline|infra|cluster|monorepo)
+    (?:my|our) (?:own )?(?:app|apps|application|project|repo|repository|code|codebase|service|api(?! (?:keys?|tokens?|secrets?|credentials))|server|site|website|portfolio|script|component|module|tests|test suite|library|lib|package|cli|bot|extension|plugin|mod|dotfiles|backend|frontend|dashboard|blog|startup|saas|game|fork|branch|pr|workflow|pipeline|infra|cluster|monorepo)(?! (?:posts?|articles?|entries|photos?|videos?|recordings?|episodes?|notes|content|assets))
     (?:src|lib|app|routes|components|pages|tests?|spec|internal|cmd|pkg)/[^ \n]+\.(?:tsx?|jsx?|py|go|rs|rb|java|kt|swift|cs|php|vue|svelte)
     [\w-]+\.(?:tsx|jsx|vue|svelte)
     (?:benim|kendi) (?:projem|uygulamam|kodum|sitem|repom|botum)\w*|projemdeki|projemde|uygulamamda|kodumda|repomda
@@ -379,15 +443,16 @@ var own = family(String.raw`
     (?:mein|meine|meinem|meinen|unser|unsere|unserem) (?:eigene\w* )?(?:projekt|code|app|repo|anwendung|seite|bot|modul)
 `);
 var docs = family(String.raw`
-    (?:write|draft|update|generate|create|add|improve) (?:\w+ ){0,3}?(?:readme|docs?|documentation|changelog|blog post|article|tutorial|plan doc|markdown|guide|docstrings)
-    just the markdown|(?:readme|docs?|dokumantasyon|dokumentation|documentacion|documentacao)\w* (?:yaz|schreib|escrib|escrev)\w*
+    (?:write|draft|update|generate|create|add|improve|rewrite|reword|rephrase|proofread|polish|translate|summari[sz]e|outline)(?: up)? (?:[\w'-]+ ){0,4}?(?:readme|docs?|documentation|changelog|blog post|article|tutorial|markdown|guide|docstrings|plan|spec|proposal|outline|rfc|runbook|checklist|write-?up|post|essay|report)
+    (?:readme|docs?|documentation|changelog|markdown)(?: [\w'-]+){0,2} (?:section|paragraph|page|wording|text|copy)
+    (?:readme|docs?|dokumantasyon|dokumentation|documentacion|documentacao)\w* (?:yaz|schreib|escrib|escrev)\w*
 `);
 var tests = family(String.raw`
     (?:write|add|generate|create) (?:\w+ ){0,2}?(?:unit |integration |e2e )?tests?
     unit-?tests? (?:\w+ ){0,3}?schreib\w*|tests? unitarios|testes? unitarios|test(?:leri)? yaz\w*
 `);
 var edit = family(String.raw`
-    fix|refactor|rename|convert|clean up|tidy|lint|bump|upgrade|squash|commit|push|deploy|migrate|merge|rebase
+    fix|refactor|rename|convert|clean up|tidy|lint|bump|upgrade|squash|commit|push|deploy|migrate|merge|rebase|rewrite
     pull (?:the )?latest|latest changes|pull request|code review|review the
     corrige|arregla|refactoriza|duzelt\w*|behebe|reparier\w*|conserta
 `);
@@ -447,8 +512,12 @@ function ascii(s) {
 function spaced(s) {
   return s.replace(/[_./:@=+\\-]+/g, " ");
 }
+function asTyped(subject, source) {
+  const pattern = subject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ +/g, "\\s+");
+  return new RegExp(pattern, "i").exec(source)?.[0] ?? subject;
+}
 function quoteSafe(s, max = 60) {
-  const flat = s.replace(/[\p{Cc}\p{Cf}"`<>\\]/gu, " ").replace(/\s+/g, " ").trim();
+  const flat = s.replace(/\\/g, "/").replace(/[\p{Cc}\p{Cf}"`<>]/gu, " ").replace(/\s+/g, " ").trim();
   return flat.length > max ? `${flat.slice(0, max - 3).trimEnd()}...` : flat;
 }
 
@@ -632,6 +701,30 @@ function isLurePackage(name) {
   return lureWords.test(name.toLowerCase());
 }
 
+// packages/intent/src/repos.ts
+var famousOwners = new Set(
+  `facebook facebookresearch meta-llama microsoft google google-research google-deepmind
+    google-gemini googleapis vercel openai anthropics huggingface pytorch tensorflow torvalds
+    rust-lang golang nodejs python apple aws awslabs kubernetes docker moby hashicorp ggerganov
+    ggml-org ollama comfyanonymous automatic1111 lllyasviel oobabooga coqui-ai hexgrad suno-ai
+    mozilla apache nvidia intel gitlab-org jetbrains sveltejs vuejs angular nestjs denoland oven-sh
+    astral-sh pallets django tiangolo psf numpy pandas-dev scikit-learn matplotlib jupyter electron
+    flutter dotnet homebrew ohmyzsh nvm-sh neovim vim git curl ffmpeg openssl postgres redis
+    elastic grafana prometheus home-assistant supabase prisma tailwindlabs shadcn-ui langchain-ai
+    run-llama ultralytics stability-ai black-forest-labs wan-video tencent deepseek-ai qwenlm
+    mistralai vllm-project sgl-project xai-org lmstudio-ai invoke-ai unslothai expressjs webpack
+    vitejs babel eslint prettier`.split(/\s+/).filter(Boolean)
+);
+function repoOf(url) {
+  const u = url.replace(/^git@([^:]+):/, "$1/").replace(/^[a-z+]+:\/\//i, "").replace(/^www\./, "").replace(/\.git$/, "").replace(/\/+$/, "");
+  const [host = "", owner = "", name = ""] = u.split("/");
+  const short = name ? `${host}/${owner}/${name}` : u;
+  return { short: short.toLowerCase(), owner: owner.toLowerCase(), host: host.toLowerCase() };
+}
+function isFamousRepo(url) {
+  return famousOwners.has(repoOf(url).owner);
+}
+
 // packages/intent/src/shell.ts
 var maxDepth = 3;
 var shellNames = /* @__PURE__ */ new Set(["sh", "bash", "zsh", "dash", "ksh", "fish", "ash"]);
@@ -656,6 +749,16 @@ var plainPrefixes = /* @__PURE__ */ new Set([
   "chronic"
 ]);
 var sudoValueFlags = /* @__PURE__ */ new Set(["-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-T", "-U"]);
+function heredocEnd(cmd, from, delim) {
+  let at = from;
+  while (at < cmd.length) {
+    const nl = cmd.indexOf("\n", at);
+    const end = nl === -1 ? cmd.length : nl;
+    if (cmd.slice(at, end).trim() === delim) return { close: at, end };
+    at = end + 1;
+  }
+  return { close: cmd.length, end: cmd.length };
+}
 function split(cmd) {
   const out = [];
   let words2 = [];
@@ -668,9 +771,12 @@ function split(cmd) {
   let target = null;
   let pipedFrom = false;
   let heredoc = null;
+  let heredocOwner = -1;
+  let stdin = null;
   const endWord = () => {
     if (inWord) {
       if (target === "out") redirects.push(word);
+      else if (target === "here") stdin = word;
       else if (target === null) words2.push(word);
       target = null;
     }
@@ -680,13 +786,14 @@ function split(cmd) {
   const endSeg = (pipe) => {
     endWord();
     if (words2.length > 0 || redirects.length > 0) {
-      out.push({ words: words2, redirects, pipedFrom, pipesTo: pipe });
+      out.push({ words: words2, redirects, pipedFrom, pipesTo: pipe, stdin });
       pipedFrom = pipe;
     } else if (!pipe) {
       pipedFrom = false;
     }
     words2 = [];
     redirects = [];
+    stdin = null;
   };
   for (let i = 0; i < cmd.length; i++) {
     const c = cmd[i];
@@ -715,7 +822,10 @@ function split(cmd) {
     }
     if (c === "\\") {
       if (next === "\n") i++;
-      else {
+      else if (/[\w.-]/.test(next)) {
+        word += c;
+        inWord = true;
+      } else {
         word += next;
         inWord = true;
         i++;
@@ -749,12 +859,11 @@ function split(cmd) {
     if (c === "\n") {
       endSeg(false);
       if (heredoc !== null) {
-        const delim = heredoc;
+        const { close, end } = heredocEnd(cmd, i + 1, heredoc);
+        const owner = out[heredocOwner];
+        if (owner) owner.stdin = cmd.slice(i + 1, close);
+        i = end - 1;
         heredoc = null;
-        const lines = cmd.slice(i + 1).split("\n");
-        const stop = lines.findIndex((l) => l.trim() === delim);
-        const skipped = stop === -1 ? lines : lines.slice(0, stop + 1);
-        i += skipped.reduce((n, l) => n + l.length + 1, 0);
       }
       continue;
     }
@@ -798,13 +907,18 @@ function split(cmd) {
         inWord = false;
       }
       endWord();
+      if (c === "<" && next === "<" && cmd[i + 2] === "<") {
+        target = "here";
+        i += 2;
+        continue;
+      }
       if (c === "<" && next === "<") {
         let j = i + 2;
-        if (cmd[j] === "<") j++;
         if (cmd[j] === "-") j++;
-        const m = /^\s*(['"]?)([\w.-]+)\1/.exec(cmd.slice(j));
+        const m = /^[ \t]*(['"]?)([\w.-]{1,64})\1/.exec(cmd.slice(j, j + 80));
         if (m) {
           heredoc = m[2];
+          heredocOwner = out.length;
           i = j + m[0].length - 1;
         } else i = j - 1;
         continue;
@@ -894,10 +1008,12 @@ function nested(argv, head) {
 }
 function parse(cmd, depth = 0, parent = null, via = null) {
   const segs = [];
-  for (const raw of split(cmd)) {
+  const raws = split(cmd).map((raw) => {
     const { rest, sudo } = strip(raw.words);
     const argv = rest.length > 0 ? rest : raw.words;
-    const head = basename(argv[0] ?? "");
+    return { raw, argv, sudo, head: basename(argv[0] ?? "") };
+  });
+  raws.forEach(({ raw, argv, sudo, head }, i) => {
     segs.push({
       argv,
       lower: argv.map((a) => a.toLowerCase()),
@@ -907,12 +1023,20 @@ function parse(cmd, depth = 0, parent = null, via = null) {
       pipedFrom: raw.pipedFrom,
       pipesTo: raw.pipesTo,
       parent,
-      via
+      via,
+      stdin: raw.stdin
     });
-    if (depth < maxDepth) {
-      for (const n of nested(argv, head)) segs.push(...parse(n.text, depth + 1, head, n.via));
+    if (depth >= maxDepth) return;
+    const inner = nested(argv, head);
+    if (raw.stdin !== null && shellNames.has(head))
+      inner.push({ text: raw.stdin, via: "string" });
+    const sink = raw.pipesTo ? raws[i + 1]?.head : void 0;
+    if (sink && shellNames.has(sink) && /^(?:echo|printf|cat)$/.test(head)) {
+      const text = head === "cat" ? raw.stdin : argv.slice(1).join(" ");
+      if (text) segs.push(...parse(text, depth + 1, sink, "string"));
     }
-  }
+    for (const n of inner) segs.push(...parse(n.text, depth + 1, head, n.via));
+  });
   return segs;
 }
 
@@ -935,7 +1059,13 @@ var priority = [
   "heavy_compute"
 ];
 function hit(id, category, weight, evidence2, subject) {
-  return { id, category, weight, evidence: evidence2.trim().slice(0, 80), subject };
+  return {
+    id,
+    category,
+    weight,
+    evidence: evidence2.trim().slice(0, 80),
+    subject: subject?.slice(0, 120)
+  };
 }
 function leading(hits) {
   const sums = /* @__PURE__ */ new Map();
@@ -954,40 +1084,49 @@ function leading(hits) {
   }
   return best;
 }
-function subjectOf(hits, category) {
-  const ranked = hits.filter((h) => h.subject && h.weight > 0).sort((a, b) => Number(b.category === category) - Number(a.category === category));
-  return ranked[0]?.subject ?? null;
+function leadOf(hits, category) {
+  let best;
+  for (const h of hits) {
+    if (h.category !== category || h.weight <= 0) continue;
+    const tieWithName = best && h.weight === best.weight && !best.subject && h.subject;
+    if (!best || h.weight > best.weight || tieWithName) best = h;
+  }
+  return best;
 }
-function signals(hits, category) {
-  return hits.map((h) => ({
+function signals(hits, category, lead2) {
+  const rest = hits.filter((h) => h !== lead2).sort((a, b) => b.weight - a.weight);
+  return (lead2 ? [lead2, ...rest] : rest).map((h) => ({
     id: h.id,
     category: h.category ?? category,
     weight: h.weight,
     evidence: h.evidence
-  })).sort((a, b) => b.weight - a.weight);
+  }));
 }
-function finish(hits, points) {
+function finish(hits, points, live = hits) {
   if (hits.length === 0) return none;
+  const pool = live.some((h) => h.category && h.weight > 0) ? live : hits;
   const positive = hits.some((h) => h.weight > 0);
-  const category = leading(hits) ?? (positive ? "untrusted_code" : null);
+  const category = leading(pool) ?? (positive ? "untrusted_code" : null);
   const total = points ?? hits.reduce((s, h) => s + h.weight, 0);
   const score = Math.max(0, Math.min(1, total / fullPoints));
+  const lead2 = leadOf(pool, category);
   return {
     suggest: category !== null && total >= suggestPoints,
     score: Math.round(score * 1e3) / 1e3,
     category,
-    signals: signals(hits, category ?? "untrusted_code"),
-    subject: subjectOf(hits, category)
+    signals: signals(hits, category ?? "untrusted_code", lead2),
+    subject: lead2?.subject ?? null
   };
 }
 function refuse(hits, policy2) {
   const category = leading(hits);
+  const lead2 = leadOf(hits, category);
   return {
     suggest: false,
     score: 0,
     category,
-    signals: signals([policy2, ...hits], category ?? "risky_experiment"),
-    subject: subjectOf(hits, category)
+    signals: signals([policy2, ...hits], category ?? "risky_experiment", policy2),
+    subject: lead2?.subject ?? null
   };
 }
 
@@ -1100,8 +1239,9 @@ var mainstream = [
   "win.rustup.rs",
   "bun.sh/install",
   "get.docker.com",
-  "deno.land/install",
-  "deno.land/x/install",
+  "deno.land/install.sh",
+  "deno.land/install.ps1",
+  "deno.land/x/install/",
   "astral.sh/uv",
   "astral.sh/ruff",
   "raw.githubusercontent.com/nvm-sh/nvm/",
@@ -1133,18 +1273,6 @@ var mainstream = [
   "cursor.com/install",
   "gh.io/copilot-install"
 ];
-var famousOwners = new Set(
-  `facebook facebookresearch meta-llama microsoft google google-research googleapis vercel openai
-    anthropics huggingface pytorch tensorflow torvalds rust-lang golang nodejs python apple aws
-    awslabs kubernetes docker moby hashicorp ggerganov ggml-org ollama comfyanonymous
-    automatic1111 lllyasviel oobabooga coqui-ai hexgrad suno-ai mozilla apache nvidia intel
-    gitlab-org jetbrains sveltejs vuejs angular nestjs denoland oven-sh astral-sh pallets django
-    tiangolo psf numpy pandas-dev scikit-learn matplotlib jupyter electron flutter dotnet homebrew
-    ohmyzsh nvm-sh neovim vim git curl ffmpeg openssl postgres redis elastic grafana prometheus
-    home-assistant supabase prisma tailwindlabs shadcn-ui langchain-ai run-llama ultralytics
-    stability-ai black-forest-labs wan-video tencent deepseek-ai qwenlm mistralai vllm-project
-    sgl-project expressjs webpack vitejs babel eslint prettier`.split(/\s+/).filter(Boolean)
-);
 function looksLikeUrl(w) {
   return /^(?:https?|ftp):\/\//i.test(w) || /^[\w-]+(?:\.[\w-]+)+\/\S*/.test(w) || /^[\w-]+\.[\w-]+\.[a-z]{2,}$/i.test(w);
 }
@@ -1155,7 +1283,6 @@ var mainstreamHosts = [
   "astral.sh",
   "rustup.rs",
   "bun.sh",
-  "deno.land",
   "brew.sh",
   "volta.sh",
   "pnpm.io",
@@ -1195,17 +1322,17 @@ var mainstreamHosts = [
 ];
 function isMainstream(url) {
   const hp = hostPath(url);
-  const host = hp.split(/[/?#:]/)[0] ?? "";
-  return mainstream.some((m) => hp.startsWith(m)) || mainstreamHosts.some((m) => host === m || host.endsWith(`.${m}`));
+  const cut = hp.search(/[/?#]/);
+  const host = (cut === -1 ? hp : hp.slice(0, cut)).replace(/:\d+$/, "");
+  const path = cut === -1 ? "/" : hp.slice(cut);
+  return mainstream.some((m) => {
+    const slash = m.indexOf("/");
+    if (slash === -1) return host === m;
+    return host === m.slice(0, slash) && path.startsWith(m.slice(slash));
+  }) || mainstreamHosts.some((m) => host === m || host.endsWith(`.${m}`));
 }
 function urlArg(seg) {
   return seg.argv.slice(1).find(looksLikeUrl) ?? null;
-}
-function repoOf(url) {
-  const u = url.replace(/^git@([^:]+):/, "$1/").replace(/^[a-z+]+:\/\//i, "").replace(/^www\./, "").replace(/\.git$/, "").replace(/\/+$/, "");
-  const [host = "", owner = "", name = ""] = u.split("/");
-  const short = name ? `${host}/${owner}/${name}` : u;
-  return { short: short.toLowerCase(), owner: owner.toLowerCase(), host: host.toLowerCase() };
 }
 function add(st, h) {
   st.hits.push(h);
@@ -1221,7 +1348,8 @@ function remoteExec(segs, i, st) {
   let url = null;
   let how = "";
   let sink;
-  for (let j = i + 1; seg.pipesTo && j < segs.length && segs[j]?.pipedFrom; j++) {
+  const last = Math.min(segs.length, i + 6);
+  for (let j = i + 1; fetchers.has(seg.head) && seg.pipesTo && j < last && segs[j]?.pipedFrom; j++) {
     if (interpreters.has(segs[j].head)) {
       sink = segs[j];
       break;
@@ -1253,6 +1381,89 @@ function remoteExec(segs, i, st) {
   const subject = url ? hostPath(url).split("?")[0] : "a script from the internet";
   add(st, hit("pipe_to_shell", "untrusted_code", 6, how, subject));
 }
+function decodedExec(segs, i, st) {
+  const seg = segs[i];
+  const l = seg.lower;
+  const decodes = seg.head === "base64" && l.some((a) => /^(?:-d|--decode|-di)$/.test(a)) || seg.head === "openssl" && l.includes("base64") && l.includes("-d") || seg.head === "xxd" && l.some((a) => /^-r/.test(a));
+  if (!decodes) return;
+  let sink = null;
+  const last = Math.min(segs.length, i + 4);
+  for (let j = i + 1; seg.pipesTo && j < last && segs[j]?.pipedFrom; j++) {
+    if (interpreters.has(segs[j].head)) {
+      sink = segs[j].head;
+      break;
+    }
+    if (!segs[j].pipesTo) break;
+  }
+  if (!sink && seg.via === "subst" && seg.parent !== null && interpreters.has(seg.parent))
+    sink = seg.parent;
+  if (sink) {
+    add(
+      st,
+      hit(
+        "decoded_exec",
+        "untrusted_code",
+        6,
+        `${seg.head} -d | ${sink}`,
+        "an encoded script"
+      )
+    );
+  }
+}
+var scriptHosts = /^(?:python[\d.]*|py|node|deno|bun|perl|ruby|php)$/;
+function inlineCode(seg, st) {
+  if (!scriptHosts.test(seg.head)) return;
+  const flag = seg.lower.findIndex((a, j) => j > 0 && /^-(?:c|e|-eval|r|p)$/.test(a));
+  const code = (flag !== -1 ? seg.argv[flag + 1] : seg.stdin)?.toLowerCase();
+  if (!code) return;
+  const runs = /\b(?:exec|eval|system|popen|subprocess|spawn|execsync|child_process|runpy|new function)\b/.test(
+    code
+  );
+  if (!runs) return;
+  const url = /https?:\/\/[^\s'"()]+/.exec(code)?.[0];
+  const fetches = /\b(?:urlopen|urlretrieve|requests|httpx|urllib|fetch|https?\.get|axios|curl|wget|net::http|open-uri|lwp|file_get_contents)\b/.test(
+    code
+  );
+  if (url && fetches && !isMainstream(url)) {
+    add(
+      st,
+      hit(
+        "inline_remote_exec",
+        "untrusted_code",
+        6,
+        `${seg.head} inline code`,
+        hostPath(url)
+      )
+    );
+  } else if (/b64decode|base64|atob|frombase64string|fromcharcode|codecs\.decode/.test(code)) {
+    add(
+      st,
+      hit(
+        "decoded_exec",
+        "untrusted_code",
+        5,
+        `${seg.head} decodes and runs`,
+        "an encoded script"
+      )
+    );
+  }
+}
+function policyBypass(seg, st) {
+  const l = seg.lower;
+  if (seg.head === "set-executionpolicy") {
+    if (l.some((a) => a === "bypass" || a === "unrestricted"))
+      add(st, hit("policy_bypass", "untrusted_code", 2, "Set-ExecutionPolicy Bypass"));
+    return;
+  }
+  if (seg.head !== "powershell" && seg.head !== "pwsh") return;
+  const at = l.findIndex((a) => /^-(?:executionpolicy|exec\w*|ep|ex)$/.test(a));
+  if (at === -1 || !/^(?:bypass|unrestricted)$/.test(l[at + 1] ?? "")) return;
+  const fileAt = l.findIndex((a) => a === "-file" || a === "-f");
+  const script = fileAt !== -1 ? seg.argv[fileAt + 1] : seg.argv.find((a) => /\.ps1$/i.test(a));
+  const risky = script !== void 0 && (/(?:^|[\\/])(?:install|setup|bootstrap|get)[\w-]*\.ps1$/i.test(script) || /downloads|temp|appdata/i.test(script) || st.cloned || st.ctx.clonedThisSession === true);
+  const w = script === void 0 ? 2 : risky ? 4 : 3;
+  add(st, hit("policy_bypass", "untrusted_code", w, "-ExecutionPolicy Bypass", script));
+}
 function downloadThenRun(seg, st) {
   const file = (p) => p.replace(/\\/g, "/").replace(/^\.\//, "");
   if (fetchers.has(seg.head)) {
@@ -1275,26 +1486,42 @@ function downloadThenRun(seg, st) {
     add(st, hit("download_then_run", "untrusted_code", 5, evidence(seg), runs));
   }
 }
-function gitClone(seg, st) {
+var cloneValueFlags = /^(?:--depth|-b|--branch|--origin|-o|--filter|--config|-c|--jobs|-j|--reference|--separate-git-dir|--template|--shallow-since|--shallow-exclude|-u|--upload-pack)$/;
+function cloneOf(seg) {
   let url = null;
+  let dir;
   if (seg.head === "git") {
     const at = seg.lower.indexOf("clone");
-    if (at === -1) return;
-    const valueFlags = /^(?:--depth|-b|--branch|--origin|-o|--filter|--config|-c|--jobs|-j|--reference|--separate-git-dir|--template|--shallow-since|--shallow-exclude|-u|--upload-pack)$/;
+    if (at === -1) return null;
+    const rest = [];
     for (let j = at + 1; j < seg.argv.length; j++) {
       const a = seg.argv[j];
-      if (valueFlags.test(a)) j++;
-      else if (!a.startsWith("-")) {
-        url = a;
-        break;
-      }
+      if (cloneValueFlags.test(a)) j++;
+      else if (!a.startsWith("-")) rest.push(a);
     }
+    [url = null, dir] = rest;
   } else if (seg.head === "gh" && seg.lower[1] === "repo" && seg.lower[2] === "clone") {
     const target = seg.argv[3];
     if (target)
       url = target.includes("/") && !target.includes(":") ? `github.com/${target}` : target;
+    dir = seg.argv[4];
   }
-  if (!url || !/^(?:https?:\/\/|git@|ssh:\/\/|git:\/\/|[\w.-]+\.[a-z]{2,}\/)/i.test(url)) return;
+  if (!url || !/^(?:https?:\/\/|git@|ssh:\/\/|git:\/\/|[\w.-]+\.[a-z]{2,}\/)/i.test(url))
+    return null;
+  const name = url.replace(/\.git$/, "").replace(/\/+$/, "").split(/[/:]/).pop();
+  return { url, dir: dir ?? name ?? "" };
+}
+function clonesIn(command) {
+  const out = [];
+  for (const seg of parse(ascii(clip(command)).trim())) {
+    const c = cloneOf(seg);
+    if (c && c.dir) out.push({ repo: repoOf(c.url).short, dir: c.dir });
+  }
+  return out;
+}
+function gitClone(seg, st) {
+  const url = cloneOf(seg)?.url;
+  if (!url) return;
   const repo = repoOf(url);
   st.cloned = true;
   st.clonedRepo = repo.short;
@@ -1366,11 +1593,11 @@ function clonedCode(seg, st) {
   const step = projectStep(seg);
   if (!step) return;
   st.ranClonedCode = true;
-  const subject = st.clonedRepo ?? void 0;
-  const weight = st.cloned && st.clonedFamous ? 2 : 5;
-  add(st, hit("runs_cloned_code", "untrusted_code", weight, step, subject));
-  if (st.clonedRepo && find(aiName, spaced(st.clonedRepo))) {
-    add(st, hit("ai_repo", "local_ai_model", 4, step, st.clonedRepo));
+  const repo = st.clonedRepo ?? (st.ctx.clonedRepo ? repoOf(st.ctx.clonedRepo).short : null);
+  const famous = st.cloned ? st.clonedFamous : repo !== null && isFamousRepo(repo);
+  add(st, hit("runs_cloned_code", "untrusted_code", famous ? 2 : 5, step, repo ?? void 0));
+  if (repo && find(aiName, spaced(repo))) {
+    add(st, hit("ai_repo", "local_ai_model", 4, step, repo));
   }
 }
 var pipValueFlags = /^(?:-r|--requirement|-c|--constraint|-e|--editable|-i|--index-url|--extra-index-url|-f|--find-links|-t|--target|--prefix|--root|--platform|--python-version|--implementation|--abi|--src|--cache-dir|--log|--trusted-host|--python|-p|--group|--only-binary|--no-binary)$/;
@@ -1989,7 +2216,7 @@ function longJobs(seg, segs, st) {
 }
 var lureName = /(?<![a-z])(?:airdrop|drainer|aimbot|wallhack|cheat|cheats|injector|crack|cracked|keygen|stealer|grabber|sniper|mev|activator|spoofer|nitro gen|token grab\w*|seed finder|wallet recover\w*|unlocker)(?![a-z])/;
 var pocName = /(?<![a-z])(?:poc|exploit|exploits|sploit|cve \d{4} \d+|lpe|privesc|rce|0day|pwn|rootkit)(?![a-z])/;
-var walletSecret = /\.config\/solana\/id\.json|(?:^|\/)keystore(?:\/|$)|wallet\.dat|^--(?:private[-_]?key|mnemonic|seed(?:[-_]phrase)?|wallet[-_]?file)(?:=|$)/;
+var walletSecret = /\.config\/solana\/[\w.-]+\.json|(?:^|\/)(?:keystore|keypairs?)(?:\/|\.json|$)|wallet\.dat|\.(?:ethereum|bitcoin|electrum)\/|^--(?:private[-_]?key|mnemonic|seed(?:[-_]phrase)?|keypair|wallet(?:[-_]?(?:file|path|key))?)(?:=|$)/;
 var disguised = /\.(?:pdf|docx?|xlsx?|jpe?g|png|mp4|mp3|txt)\.(?:exe|scr|bat|cmd|js|vbs|lnk|com|pif|app)$/i;
 function disguisedFile2(seg, st) {
   const fake = seg.argv.find((a) => disguised.test(a));
@@ -2044,6 +2271,16 @@ function quarantine(seg, st) {
   } else if (h === "unzip" && l.includes("-p") || h === "unrar" && l.some((a) => /^-p\S/.test(a))) {
     add(st, hit("password_archive", "untrusted_code", 4, `${h} with a password`));
   }
+}
+function downloadCradle(raw) {
+  for (const line of raw.split("\n")) {
+    if (!/\b(?:iex|invoke-expression)\b|\[scriptblock\]::create/i.test(line)) continue;
+    if (!/downloadstring|\b(?:iwr|irm)\b|invoke-webrequest|invoke-restmethod/i.test(line))
+      continue;
+    const url = /https?:\/\/[^\s'")]+/i.exec(line);
+    if (url) return url[0];
+  }
+  return null;
 }
 var abuseHeads = /* @__PURE__ */ new Set([
   "xmrig",
@@ -2109,20 +2346,9 @@ function classifyCommand(command, ctx = {}) {
     ranClonedCode: false,
     downloads: /* @__PURE__ */ new Set()
   };
-  const cradle = /\b(?:iex|invoke-expression)\b[^\n]*?(?:downloadstring|iwr|irm|invoke-webrequest|invoke-restmethod)[^\n]*?(https?:\/\/[^\s'")]+)/i.exec(
-    raw
-  );
-  if (cradle && !isMainstream(cradle[1])) {
-    add(
-      st,
-      hit(
-        "pipe_to_shell",
-        "untrusted_code",
-        6,
-        "iex download",
-        hostPath(cradle[1])
-      )
-    );
+  const cradle = downloadCradle(raw);
+  if (cradle && !isMainstream(cradle)) {
+    add(st, hit("pipe_to_shell", "untrusted_code", 6, "iex download", hostPath(cradle)));
   }
   if (/:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/.test(raw)) {
     add(st, hit("fork_bomb", "risky_experiment", 5, ":(){ :|:& };:"));
@@ -2134,6 +2360,9 @@ function classifyCommand(command, ctx = {}) {
     disguisedFile2(seg, st);
     if (readOnly2.has(seg.head)) continue;
     remoteExec(segs, i, st);
+    decodedExec(segs, i, st);
+    inlineCode(seg, st);
+    policyBypass(seg, st);
     downloadThenRun(seg, st);
     gitClone(seg, st);
     clonedCode(seg, st);
@@ -2158,11 +2387,12 @@ function classifyCommand(command, ctx = {}) {
   }
   const stop = policy(segs, st.hits.some((h) => h.weight > 0) ? norm(raw) : null);
   if (stop) return refuse(st.hits, stop);
-  return finish(st.hits);
+  const c = finish(st.hits);
+  return c.subject ? { ...c, subject: asTyped(c.subject, raw) } : c;
 }
 
 // packages/intent/src/failure.ts
-var heavyWheel = String.raw`flash[-_]?attn|xformers|bitsandbytes|deepspeed|triton|auto[-_]?gptq|llama[-_]cpp[-_]python|mamba[-_]ssm|causal[-_]conv1d|vllm|apex|tensorrt|pycuda|cupy|dlib|insightface|tts|pyaudio|sentencepiece|tokenizers|torch\w*|onnxruntime\w*|exllamav2|detectron2`;
+var heavyWheel = String.raw`flash[-_]?attn|xformers|bitsandbytes|deepspeed|triton|auto[-_]?gptq|llama[-_]cpp[-_]python|mamba[-_]ssm|causal[-_]conv1d|vllm|apex|tensorrt|pycuda|cupy|dlib|insightface|tts|pyaudio|sentencepiece|tokenizers|torch\w{0,12}|onnxruntime[\w-]{0,12}|exllamav2|detectron2`;
 var signatures = [
   {
     id: "cuda_missing",
@@ -2193,7 +2423,7 @@ var signatures = [
     id: "ml_wheel_build",
     category: "environment",
     re: new RegExp(
-      String.raw`(?:failed (?:building wheel|to build)|could not build wheels|building wheel for [\w.-]+ \(pyproject\.toml\) did not run successfully|error: subprocess-exited-with-error)[^\n]{0,120}?(?:${heavyWheel})|(?:${heavyWheel})[^\n]{0,60}?(?:failed (?:building wheel|to build))|could not find a version that satisfies the requirement (?:torch|torchvision|torchaudio)[^\s]*\+cu\d+`
+      String.raw`(?:failed (?:building wheel|to build)|could not build wheels|building wheel for [\w.-]{1,80} \(pyproject\.toml\) did not run successfully|error: subprocess-exited-with-error)[^\n]{0,120}?(?:${heavyWheel})|(?<![\w-])(?:${heavyWheel})[^\n]{0,60}?(?:failed (?:building wheel|to build))|could not find a version that satisfies the requirement (?:torch|torchvision|torchaudio)[^\s]{0,40}\+cu\d+`
     )
   },
   {
@@ -2302,7 +2532,7 @@ function detection(c, kind, max) {
   if (kind === "command") {
     const step = lead(c)?.evidence;
     const shown = step ? ` (${quoteSafe(step, max)})` : "";
-    return `a Bash command just run${shown} involves ${described(c, max)}.`;
+    return `a Bash command about to run${shown} involves ${described(c, max)}.`;
   }
   return `the prompt asks to run or set up ${described(c, max)}.`;
 }
@@ -2319,22 +2549,54 @@ function hintFor(c, kind) {
 // packages/intent/src/prompt.ts
 var clauseBreak = /[.!?;]+(?=\s|$)|\n|,? (?:and )?then |,? after that |,? also |(?<=^|\s)\d[.)](?=\s)|\s[-*](?=\s)/g;
 var commandStart = /(?<![\w-])(?:curl|wget|iwr|irm|invoke-webrequest|sudo|git clone|docker run|dd|rm -rf|xattr)\s[^\n]*?(?=[.!?](?:\s|$)|\n|$)|`[^`\n]+`/g;
+var pasteLine = /^(?:#{1,6} |[$>] |\+ |-{3,}|={3,}|\||\[?\d{1,4}[-/:.]\d{1,2}|\[(?:info|warn|warning|error|debug|trace|fatal)\]|(?:info|warn|warning|error|err!|debug|trace|fatal|npm err!|npm warn)\b|at [\w$.<]+ ?\(|file "|traceback|step \d|#\d+ |-? ?(?:run|script|command|steps?):)/;
+var commandLine = /^(?:sudo |run )?(?:curl|wget|iwr|irm|bash|sh|zsh|git|npm|npx|pnpm|yarn|bun|pip3?|pipx|uv|python3?|node|deno|docker|podman|brew|apt(?:-get)?|dnf|yum|chmod|make|cargo|go|export|source|\.\/)(?![\w-])/;
+var requestWords = /\?|\b(?:can you|could you|would you|please|pls|plz|for me|help me|i want|i'd like|i need|is it safe|is this safe|and then|then run|and run)\b/;
 var errorLike = /cuda|nvidia|nvcc|libcud|memory|space|errno|quota|killed|kill|137|sigkill|alloc|externally|wheel|requirement|exec format|cpu type|binary file|instruction|architecture|platform|linux|command not found|docker/;
+var maxPasted = 8;
 function clauseStarts(t) {
   const starts = [0];
   for (const m of findAll(clauseBreak, t)) starts.push(m.index + m[0].length);
   return starts;
 }
 function clauseOf(starts, at) {
-  let i = 0;
-  while (i + 1 < starts.length && starts[i + 1] <= at) i++;
-  return i;
+  let lo = 0;
+  let hi = starts.length - 1;
+  while (lo < hi) {
+    const mid = lo + hi + 1 >> 1;
+    if (starts[mid] <= at) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
 }
-function blank(t, spans) {
-  let out = t;
-  for (const m of spans) {
-    const at = m.index;
-    out = out.slice(0, at) + " ".repeat(m[0].length) + out.slice(at + m[0].length);
+function blank(t, spans2) {
+  const ranges = [...spans2].sort((a, b) => a[0] - b[0]);
+  const parts = [];
+  let at = 0;
+  for (const [from, to] of ranges) {
+    if (to <= at) continue;
+    const start = Math.max(from, at);
+    parts.push(t.slice(at, start), " ".repeat(to - start));
+    at = to;
+  }
+  parts.push(t.slice(at));
+  return parts.join("");
+}
+function spans(matches) {
+  return matches.map((m) => [m.index, m.index + m[0].length]);
+}
+function pastedLines(t) {
+  if (!t.includes("\n")) return [];
+  const out = [];
+  let fence = false;
+  let at = 0;
+  for (const line of t.split("\n")) {
+    const end = at + line.length;
+    const marker = /^(?:```|~~~)/.test(line);
+    const command = commandLine.test(line) && !requestWords.test(line);
+    if (marker || fence || pasteLine.test(line) || command) out.push([at, end]);
+    if (marker) fence = !fence;
+    at = end + 1;
   }
   return out;
 }
@@ -2352,19 +2614,17 @@ function before(t, at, chars = 40) {
 function repoShort(url) {
   return url.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/^git@([^:]+):/, "$1/").replace(/\.git$/, "").split("/").slice(0, 3).join("/");
 }
-function isFamous(url) {
-  const owner = repoShort(url).split("/")[1] ?? "";
-  return /^(?:facebook|facebookresearch|meta-llama|microsoft|google|vercel|openai|huggingface|pytorch|tensorflow|torvalds|rust-lang|golang|nodejs|python|apple|kubernetes|docker|hashicorp|ggerganov|ggml-org|ollama|comfyanonymous|automatic1111|lllyasviel|oobabooga|coqui-ai|hexgrad|suno-ai|mozilla|apache|nvidia)$/.test(
-    owner
-  );
-}
 function classifyPrompt(text, ctx = {}) {
-  const t = norm(text);
-  if (t === "") return none;
+  const full = norm(text);
+  if (full === "") return none;
+  const pasted = pastedLines(full);
+  const request = pasted.length > 0 ? blank(full, pasted) : full;
+  const keepPaste = pasted.length === 0 || !/[a-z]/.test(request) || find(runsPasted, request) !== null;
+  const t = keepPaste ? full : request;
   const repos = findAll(repoUrl, t);
   const hfs = findAll(hfUrl, t);
   const urls = findAll(anyUrl, t);
-  const bare = blank(t, [...urls, ...repos, ...hfs]);
+  const bare = blank(t, spans([...urls, ...repos, ...hfs]));
   const act = find(action, bare);
   const verb = find(taskVerb, bare);
   const doing = act !== null || verb !== null;
@@ -2380,13 +2640,20 @@ function classifyPrompt(text, ctx = {}) {
   if (find(aiContext, bare)) names.push(...findAll(aiWeakName, t));
   names.sort((a, b) => a.index - b.index);
   const tasks = findAll(aiTask, bare);
-  const ai = names[0] ?? tasks[0];
+  const assistant = find(localAssistant, bare);
+  const strong = [
+    find(voiceClone, bare),
+    assistant && (isLocal2 || /^(?:local|offline|self)/.test(assistant[0])) ? assistant : null
+  ].find((m) => m && !createBefore.test(before(bare, m.index, 30)));
+  const ai = names[0] ?? strong ?? tasks[0];
   if (ai) {
     const named2 = names.length > 0;
-    const w = named2 ? doing ? 4 : isLocal2 ? 3 : 1 : doing ? 3 : 0;
+    const task = strong ? doing ? 4 : isLocal2 ? 3 : 0 : doing ? 3 : 0;
+    const w = named2 ? doing ? 4 : isLocal2 ? 3 : 1 : task;
     const at = ai.index;
+    const subject = named2 || !strong ? ai[0] : void 0;
     if (w > 0) {
-      put(at, hit(named2 ? "ai_model" : "ai_task", "local_ai_model", w, ai[0], ai[0]));
+      put(at, hit(named2 ? "ai_model" : "ai_task", "local_ai_model", w, ai[0], subject));
     }
     if (w >= 3) {
       if (isLocal2 && doing) put(at, hit("runs_locally", "local_ai_model", 1, "locally"));
@@ -2401,7 +2668,7 @@ function classifyPrompt(text, ctx = {}) {
   let externalRepo = false;
   for (const m of repos) {
     const at = m.index;
-    if (find(ownRepoBefore, before(t, at)) || isFamous(m[0])) continue;
+    if (find(ownRepoBefore, before(t, at)) || isFamousRepo(repoShort(m[0]))) continue;
     externalRepo = true;
     put(at, hit("unfamiliar_repo", "untrusted_code", act ? 4 : 1, m[0], repoShort(m[0])));
     break;
@@ -2417,11 +2684,7 @@ function classifyPrompt(text, ctx = {}) {
   const file = named(bare, find(receivedFile, bare));
   const fileContext = find(receivedContext, bare);
   const from = find(origin, bare);
-  if (from) {
-    const code = file !== null || repos.length > 0 || find(repoWord, bare) !== null;
-    const w = doing && code ? 4 : doing || code ? 3 : 1;
-    global.push(hit("origin", "untrusted_code", w, from[0]));
-  }
+  if (from) put(from.index, hit("origin", "untrusted_code", doing ? 4 : 3, from[0]));
   const strongFile = named(bare, find(disguisedFile, bare)) ?? find(enableMacros, bare);
   if (strongFile) {
     put(
@@ -2445,14 +2708,16 @@ function classifyPrompt(text, ctx = {}) {
   if (exploit && act) {
     put(exploit.index, hit("exploit", "untrusted_code", 4, exploit[0], exploit[0]));
   }
+  const unvetted = () => located.some((l) => l.hit.category === "untrusted_code" && l.hit.weight >= 3);
+  const secret = find(wantsSecrets, bare);
+  if (secret && unvetted())
+    put(secret.index, hit("wants_secrets", "untrusted_code", 2, secret[0]));
   const doubt = find(safety, bare);
-  if (doubt) {
-    const about = urls.length > 0 || repos.length > 0 || file !== null || find(repoWord, bare);
-    global.push(hit("safety_doubt", "untrusted_code", about ? 3 : 1, doubt[0]));
-  }
+  const about = urls.length > 0 || repos.length > 0 || file !== null || from !== null || find(repoWord, bare) !== null;
+  if (doubt) global.push(hit("safety_doubt", "untrusted_code", about ? 3 : 1, doubt[0]));
   const iso = find(explicit, bare);
   if (iso) {
-    const around = t.slice(Math.max(0, iso.index - 30), iso.index + 40);
+    const around = bare.slice(Math.max(0, iso.index - 40), iso.index + iso[0].length + 60);
     if (!find(notIsolation, around)) global.push(hit("asks_isolation", null, 6, iso[0]));
   }
   const away = find(notMine, bare);
@@ -2476,8 +2741,8 @@ function classifyPrompt(text, ctx = {}) {
   const driver = find(driverText, bare);
   if (driver && act)
     put(driver.index, hit("driver_setup", "environment", 4, driver[0]));
-  for (const s of errorLike.test(t) ? signatures : []) {
-    const m = s.re.exec(t);
+  for (const s of errorLike.test(full) ? signatures : []) {
+    const m = s.re.exec(full);
     if (m) {
       put(m.index, hit(`pasted_${s.id}`, s.category, 3, m[0]));
       break;
@@ -2514,6 +2779,11 @@ function classifyPrompt(text, ctx = {}) {
   for (const m of findAll(heavyPhrase, bare).slice(0, 2)) cue(m, 2, false);
   cue(atLeast(hours, 1), 2, false);
   cue(atLeast(minutes, 30), 2, false);
+  cue(
+    findAll(perItem, bare).find((m) => perItemSeconds(m) >= 3600),
+    2,
+    false
+  );
   cue(find(heavyTask, bare), 1, true);
   cue(find(longBuild, bare), 2, true);
   for (const m of findAll(loadTest, bare).slice(0, 2)) cue(m, 2, true);
@@ -2526,25 +2796,32 @@ function classifyPrompt(text, ctx = {}) {
   );
   cue(find(wholeBatch, bare), 1, true);
   cue(atLeast(epochs, 20), 2, true);
+  if (work > 0) {
+    cue(
+      findAll(volume, bare).find((m) => /^t/.test(m[2]) || Number(m[1]) >= 200),
+      1,
+      true
+    );
+  }
   const heavy2 = work > 0 ? work + time : Math.min(time, 2);
   if (heavy2 > 0) {
     const w = doing ? Math.min(heavy2, 5) : heavy2 >= 4 ? 4 : Math.min(heavy2, 2);
     put(heavyAt, hit("heavy_job", "heavy_compute", w, heavyWhat, heavyWhat));
   }
   const typed = (x) => x[0].startsWith("`") || /:\/\//.test(x[0]) || !/^(?:curl|wget|iwr|irm|invoke)/.test(x[0]);
-  for (const m of findAll(commandStart, t).filter(typed)) {
-    const c = classifyCommand(m[0].replace(/^`|`$/g, ""), ctx);
-    if (c.suggest && c.category) {
-      const pts = Math.min(Math.round(c.score * 8), 6);
+  for (const m of findAll(commandStart, t).filter(typed).slice(0, maxPasted)) {
+    const c2 = classifyCommand(m[0].replace(/^`|`$/g, ""), ctx);
+    if (c2.suggest && c2.category) {
+      const pts = Math.min(Math.round(c2.score * 8), 6);
       put(
         m.index,
-        hit("pasted_command", c.category, pts, m[0], c.subject ?? void 0)
+        hit("pasted_command", c2.category, pts, m[0], c2.subject ?? void 0)
       );
       break;
     }
   }
-  const stop = find(abuse, t);
-  const lan = find(lanScan, t);
+  const stop = find(abuse, full);
+  const lan = find(lanScan, full);
   if (located.length === 0 && !global.some((h) => h.weight > 0)) {
     if (stop) return refuse([], hit("abuse", null, -10, stop[0]));
     return lan ? refuse([], hit("lan_scan", null, -10, lan[0])) : none;
@@ -2553,9 +2830,9 @@ function classifyPrompt(text, ctx = {}) {
   const negate = (re, id, weight) => {
     const seen = /* @__PURE__ */ new Set();
     for (const m of findAll(re, bare)) {
-      const c = clauseOf(starts, m.index);
-      if (seen.has(c)) continue;
-      seen.add(c);
+      const c2 = clauseOf(starts, m.index);
+      if (seen.has(c2)) continue;
+      seen.add(c2);
       negatives.push({ at: m.index, hit: hit(id, null, weight, m[0]) });
     }
   };
@@ -2563,53 +2840,83 @@ function classifyPrompt(text, ctx = {}) {
   negate(docs, "writing_docs", -5);
   negate(tests, "writing_tests", -3);
   negate(edit, "editing_code", -2);
+  negate(explainOnly, "explain_only", -3);
   const question = find(concept, bare);
   if (question) {
     const firm = !act || question.index === 0 && !iso && !away;
-    global.push(hit("concept_question", null, firm ? -5 : -2, question[0]));
+    const weight = doubt && about ? -2 : firm ? -5 : -2;
+    global.push(hit("concept_question", null, weight, question[0]));
   }
   if (!iso && !away) {
     const ro = find(readOnly, bare);
     if (ro) global.push(hit("read_only", null, -6, ro[0]));
   }
+  const inSecret = (at) => secret !== null && at >= secret.index && at < secret.index + secret[0].length;
   const api = findAll(hosted, bare).find(
-    (m) => !notHostedBefore.test(before(bare, m.index, 30))
+    (m) => !inSecret(m.index) && !notHostedBefore.test(before(bare, m.index, 30))
   );
   if (api) {
-    const unvetted = located.some(
+    const strong2 = located.some(
       (l) => l.hit.category === "untrusted_code" && l.hit.weight >= 4
     );
-    global.push(hit("hosted_api", null, unvetted ? -2 : -6, api[0]));
+    global.push(hit("hosted_api", null, strong2 ? -2 : -6, api[0]));
   }
   const remote = find(remoteTarget, bare);
   if (remote) global.push(hit("remote_target", null, -3, remote[0]));
   const plane = find(offline, bare);
   if (plane) global.push(hit("offline_use", null, -4, plane[0]));
   const perClause = /* @__PURE__ */ new Map();
+  const empty = () => ({
+    hits: [],
+    code: 0,
+    risky: 0,
+    heavy: 0,
+    own: 0,
+    edit: 0,
+    writing: 0,
+    negs: []
+  });
   for (const l of located) {
-    const c = clauseOf(starts, l.at);
-    const e = perClause.get(c) ?? { pos: 0, heavy: 0, ownWork: 0, writing: 0, negs: [] };
+    const c2 = clauseOf(starts, l.at);
+    const e = perClause.get(c2) ?? empty();
     if (l.hit.category === "heavy_compute") e.heavy += l.hit.weight;
-    else e.pos += l.hit.weight;
-    perClause.set(c, e);
+    else if (l.hit.category === "risky_experiment") e.risky += l.hit.weight;
+    else e.code += l.hit.weight;
+    e.hits.push(l.hit);
+    perClause.set(c2, e);
   }
   for (const n of negatives) {
     const e = perClause.get(clauseOf(starts, n.at));
     if (!e) continue;
     if (n.hit.id === "writing_docs" || n.hit.id === "writing_tests") e.writing += n.hit.weight;
-    else e.ownWork += n.hit.weight;
+    else if (n.hit.id === "own_project") e.own += n.hit.weight;
+    else e.edit += n.hit.weight;
     e.negs.push(n.hit);
   }
   let points = global.reduce((s, h) => s + h.weight, 0);
   const kept = [...located.map((l) => l.hit), ...global];
+  const live = [...global];
   for (const e of perClause.values()) {
-    points += Math.max(0, e.pos + e.ownWork + e.writing);
-    points += e.writing < 0 ? 0 : e.heavy;
+    const code = e.code + e.own + e.edit + e.writing;
+    const risky = e.risky + e.edit + e.writing;
+    points += Math.max(0, code) + Math.max(0, risky) + (e.writing < 0 ? 0 : e.heavy);
+    live.push(
+      ...e.hits.filter((h) => {
+        if (h.category === "heavy_compute") return e.writing >= 0;
+        return (h.category === "risky_experiment" ? risky : code) > 0;
+      })
+    );
     kept.push(...e.negs);
   }
   if (stop) return refuse(kept, hit("abuse", null, -10, stop[0]));
   if (lan) return refuse(kept, hit("lan_scan", null, -10, lan[0]));
-  return finish(kept, points);
+  const c = finish(kept, points, live);
+  return c.subject ? { ...c, subject: asTyped(c.subject, clip(text)) } : c;
+}
+function perItemSeconds(m) {
+  const count = Number(m[1].replace(",", ".")) * (m[2] ? 1e3 : 1);
+  const unit = m[4][0] === "h" ? 3600 : m[4][0] === "m" ? 60 : 1;
+  return count * Number(m[3]) * unit;
 }
 
 // packages/intent/src/hook.ts
@@ -2627,13 +2934,15 @@ function stateFile(env, session) {
 function loadState(env, session) {
   try {
     const s = JSON.parse(readFileSync(stateFile(env, session), "utf8"));
+    const repos = s.clonedRepos;
     return {
       hinted: Array.isArray(s.hinted) ? s.hinted : [],
       clonedDirs: Array.isArray(s.clonedDirs) ? s.clonedDirs : [],
+      clonedRepos: repos && typeof repos === "object" && !Array.isArray(repos) ? repos : {},
       bugnetUsed: s.bugnetUsed === true
     };
   } catch {
-    return { hinted: [], clonedDirs: [], bugnetUsed: false };
+    return { hinted: [], clonedDirs: [], clonedRepos: {}, bugnetUsed: false };
   }
 }
 function saveState(env, session, state) {
@@ -2647,23 +2956,21 @@ function prune(env, now) {
     if (now - statSync(p).mtimeMs > stateTtlMs) rmSync(p, { force: true });
   }
 }
-var cloneRe = /\bgit\s+clone\b(?:\s+--?[\w-]+(?:[= ](?!https?:|git@)\S+)?)*\s+(['"]?)((?:https?:\/\/|git@)[^\s'"]+)\1(?:\s+(['"]?)([^\s'";&|]+)\3)?/g;
 function clonedDirs(command, cwd) {
-  const out = [];
-  for (const m of command.matchAll(cloneRe)) {
-    const url = m[2];
-    const name = m[4] ?? url.replace(/\.git$/, "").replace(/\/+$/, "").split(/[/:]/).pop();
-    if (name) out.push(isAbsolute(name) ? name : resolve(cwd, name));
-  }
-  return out;
+  return clonesIn(command).map((c) => ({
+    dir: isAbsolute(c.dir) ? c.dir : resolve(cwd, c.dir),
+    repo: c.repo
+  }));
 }
-function inCloned(state, cwd, command) {
-  const cds = [...command.matchAll(/\bcd\s+(['"]?)([^\s'";&|]+)\1/g)].map(
+function clonedAt(state, cwd, command) {
+  const cds = [...clip(command).matchAll(/\bcd\s+(['"]?)([^\s'";&|]+)\1/g)].map(
     (m) => resolve(cwd, m[2])
   );
-  return [cwd, ...cds].some(
-    (d) => state.clonedDirs.some((c) => d === c || d.startsWith(`${c}/`))
-  );
+  for (const d of [cwd, ...cds]) {
+    const c = state.clonedDirs.find((c2) => d === c2 || d.startsWith(`${c2}/`));
+    if (c) return c;
+  }
+  return null;
 }
 function osOf(env) {
   if (env.platform === "darwin") return "macos";
@@ -2686,20 +2993,29 @@ function runHook(mode, input, env, now = Date.now()) {
   const command = typeof input.tool_input?.command === "string" ? input.tool_input.command : "";
   if (mode === "track") {
     if (/bugnet/i.test(input.tool_name ?? "")) state.bugnetUsed = true;
-    const dirs = clonedDirs(command, cwd).filter((d) => !state.clonedDirs.includes(d));
-    if (dirs.length > 0 || state.bugnetUsed) {
-      state.clonedDirs.push(...dirs);
+    const fresh = clonedDirs(command, cwd).filter((c2) => !state.clonedDirs.includes(c2.dir));
+    if (fresh.length > 0 || state.bugnetUsed) {
+      state.clonedDirs.push(...fresh.map((c2) => c2.dir));
       state.clonedDirs = state.clonedDirs.slice(-20);
+      for (const c2 of fresh) state.clonedRepos[c2.dir] = c2.repo;
+      state.clonedRepos = Object.fromEntries(
+        state.clonedDirs.flatMap((d) => {
+          const repo = state.clonedRepos[d];
+          return repo ? [[d, repo]] : [];
+        })
+      );
       saveState(env, session, state);
     }
     return null;
   }
   if (state.bugnetUsed || state.hinted.length >= maxHintsPerSession) return null;
   if (env.hints === "quiet" && mode !== "failure") return null;
+  const dir = mode === "prompt" ? null : clonedAt(state, cwd, command);
   const ctx = {
     os: osOf(env),
     arch: env.arch === "arm64" ? "arm64" : "x64",
-    clonedThisSession: mode !== "prompt" && inCloned(state, cwd, command)
+    clonedThisSession: dir !== null,
+    ...dir && state.clonedRepos[dir] ? { clonedRepo: state.clonedRepos[dir] } : {}
   };
   let c;
   if (mode === "prompt") {
