@@ -242,7 +242,8 @@ export function floorText(f: QuoteFloor): string {
         f.minutes ? `about ${f.minutes} min` : "",
         f.downloadGiB ? `${f.downloadGiB} GiB to download` : "",
     ].filter(Boolean);
-    const from = `from ${f.basis}, ${f.confidence} confidence${f.partial ? ", partly read" : ""}`;
+    const sure = f.confidence !== "unknown" ? `, ${f.confidence} confidence` : "";
+    const from = `from ${f.basis}${sure}${f.partial ? ", partly read" : ""}`;
     return `${parts.join(", ") || "no floor"}, ${from}`;
 }
 
