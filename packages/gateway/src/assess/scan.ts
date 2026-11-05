@@ -43,10 +43,17 @@ const redactions: [RegExp, string][] = [
     [/(\bbot\d{5,}:)[\w-]+/g, "$1[redacted]"],
     [/\b(gh[pousr]_|github_pat_|hf_|sk-|xox[abpr]-|glpat-|AKIA)[A-Za-z0-9_-]{8,}/g, "$1[redacted]"],
 ];
-const invisible = /[\u200b-\u200f\u2060-\u2064\ufeff]/g;
+// These render as nothing in a terminal or chat window, yet a model still reads them
+export const invisibleChar =
+    /[\p{C}\u034f\u115f\u1160\u17b4\u17b5\u180b-\u180f\u2800\u3164\ufe00-\ufe0f\uffa0\u{e0100}-\u{e01ef}]/u;
+const invisible = new RegExp(invisibleChar.source, "gu");
 
 export function evidence(text: string): string {
-    let s = cleanText(text).replace(invisible, "").replace(/\s+/g, " ").trim();
+    let s = cleanText(text)
+        .replace(/\s+/g, " ")
+        .replace(invisible, "")
+        .replace(/ {2,}/g, " ")
+        .trim();
     for (const [re, to] of redactions) s = s.replace(re, to);
     if (s.length <= 120) return s;
     return `${s.slice(0, 117).replace(/[\ud800-\udbff]$/, "")}...`;
