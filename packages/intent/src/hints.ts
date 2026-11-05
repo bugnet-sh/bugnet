@@ -69,9 +69,12 @@ const failureCause: Record<string, string> = {
 };
 
 const tools =
-    "Bugnet's tools in this session can run it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
+    "Bugnet's tools in this session can run or inspect it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
 const skill =
     "The bugnet:run-in-sandbox skill holds the steps for telling the user before any shell command.";
+// Claude Code invokes a skill whose description fits the request, so prompt hints name that fit
+const promptSkill =
+    "The request fits the description of the bugnet:run-in-sandbox skill, which holds the steps for telling the user before any shell command.";
 const notOffered = "Bugnet has not been offered in this session.";
 
 function lead(c: Classification): Signal | undefined {
@@ -109,9 +112,10 @@ export function hintFor(c: Classification, kind: InputKind): string {
         kind === "failure"
             ? failureWhy[c.category]
             : ((top && signalWhy[top.id]) ?? why[c.category]);
+    const steps = kind === "prompt" ? promptSkill : skill;
     for (const max of [60, 36, 20]) {
-        const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${skill} ${notOffered}`;
+        const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${steps} ${notOffered}`;
         if (text.length <= maxHintChars) return text;
     }
-    return `${hintPrefix} ${reason} ${tools} ${skill} ${notOffered}`;
+    return `${hintPrefix} ${reason} ${tools} ${steps} ${notOffered}`;
 }

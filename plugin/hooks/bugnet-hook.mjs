@@ -2766,8 +2766,9 @@ var failureCause = {
   platform_unsupported: "a tool that does not support this operating system",
   docker_daemon: "no running Docker daemon on this machine"
 };
-var tools = "Bugnet's tools in this session can run it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
+var tools = "Bugnet's tools in this session can run or inspect it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
 var skill = "The bugnet:run-in-sandbox skill holds the steps for telling the user before any shell command.";
+var promptSkill = "The request fits the description of the bugnet:run-in-sandbox skill, which holds the steps for telling the user before any shell command.";
 var notOffered = "Bugnet has not been offered in this session.";
 function lead(c) {
   return c.signals.find((s) => s.weight > 0 && s.category === c.category);
@@ -2798,11 +2799,12 @@ function hintFor(c, kind) {
   if (!c.suggest || !c.category) return "";
   const top = lead(c);
   const reason = kind === "failure" ? failureWhy[c.category] : (top && signalWhy[top.id]) ?? why[c.category];
+  const steps = kind === "prompt" ? promptSkill : skill;
   for (const max of [60, 36, 20]) {
-    const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${skill} ${notOffered}`;
+    const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${steps} ${notOffered}`;
     if (text.length <= maxHintChars) return text;
   }
-  return `${hintPrefix} ${reason} ${tools} ${skill} ${notOffered}`;
+  return `${hintPrefix} ${reason} ${tools} ${steps} ${notOffered}`;
 }
 
 // packages/intent/src/prompt.ts
