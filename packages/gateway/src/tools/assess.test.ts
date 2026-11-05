@@ -305,4 +305,16 @@ describe("unavailableSummary", () => {
         expect(s).toMatch(/No Bugnet GPU sandbox is available right now/);
         expect(s).not.toMatch(/can run/);
     });
+
+    it("drops the summary's sandbox sentence once no sandbox can start", () => {
+        const s = unavailableSummary({
+            ...assessment,
+            summary:
+                "No red flags found in acme/model (9.56 GiB of weights), but it installs an AI model. A Bugnet sandbox keeps that off the user's machine.",
+            fit: { level: "unknown", findings: [] },
+        });
+        expect(s).toBe(
+            "No red flags found in acme/model (9.56 GiB of weights), but it installs an AI model. No Bugnet GPU sandbox is available right now, so Bugnet cannot run it yet.",
+        );
+    });
 });
