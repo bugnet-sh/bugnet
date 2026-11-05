@@ -12,6 +12,7 @@ import {
     obfuscatedExec,
     passwordArchive,
     pipeToShell,
+    pyprojectDependencies,
     pyprojectHooks,
     remoteExec,
     repoFindings,
@@ -21,6 +22,7 @@ import {
     scanFile,
     scanRepo,
     setupPy,
+    setupPyDependencies,
     shift,
     sortFindings,
     suspiciousUrls,
@@ -378,6 +380,61 @@ describe("repo rules", () => {
         });
         expect(lookalike(settledFork, daysAgo(3000), now)).toEqual([]);
         expect(lookalike(info({ repo: "whisperx-tools", stars: 1 }), null, now)).toEqual([]);
+    });
+
+    it("reads Python dependencies only from dependency lists and tables", () => {
+        const pyproject = [
+            "[project]",
+            'name = "mytool"',
+            'keywords = ["transformers", "vllm"]',
+            'classifiers = ["Environment :: GPU :: NVIDIA CUDA"]',
+            "dependencies = [",
+            '    "uvicorn[standard]>=0.30",',
+            '    "torch>=2.3",',
+            "]",
+            "[project.optional-dependencies]",
+            "gpu = [\"xformers; sys_platform == 'linux'\"]",
+            "[project.scripts]",
+            'diffusers = "mytool.cli:main"',
+            "[tool.poetry.dependencies]",
+            'python = "^3.10"',
+            'accelerate = { version = "^1" }',
+        ].join("\n");
+        expect(pyprojectDependencies(pyproject)).toEqual([
+            "uvicorn",
+            "torch",
+            "xformers",
+            "accelerate",
+        ]);
+        const setup = [
+            "setup(",
+            '    name="mytool",',
+            '    keywords=["vllm"],',
+            '    install_requires=["numpy", "torch>=2"],',
+            '    extras_require={"gpu": ["flash-attn"], "dev": ["pytest"]},',
+            ")",
+        ].join("\n");
+        expect(setupPyDependencies(setup)).toEqual(["numpy", "torch", "flash-attn", "pytest"]);
+        const keywordsOnly = file(
+            "pyproject.toml",
+            '[project]\nname = "mytool"\nkeywords = ["transformers", "vllm"]\ndependencies = ["click>=8"]\n',
+        );
+        expect(repoNeeds([keywordsOnly])).toMatchObject({ ml: false, gpu: false, cuda: false });
+    });
+
+    it("stays linear on repeated dependency lists", () => {
+        const kib = 256 * 1024;
+        const inputs = [
+            "[project]\n" + "dependencies = [\n".repeat(kib / 17),
+            "install_requires=[".repeat(kib / 18),
+            `extras_require={${"[".repeat(kib)}`,
+        ];
+        for (const text of inputs) {
+            const started = performance.now();
+            pyprojectDependencies(text);
+            setupPyDependencies(text);
+            expect(performance.now() - started).toBeLessThan(500);
+        }
     });
 
     it("lookalike_name leaves an old repo with a plain shared name alone", () => {

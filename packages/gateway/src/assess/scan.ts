@@ -935,14 +935,95 @@ function dependencyNames(f: RepoFile): string[] {
         } catch {
             return [];
         }
-    } else if (lower === "pyproject.toml" || lower === "setup.py") {
-        for (const m of f.text.matchAll(
-            /["']([A-Za-z0-9][A-Za-z0-9._-]{0,100})[ \t]*(?:\[[^\]\n]{0,100}\])?[ \t]*(?:[<>=!~;@]|["'])/g,
-        )) {
-            names.push(m[1] as string);
-        }
+    } else if (lower === "pyproject.toml") {
+        names.push(...pyprojectDependencies(f.text));
+    } else if (lower === "setup.py") {
+        names.push(...setupPyDependencies(f.text));
     }
     return names.map((n) => n.toLowerCase().replace(/_/g, "-"));
+}
+
+const requirementName = /^[ \t]*([A-Za-z0-9][A-Za-z0-9._-]{0,100})/;
+
+function quotedNames(text: string): string[] {
+    const out: string[] = [];
+    for (const m of text.matchAll(/["']([^"'\n]{1,300})["']/g)) {
+        const name = requirementName.exec(m[1] as string);
+        if (name) out.push(name[1] as string);
+    }
+    return out;
+}
+
+// Text up to the closing bracket, skipping quoted ones such as the extra in uvicorn[standard]
+function bracketed(text: string, from: number, close: "]" | "}"): string {
+    const limit = Math.min(text.length, from + 20_000);
+    let quote = "";
+    for (let i = from; i < limit; i++) {
+        const c = text[i] as string;
+        if (quote) {
+            if (c === quote) quote = "";
+        } else if (c === '"' || c === "'") {
+            quote = c;
+        } else if (c === close) {
+            return text.slice(from, i);
+        }
+    }
+    return text.slice(from, limit);
+}
+
+const pyprojectDepTables =
+    /^(?:project\.optional-dependencies|dependency-groups|tool\.poetry(?:\.group\.[\w.-]+)?\.(?:dev-)?dependencies)$/;
+
+// Names only from dependency lists and tables, never from keywords, classifiers or scripts
+export function pyprojectDependencies(text: string): string[] {
+    const out: string[] = [];
+    let table = "";
+    let offset = 0;
+    let skipUntil = 0;
+    for (const line of text.split("\n")) {
+        const at = offset;
+        offset += line.length + 1;
+        if (at < skipUntil) continue;
+        const header = /^[ \t]*\[([^\]\n]{1,200})\][ \t]*(?:#.*)?$/.exec(line);
+        if (header) {
+            table = (header[1] as string).trim();
+            continue;
+        }
+        const key = /^[ \t]*([A-Za-z0-9_.-]{1,100})[ \t]*=[ \t]*(\[)?/.exec(line);
+        if (!key) continue;
+        if (table.startsWith("tool.poetry") && pyprojectDepTables.test(table)) {
+            if (key[1] !== "python") out.push(key[1] as string);
+            continue;
+        }
+        const list =
+            (table === "project" && key[1] === "dependencies") || pyprojectDepTables.test(table);
+        if (!list || !key[2]) continue;
+        const body = bracketed(text, at + key[0].length, "]");
+        out.push(...quotedNames(body));
+        skipUntil = at + key[0].length + body.length;
+    }
+    return out;
+}
+
+export function setupPyDependencies(text: string): string[] {
+    const out: string[] = [];
+    let skipUntil = 0;
+    for (const m of text.matchAll(/\b(install_requires|extras_require)\s*=\s*([[{])/g)) {
+        const from = m.index + m[0].length;
+        if (from < skipUntil) continue;
+        const body = bracketed(text, from, m[2] === "[" ? "]" : "}");
+        skipUntil = from + body.length;
+        if (m[2] === "[") {
+            out.push(...quotedNames(body));
+            continue;
+        }
+        for (let at = body.indexOf("["); at >= 0; at = body.indexOf("[", at + 1)) {
+            const list = bracketed(body, at + 1, "]");
+            out.push(...quotedNames(list));
+            at += list.length;
+        }
+    }
+    return out;
 }
 
 const cudaBase =
