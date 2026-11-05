@@ -28,7 +28,7 @@
         ],
         "PostToolUse": [
             {
-                "matcher": "Bash",
+                "matcher": "Bash|mcp__plugin_bugnet_sandbox__.*|mcp__bugnet__.*",
                 "hooks": [
                     {
                         "type": "command",
