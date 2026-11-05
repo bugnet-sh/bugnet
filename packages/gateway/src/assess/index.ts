@@ -5,7 +5,7 @@ import { createSafeFetcher, FetchRefused, type Fetcher } from "./fetch.ts";
 import { readGithub } from "./github.ts";
 import { analyseModel, readHuggingface } from "./huggingface.ts";
 import { scanRepo, shift } from "./scan.ts";
-import { readScript } from "./script.ts";
+import { readScript, urlFindings } from "./script.ts";
 import { parseSource, sourceName, sourceRef, type Source } from "./source.ts";
 import { combine, type SourceReport } from "./verdict.ts";
 
@@ -141,6 +141,8 @@ async function readUrlSource(
     signal: AbortSignal,
 ): Promise<void> {
     report.workload = "script";
+    report.findings = urlFindings(src.url);
+    if (!src.url.startsWith("https:")) return;
     if (!env.config.assess.scan_urls) {
         report.findings.push({
             id: "url_checks_off",
@@ -157,7 +159,7 @@ async function readUrlSource(
     report.checked = res.checked;
     report.complete = res.complete;
     report.facts = res.facts;
-    report.findings = res.findings;
+    report.findings.push(...res.findings);
 }
 
 export async function readSource(

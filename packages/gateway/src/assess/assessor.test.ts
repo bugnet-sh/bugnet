@@ -391,10 +391,29 @@ describe("assessor over script URLs and commands", () => {
     it("notes a source it does not recognise", async () => {
         const { fetch } = fakeFetch({});
         const a = createAssessor(config(), { fetch, now: () => now });
-        const r = await a.assess({ source: "http://example.com/x.sh" }, signal());
+        const r = await a.assess({ source: "just some words" }, signal());
         expect(r.risk.findings).toMatchObject([
-            { id: "source_unrecognised", title: expect.stringMatching(/only https/) },
+            { id: "source_unrecognised", title: expect.stringMatching(/not a URL/) },
         ]);
+    });
+
+    it("flags a plain http or ftp link without fetching it", async () => {
+        const { fetch, calls } = fakeFetch({});
+        const a = createAssessor(config(), { fetch, now: () => now });
+        const ip = await a.assess({ source: "http://45.9.12.3/install.sh" }, signal());
+        expect(ip).toMatchObject({ recommendation: "sandbox_strongly_recommended" });
+        expect(ip.risk.findings[0]).toMatchObject({ id: "insecure_url", severity: "high" });
+        const ftp = await a.assess({ source: "ftp://files.example.dev/x.sh" }, signal());
+        expect(ftp).toMatchObject({
+            recommendation: "sandbox_recommended",
+            risk: { level: "medium" },
+            source: { kind: "url" },
+        });
+        expect(ftp.risk.findings[0]).toMatchObject({ id: "insecure_url", severity: "medium" });
+        const off = createAssessor(config({ scanUrls: false }), { fetch, now: () => now });
+        const quiet = await off.assess({ source: "http://example.dev/i.sh" }, signal());
+        expect(quiet.recommendation).toBe("sandbox_recommended");
+        expect(calls).toEqual([]);
     });
 
     it("recommends a sandbox for any intent category from the task or commands", async () => {

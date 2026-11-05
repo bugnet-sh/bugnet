@@ -17,6 +17,14 @@ export function urlFindings(url: string): Finding[] {
     const out: Finding[] = [];
     const host = hostOf(url) ?? "";
     const path = new URL(url).pathname;
+    if (!url.startsWith("https:")) {
+        out.push({
+            id: "insecure_url",
+            severity: isBareIp(host) ? "high" : "medium",
+            title: "The link is not https, so what it serves can be swapped on the way and it was not fetched",
+            evidence: evidence(`${new URL(url).protocol} ${host}`),
+        });
+    }
     if (isBareIp(host) || isPasteHost(host)) {
         out.push({
             id: "suspicious_url",
@@ -41,7 +49,7 @@ export async function readScript(
     url: string,
     signal: AbortSignal,
 ): Promise<ScriptReport> {
-    const findings = urlFindings(url);
+    const findings: Finding[] = [];
     const res = await env.fetch(url, { signal, maxBytes: env.maxFileBytes });
     const facts: ScriptReport["facts"] = { host: hostOf(res.url) ?? "", status: res.status };
     if (res.url !== url) facts.redirectedTo = hostOf(res.url) ?? "";

@@ -80,6 +80,13 @@ describe("parseSource", () => {
         expect(parseSource(input)).toMatchObject({ kind: "url", url: input });
     });
 
+    it.each([["http://1.2.3.4/install.sh"], ["ftp://example.com/x.sh"], ["http://example.com/i"]])(
+        "keeps the insecure link %s as a URL so the verdict can flag it",
+        (input) => {
+            expect(parseSource(input)).toMatchObject({ kind: "url", url: input });
+        },
+    );
+
     it("turns a gist page into its raw URL and drops fragments", () => {
         expect(parseSource("https://gist.github.com/someone/abc123")).toMatchObject({
             kind: "url",
@@ -94,8 +101,6 @@ describe("parseSource", () => {
         [undefined],
         [""],
         ["   "],
-        ["http://example.com/install.sh"],
-        ["ftp://example.com/x"],
         ["./my-local-repo"],
         ["just some words"],
         ["https://github.com/openai"],

@@ -162,8 +162,8 @@ export function parseSource(input: string | undefined): Source {
     const web = url.protocol === "https:" || url.protocol === "http:";
     if (host === "github.com" && web) return fromGithubUrl(segs);
     if ((host === "huggingface.co" || host === "hf.co") && web) return fromHuggingfaceUrl(segs);
-    if (url.protocol !== "https:") return none("only https URLs are checked");
-    if (host === "gist.github.com" && segs.length >= 2) {
+    if (url.protocol === "file:") return none("a local file, not a download link");
+    if (host === "gist.github.com" && url.protocol === "https:" && segs.length >= 2) {
         url = new URL(`https://gist.githubusercontent.com/${segs[0]}/${segs[1]}/raw`);
     }
     url.hash = "";
