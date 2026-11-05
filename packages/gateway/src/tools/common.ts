@@ -20,6 +20,13 @@ export type Register = (server: McpServer, deps: Deps) => void;
 
 export const handlePattern = /^sbx_[a-z2-7]{26}$/;
 
+// Claude Code refuses tools marked this way in every unattended mode, so test gateways can drop it
+export function approvalMeta(deps: Deps): Record<string, unknown> | undefined {
+    return deps.config.tools.require_user_approval
+        ? { "anthropic/requiresUserInteraction": true }
+        : undefined;
+}
+
 export function handleHash(handle: string): string {
     return createHash("sha256").update(handle).digest("hex");
 }

@@ -22,6 +22,9 @@ read_file_max_bytes = 262144            # bugnet_read_file chunk limit, router m
 write_file_max_bytes = 262144           # bugnet_write_file limit, router maximum 256 KiB
 quote_ttl = "10m"                       # how long a quoteId can start a sandbox
 
+[tools]
+require_user_approval = true            # paid tools ask the client for a person's approval, off only for unattended test gateways
+
 [assess]
 github_api = "https://api.github.com"
 github_raw = "https://raw.githubusercontent.com"

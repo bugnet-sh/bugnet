@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { PackageOption, Placement } from "../gen/bugnet/router/v1/router_pb.ts";
 import { GatewayError, errorReason, fromRouter } from "../router.ts";
 import {
+    approvalMeta,
     handleHash,
     handlePattern,
     handleTag,
@@ -104,7 +105,7 @@ export const registerExtendTool: Register = (server, deps) => {
                 idempotentHint: true,
                 openWorldHint: true,
             },
-            _meta: { "anthropic/requiresUserInteraction": true },
+            _meta: approvalMeta(deps),
         },
         async (args, ctx) => {
             try {

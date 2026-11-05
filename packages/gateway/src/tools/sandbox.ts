@@ -11,6 +11,7 @@ import { signQuote, verifyQuote, QuoteError, type QuotedPackage } from "../quote
 import { GatewayError, fromRouter } from "../router.ts";
 import type { OrderResult } from "../payments/port.ts";
 import {
+    approvalMeta,
     failure,
     handlePattern,
     handleTag,
@@ -325,7 +326,7 @@ export const registerSandboxTools: Register = (server, deps) => {
                 idempotentHint: true,
                 openWorldHint: true,
             },
-            _meta: { "anthropic/requiresUserInteraction": true },
+            _meta: approvalMeta(deps),
         },
         async (args, ctx) => {
             try {

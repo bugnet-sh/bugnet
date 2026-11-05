@@ -45,6 +45,12 @@ const settingsSchema = z
             })
             .strict()
             .prefault({}),
+        tools: z
+            .object({
+                require_user_approval: z.boolean().default(true),
+            })
+            .strict()
+            .prefault({}),
         assess: z
             .object({
                 github_api: z.url().default("https://api.github.com"),
