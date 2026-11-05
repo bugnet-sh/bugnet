@@ -96,6 +96,9 @@ export interface OpenedSecret {
 }
 
 export interface Canned {
+    // Only the next request with this method takes it, any request when left out
+    method?: "GET" | "PUT";
+    // 0 drops the connection without an answer
     status: number;
     error: string;
     retryAfter?: string;
@@ -186,7 +189,12 @@ export async function fakeSecretsRoute(grant = testGrant): Promise<FakeSecretsRo
                         .end(JSON.stringify(doc));
                 const refuse = (status: number, error: string, headers = {}) =>
                     answer(status, { error, message: `refused, ${error}` }, headers);
-                const next = state.canned.shift();
+                const at = state.canned.findIndex((c) => !c.method || c.method === req.method);
+                const next = at >= 0 ? state.canned.splice(at, 1)[0] : undefined;
+                if (next?.status === 0) {
+                    res.socket?.destroy();
+                    return;
+                }
                 if (next) {
                     const h = next.retryAfter ? { "retry-after": next.retryAfter } : {};
                     return refuse(next.status, next.error, h);

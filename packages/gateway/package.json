@@ -5,6 +5,7 @@
     "type": "module",
     "exports": {
         ".": "./src/index.ts",
+        "./gen": "./src/gen/bugnet/router/v1/router_pb.ts",
         "./server": "./src/server.ts",
         "./testing": "./src/testing/harness.ts"
     },
