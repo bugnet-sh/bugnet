@@ -1366,7 +1366,8 @@ const scanHeads = new Set([
     "nbtscan",
 ]);
 
-function policy(segs: Segment[], text: string): Hit | null {
+// The text check runs only when something would be offered, so plain commands stay cheap
+function policy(segs: Segment[], text: string | null): Hit | null {
     for (const seg of segs) {
         if (abuseHeads.has(seg.head)) return hit("abuse", null, -10, seg.head);
         if (
@@ -1398,7 +1399,7 @@ function policy(segs: Segment[], text: string): Hit | null {
             }
         }
     }
-    const m = find(L.abuse, text);
+    const m = text === null ? null : find(L.abuse, text);
     return m ? hit("abuse", null, -10, m[0]) : null;
 }
 
@@ -1470,7 +1471,7 @@ export function classifyCommand(command: string, ctx: SessionContext = {}): Clas
     ) {
         add(st, hit("sudo_install_script", "environment", 2, "sudo ./install.sh"));
     }
-    const stop = policy(segs, norm(raw));
+    const stop = policy(segs, st.hits.some((h) => h.weight > 0) ? norm(raw) : null);
     if (stop) return refuse(st.hits, stop);
     return finish(st.hits);
 }

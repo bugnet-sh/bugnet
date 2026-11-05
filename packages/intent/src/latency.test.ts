@@ -31,10 +31,12 @@ function mixed(n: number): void {
 }
 
 describe("latency", () => {
-    it("classifies 10,000 mixed inputs in under a second", () => {
+    // Wall time on a loaded machine measures the scheduler, so the budget is checked in CPU time
+    it("classifies 10,000 mixed inputs in under a second of CPU time", () => {
         mixed(500);
-        const started = performance.now();
+        const before = process.cpuUsage();
         mixed(10_000);
-        expect(performance.now() - started).toBeLessThan(1000);
+        const used = process.cpuUsage(before);
+        expect((used.user + used.system) / 1000).toBeLessThan(1000);
     });
 });

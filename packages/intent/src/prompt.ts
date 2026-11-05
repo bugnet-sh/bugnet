@@ -106,8 +106,8 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     const verb = find(L.taskVerb, bare);
     const doing = act !== null || verb !== null;
     const isLocal = find(L.local, bare) !== null;
-    const mac = ctx.os === "macos" || find(L.macText, bare) !== null;
-    const win = !mac && (ctx.os === "windows" || find(L.windowsText, bare) !== null);
+    const mac = ctx.os === "macos" || (ctx.os !== "windows" && find(L.macText, bare) !== null);
+    const win = !mac && (ctx.os === "windows" || (!ctx.os && find(L.windowsText, bare) !== null));
     const notLinux = mac || win;
 
     const starts = clauseStarts(t);
