@@ -171,13 +171,21 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     if (find(L.aiContext, bare)) names.push(...findAll(L.aiWeakName, t));
     names.sort((a, b) => (a.index as number) - (b.index as number));
     const tasks = findAll(L.aiTask, bare);
-    const ai = names[0] ?? tasks[0];
+    // Voice cloning and a local chat assistant run as local models even without a model name
+    const assistant = find(L.localAssistant, bare);
+    const strong = [
+        find(L.voiceClone, bare),
+        assistant && (isLocal || /^(?:local|offline|self)/.test(assistant[0])) ? assistant : null,
+    ].find((m) => m && !L.createBefore.test(before(bare, m.index, 30)));
+    const ai = names[0] ?? strong ?? tasks[0];
     if (ai) {
         const named = names.length > 0;
-        const w = named ? (doing ? 4 : isLocal ? 3 : 1) : doing ? 3 : 0;
+        const task = strong ? (doing ? 4 : isLocal ? 3 : 0) : doing ? 3 : 0;
+        const w = named ? (doing ? 4 : isLocal ? 3 : 1) : task;
         const at = ai.index as number;
+        const subject = named || !strong ? ai[0] : undefined;
         if (w > 0) {
-            put(at, hit(named ? "ai_model" : "ai_task", "local_ai_model", w, ai[0], ai[0]));
+            put(at, hit(named ? "ai_model" : "ai_task", "local_ai_model", w, ai[0], subject));
         }
         if (w >= 3) {
             if (isLocal && doing) put(at, hit("runs_locally", "local_ai_model", 1, "locally"));

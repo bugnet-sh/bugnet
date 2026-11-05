@@ -414,4 +414,28 @@ describe("recall from the review", () => {
     ])("offers for the heavy or risky job in %s", (text) => {
         expect(offers(text)).toBe(true);
     });
+
+    it.each([
+        "make my computer talk with a cloned voice offline",
+        "clone my voice from these voice memos and use it to read my blog posts aloud",
+        "spin up a chatgpt-like assistant on my own computer that doesn't send my data anywhere",
+        "strip the vocals out of my 200 song collection with demucs so I can make karaoke tracks",
+        "instal stable difusion xl on my pc and make it work with my amd card",
+        "get comfy ui running with flux",
+        "install olama and pull lama 3 70b",
+    ])("offers for the local model in %s", (text) => {
+        expect(offers(text)).toBe(true);
+        expect(categoryOf(text)).toBe("local_ai_model");
+    });
+
+    it.each([
+        "build a voice cloning feature for our app",
+        "use the elevenlabs api to clone my voice",
+        "add a chatgpt-like assistant to our app's sidebar",
+        "build a chatgpt clone with next.js",
+        "how does stable difusion work?",
+        "fix the bug where my app strips the vocals metadata",
+    ])("does not offer for %s", (text) => {
+        expect(offers(text)).toBe(false);
+    });
 });

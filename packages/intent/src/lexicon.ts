@@ -6,13 +6,14 @@
  * Portuguese. The families come from the research notes in intent-signals.md, sections 2 and 3.
  */
 
-// Lines are alternatives, and the match may not touch a letter, digit or underscore on either side
+// Lines are alternatives bounded by non-word characters, and an optional space also allows a hyphen
 export function family(src: string): RegExp {
     const body = src
         .split("\n")
         .map((l) => l.trim())
         .filter((l) => l !== "")
-        .join("|");
+        .join("|")
+        .replace(/([a-z]) \?(?=[a-z(])/g, "$1[- ]?");
     return new RegExp(`(?<![a-z0-9_])(?:${body})(?![a-z0-9_])`, "g");
 }
 
@@ -72,6 +73,8 @@ export const taskVerb = family(String.raw`
     fine[- ]?tun\w*|finetun\w*|feintun\w*|train|training|trainier\w*|entrenar|treinar|egit\w*
     ince ayar\w*|ajuste fino|generar|gerar|generieren|erzeugen|olustur\w*|uret\w*|animar
     upscal\w*|inpaint\w*|chat with (?:it|the model|a model|llama|[a-z]+ \d+b)
+    (?:strip|separate|isolate|remove|split|extract|pull)\w* (?:out )?(?:the )?(?:\w+ )?(?:vocals|stems|instrumentals?|drums|backing tracks?)
+    (?:make|let|have|get) (?:my |the |this )?(?:computer|mac|laptop|pc|machine) (?:talk|speak|read)\w*
 `);
 
 export const local = family(String.raw`
@@ -87,22 +90,22 @@ export const local = family(String.raw`
 /* Heavy local AI */
 
 export const aiName = family(String.raw`
-    xtts\w*|coqui|f5[- ]?tts|e2[- ]?tts|kokoro|piper[- ]?tts|styletts2?|openvoice|parler[- ]?tts
+    xtts\w*|coqui|f5[- ]?tts|e2[- ]?tts|kok[oe]ro|piper[- ]?tts|styletts2?|openvoice|parler[- ]?tts
     chatterbox|orpheus[- ]?tts|csm[- ]?1b|dia[- ]?1\.6b|nari[- ]?labs|zonos|fish[- ]?speech
     spark[- ]?tts|vibevoice|higgs[- ]?audio|index[- ]?tts\w*|cosyvoice\w*|melo[- ]?tts
     qwen3?[- ]?tts|tortoise[- ]?tts|gpt[- ]?sovits|rvc|so[- ]?vits\w*|applio|alltalk|suno[- ]bark
-    stable[- ]?diffusion|sd ?1\.5|sdxl|sd ?3(?:\.5)?|flux[.-]?[12](?:\.\d)?(?:[- ](?:dev|schnell|klein|kontext|pro))?
-    flux[- ](?:dev|schnell|kontext|klein)|comfy ?ui|automatic1111|a1111|sd[- ]?webui|sd[- ]forge
+    stab(?:le|el)[- ]?dif{1,2}u?s{1,2}i?on|sd ?1\.5|sdxl|sd ?3(?:\.5)?|flux[.-]?[12](?:\.\d)?(?:[- ](?:dev|schnell|klein|kontext|pro))?
+    flux[- ](?:dev|schnell|kontext|klein)|co[mn]f[iy] ?ui|automatic ?1111|a1111|sd[- ]?webui|sd[- ]forge
     forge webui|webui forge|fooocus|invoke ?ai|qwen[- ]?image|z[- ]image|hidream|kohya\w*
     controlnet|civitai|txt2img|img2img|real[- ]?esrgan|diffusers
     wan ?2(?:\.\d)?|hunyuan ?video|ltx[- ]?(?:video|2(?:\.\d)?)|cogvideo\w*|mochi[- ]?1|animatediff
     stable video diffusion|svd[- ]xt|framepack|wav2lip|sadtalker|liveportrait|facefusion|roop
     deep[- ]?live[- ]?cam|open[- ]?sora
-    ollama|llama\.?cpp|llamafile|lm ?studio|text[- ]generation[- ]webui|oobabooga|koboldcpp|vllm
+    ol{1,2}am{1,2}a|l{1,2}ama[.-]?cpp|llamafile|lm ?studio|text[- ]generation[- ]webui|oobabooga|koboldcpp|vllm
     sglang|text[- ]generation[- ]inference|exllama\w*|gguf|ggml|mlx(?:[- ]lm)?|gpt4all
-    (?:llama(?![- ]?index)|llava|qwen|mistral|mixtral|gemma|deepseek|codellama|nemotron|gpt[- ]oss|starcoder|vicuna)(?:[- ]?(?:r|v|coder)?\d+(?:\.\d+)?)?(?:[- :]?\d+(?:\.\d+)?b)?
+    (?:llama(?![- ]?index)|lama(?=[- ]?\d)|llava|qwen|mistral|mixtral|gemma|deep[- ]?seek|codellama|nemotron|gpt[- ]oss|starcoder|vicuna)(?:[- ]?(?:r|v|coder)?\d+(?:\.\d+)?)?(?:[- :]?\d+(?:\.\d+)?b)?
     (?:phi|yi|granite|falcon|olmo)[- ]?\d+(?:\.\d+)?(?:[- :]?\d+(?:\.\d+)?b)?
-    whisper(?:x|\.cpp|[- ]large\w*)?|faster[- ]whisper|distil[- ]whisper|insanely[- ]fast[- ]whisper
+    (?:whisper|wisper|whipser)(?:x|\.cpp|[- ]large\w*)?|faster[- ]whisper|distil[- ]whisper|insanely[- ]fast[- ]whisper
     parakeet|nvidia canary|wav2vec2?|vosk|pyannote
     musicgen|audiocraft|stable audio|riffusion|ace[- ]step|diffrhythm|audioldm|demucs|uvr5?
     yolov?\d+\w*|ultralytics|detectron2|mmdetection|segment anything|sam ?2|nanogpt|dreambooth
@@ -122,6 +125,7 @@ export const aiContext = family(String.raw`
 export const aiTask = family(String.raw`
     text[- ]to[- ](?:speech|image|video|music|audio)|image[- ]to[- ](?:video|image)|speech[- ]to[- ]text
     tts|stt|voice ?(?:clone|cloner|cloning|changer|conversion|model)|ai voice|ai cover|voice ?over\w*
+    stem separation|vocal (?:removal|remover|isolation|separation)|(?:separate|isolate|strip)\w* (?:out )?(?:the )?vocals
     audiobook|sesli kitap|texto a voz|sintesis de voz|clonacion de voz|clonagem de voz|text[- ]?zu[- ]?sprache
     sprachsynthese|stimmklon\w*|ki[- ]?stimme|horbuch
     (?:ai|open[- ]source|local|diffusion) (?:image|video|art|music|voice|speech) (?:model|generator|generation)
@@ -138,6 +142,20 @@ export const aiTask = family(String.raw`
     (?:generar|crear|gerar|criar|animar) (?:\w+ ){0,2}?(?:imagenes|imagens|fotos|video|videos|ilustraciones)
     (?:imagenes?|imagens?|videos?) con ia|(?:bilder?|video) (?:\w+ )?(?:generieren|erzeugen|erstellen)
     (?:resim|gorsel|video)\w* (?:olustur|uret)\w*|yapay zeka (?:ile )?(?:resim|gorsel|video|ses)\w*
+`);
+
+// Voice cloning runs as a local model unless a hosted API is named, so it counts without a model name
+export const voiceClone = family(String.raw`
+    clon\w* (?:my |a |his |her |their |this |the |someone'?s |our )?(?:own )?(?:\w+ )?voices?|cloned voices?|voice ?clon\w*
+    (?:my|his|her|their|a) voice (?:as|for) (?:a |an )?(?:tts|voice ?over|narrat\w*)
+    clon(?:ar|a|e) (?:mi |la |su |minha |sua )?voz|klon\w* (?:meine |die |seine )?stimme|ses(?:imi|ini|i)? klon\w*
+`);
+
+// A chat assistant that runs on the user's own hardware, the local twin of a hosted chatbot
+export const localAssistant = family(String.raw`
+    (?:private|offline|local|self[- ]?hosted|personal) (?:ai |chat ?|llm |gpt )?(?:assistant|chatbot|chat ?gpt|gpt|llm|copilot)
+    (?:chatgpt|gpt|claude|copilot|perplexity|gemini)[- ]?(?:like|style|alternative|clone|replacement)
+    (?:assistant|chatbot|chat ?gpt|llm) (?:\w+ ){0,3}?(?:on|in) my (?:own )?(?:computer|machine|laptop|mac|pc|hardware|server)
 `);
 
 export const videoName = family(String.raw`
@@ -543,7 +561,7 @@ export const offline = family(String.raw`
 
 // Clause-local signs that the request is about the user's own work
 export const own = family(String.raw`
-    (?:my|our) (?:own )?(?:app|apps|application|project|repo|repository|code|codebase|service|api(?! (?:keys?|tokens?|secrets?|credentials))|server|site|website|portfolio|script|component|module|tests|test suite|library|lib|package|cli|bot|extension|plugin|mod|dotfiles|backend|frontend|dashboard|blog|startup|saas|game|fork|branch|pr|workflow|pipeline|infra|cluster|monorepo)
+    (?:my|our) (?:own )?(?:app|apps|application|project|repo|repository|code|codebase|service|api(?! (?:keys?|tokens?|secrets?|credentials))|server|site|website|portfolio|script|component|module|tests|test suite|library|lib|package|cli|bot|extension|plugin|mod|dotfiles|backend|frontend|dashboard|blog|startup|saas|game|fork|branch|pr|workflow|pipeline|infra|cluster|monorepo)(?! (?:posts?|articles?|entries|photos?|videos?|recordings?|episodes?|notes|content|assets))
     (?:src|lib|app|routes|components|pages|tests?|spec|internal|cmd|pkg)/[^ \n]+\.(?:tsx?|jsx?|py|go|rs|rb|java|kt|swift|cs|php|vue|svelte)
     [\w-]+\.(?:tsx|jsx|vue|svelte)
     (?:benim|kendi) (?:projem|uygulamam|kodum|sitem|repom|botum)\w*|projemdeki|projemde|uygulamamda|kodumda|repomda

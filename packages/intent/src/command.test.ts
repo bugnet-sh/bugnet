@@ -119,6 +119,16 @@ describe("clones and the code inside them", () => {
         },
     );
 
+    it("weighs a tracked clone by whether its owner is well known", () => {
+        const famous = { ...cloned, clonedRepo: "github.com/vercel/next.js" };
+        expect(offers("pnpm install", famous)).toBe(false);
+        expect(offers("npm test", { ...cloned, clonedRepo: "github.com/acme-co/api" })).toBe(true);
+        expect(
+            classifyCommand("npm test", { ...cloned, clonedRepo: "github.com/acme-co/api" })
+                .subject,
+        ).toBe("github.com/acme-co/api");
+    });
+
     it("does not offer for a bare clone or a clone of a well-known project", () => {
         expect(offers("git clone --depth 1 https://github.com/someone/thing")).toBe(false);
         expect(offers("git clone https://github.com/vercel/next.js && cd next.js && pnpm i")).toBe(
