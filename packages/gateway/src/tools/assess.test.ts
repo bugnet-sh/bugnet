@@ -102,7 +102,11 @@ async function connect(
 type Result = {
     isError?: boolean;
     content: { type: string; text: string }[];
-    structuredContent?: { assessment: Assessment; quote: { quoteId: string } | null };
+    structuredContent?: {
+        forUser: string;
+        assessment: Assessment;
+        quote: { quoteId: string } | null;
+    };
 };
 
 describe("bugnet_assess tool", () => {
@@ -188,6 +192,11 @@ describe("bugnet_assess tool", () => {
         const claims = verifyQuote(deps.config.secrets.quoteKey, quote.quoteId, now);
         expect(claims.source).toBe("black-forest-labs/FLUX.1-schnell");
         expect(r.structuredContent?.assessment.recommendation).toBe("sandbox_strongly_recommended");
+        expect(Object.keys(r.structuredContent ?? {})[0]).toBe("forUser");
+        expect(r.structuredContent?.forUser).toMatch(
+            /^For the user, in one or two sentences before anything is fetched, installed or run locally: Verdict: /,
+        );
+        expect(r.structuredContent?.forUser).toMatch(/Question: use the Bugnet sandbox/);
     });
 
     it("never recommends a package smaller than the memory and disk the work needs", async () => {
@@ -220,7 +229,7 @@ describe("bugnet_assess tool", () => {
         expect(text).toMatch(
             /Warning: No package is large enough for about 770\.4 GiB of memory and 643 GiB of disk\./,
         );
-        expect(text).toMatch(/For the user: Needs about 770\.4 GiB of memory/);
+        expect(text).toMatch(/No Bugnet offer to make: Needs about 770\.4 GiB of memory/);
         expect(text).not.toMatch(/Question:/);
         const summary = r.structuredContent?.assessment.summary ?? "";
         expect(summary).toMatch(
@@ -298,8 +307,10 @@ describe("userLines", () => {
             fit: { level: "fits", findings: [] },
         };
         const text = userLines(fine, null).join("\n");
-        expect(text).toMatch(/^For the user: this check found nothing that calls for a sandbox\./);
-        expect(text).toMatch(/otherwise there is no offer to make/);
+        expect(text).toMatch(
+            /^No Bugnet offer to make: this check found nothing that calls for a sandbox, unless/,
+        );
+        expect(text).toMatch(/If offered, price: not available right now/);
         expect(text).not.toMatch(/Question:/);
     });
 });

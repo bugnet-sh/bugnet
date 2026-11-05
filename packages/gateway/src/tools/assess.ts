@@ -18,10 +18,10 @@ export const assessDescription =
     "or clone, and needs no probe of the machine. It returns a verdict on whether a disposable " +
     "Bugnet cloud sandbox is safer or needed, with evidence: repo age, stars and owner, install " +
     "scripts that download or run binaries, obfuscated code, pickle-only model weights, and the " +
-    "GPU, memory and disk the work needs against the user's machine. It ends with a priced " +
-    "quote, a quoteId for bugnet_start and the one or two sentences that tell the user. Pass " +
-    "what the user wants as task, the repo URL, Hugging Face model id or script URL as source, " +
-    "the commands you plan to run, and the user's os, arch, RAM and GPU only when already known. " +
+    "GPU, memory and disk the work needs against the user's machine. Its forUser text holds what " +
+    "to tell the user, and its quote has a price and a quoteId for bugnet_start. Pass what the " +
+    "user wants as task, the repo URL, Hugging Face model id or script URL as source, the " +
+    "commands you plan to run, and the user's os, arch, RAM and GPU only when already known. " +
     "Fetched files are never returned, only short findings. It charges nothing and starts " +
     "nothing. Not for edits, tests or questions in the user's own project.";
 
@@ -98,7 +98,7 @@ const offerSteps =
 // The closing lines say what reaches the user, since agents relay a verdict they were handed
 export function userLines(a: Assessment, quote: BuiltQuote | null): string[] {
     const q = quote?.structured;
-    if (q && (!q.largeEnough || !q.recommended)) return [`For the user: ${a.summary}`];
+    if (q && (!q.largeEnough || !q.recommended)) return [`No Bugnet offer to make: ${a.summary}`];
     const price = priceText(quote);
     const priceLine = price
         ? `Price: ${price}, paid per run on Solana, no account.`
@@ -106,13 +106,12 @@ export function userLines(a: Assessment, quote: BuiltQuote | null): string[] {
     if (a.recommendation === "local_ok") {
         const found =
             a.risk.level === "low"
-                ? "this check found nothing that calls for a sandbox."
-                : "this check has no evidence either way.";
+                ? "this check found nothing that calls for a sandbox"
+                : "this check has no evidence either way";
         return [
-            `For the user: ${found} A Bugnet sandbox still fits if the work needs hardware, an ` +
-                "OS or hours this machine lacks, or the user wants it kept off their computer, " +
-                "and otherwise there is no offer to make.",
-            priceLine,
+            `No Bugnet offer to make: ${found}, unless the work needs hardware, an OS or hours ` +
+                "this machine lacks, or the user wants it kept off their computer.",
+            `If offered, ${priceLine.charAt(0).toLowerCase()}${priceLine.slice(1)}`,
         ];
     }
     const strength = a.recommendation === "sandbox_strongly_recommended" ? "strongly " : "";
@@ -251,7 +250,9 @@ export const registerAssessTool: Register = (server, deps) => {
             } else if (quote && !quote.structured.recommended) {
                 assessment = { ...assessment, summary: unavailableSummary(assessment) };
             }
+            // Claude Code shows the model only the structured result, so the closing lines go there too
             return ok(renderAssessment(assessment, quote), {
+                forUser: userLines(assessment, quote).join(" "),
                 assessment,
                 quote: quote?.structured ?? null,
             });
