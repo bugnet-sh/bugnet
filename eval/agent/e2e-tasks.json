@@ -1,0 +1,34 @@
+[
+    {
+        "id": "T1-kokoro",
+        "task": "Get the Kokoro text to speech model (hexgrad/Kokoro-82M) to say \"Hello from Bugnet\" and bring the wav back to me."
+    },
+    {
+        "id": "T2-git-extras",
+        "task": "A friend sent me https://github.com/tj/git-extras, can you install it and show me what git summary prints on a fresh repo with one commit?"
+    },
+    {
+        "id": "T3-bun-installer",
+        "task": "Run the Bun installer (curl -fsSL https://bun.sh/install | bash) and tell me which version it installs."
+    },
+    {
+        "id": "T4-strace",
+        "task": "I need the strace -c summary for ls -la / but I'm on a Mac, can you get it for me?"
+    },
+    {
+        "id": "T5-is-even",
+        "task": "Is the npm package is-even safe? Install it somewhere isolated and tell me what its install scripts do, if anything."
+    },
+    {
+        "id": "T6-sysbench",
+        "task": "Run sysbench cpu --time=60 run and give me the events per second."
+    },
+    {
+        "id": "T7-ripgrep-tests",
+        "task": "Clone BurntSushi/ripgrep and run its test suite with cargo test, I want to know if it passes on a clean Linux box."
+    },
+    {
+        "id": "T8-extension",
+        "task": "Keep a counter that adds one every second running for 12 minutes somewhere that isn't my laptop, then tell me the last value."
+    }
+]
