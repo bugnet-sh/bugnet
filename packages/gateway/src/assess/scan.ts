@@ -136,32 +136,65 @@ function shadyHost(host: string): boolean {
 
 /* Text rules */
 
-const pipeShell: RegExp[] = [
-    /\b(?:curl|wget)\b[^\n|;&]{0,400}\|[ \t]*(?:sudo[ \t]+(?:-\S{1,20}[ \t]+){0,4})?(?:ba|z|k|da|fi)?sh\b/gi,
-    /\b(?:curl|wget)\b[^\n|;&]{0,400}\|[ \t]*(?:sudo[ \t]+)?(?:python(?:\d(?:\.\d+)?)?|perl|ruby|node)\b(?![ \t]+-m[ \t]+json)/gi,
-    /\b(?:iwr|irm|Invoke-WebRequest|Invoke-RestMethod)\b[^\n|]{0,400}\|[ \t]*(?:iex|Invoke-Expression)\b/gi,
+// Each pipe tail is found first and the download is looked for behind it on the same line
+const pipeTails: { tail: RegExp; head: RegExp }[] = [
+    {
+        tail: /\|[ \t]*(?:sudo[ \t]+(?:-\S{1,20}[ \t]+){0,4})?(?:(?:ba|z|k|da|fi)?sh\b|(?:python(?:\d(?:\.\d+)?)?|perl|ruby|node)\b(?![ \t]+-m[ \t]+json))/gi,
+        head: /\b(?:curl|wget)\b[^\n|;&]*$/i,
+    },
+    {
+        tail: /\|[ \t]*(?:iex|Invoke-Expression)\b/gi,
+        head: /\b(?:iwr|irm|Invoke-WebRequest|Invoke-RestMethod)\b[^\n|]*$/i,
+    },
+];
+const pipeInline: RegExp[] = [
     /\b(?:iex|Invoke-Expression)\b[\s(]{0,10}(?:New-Object\s+(?:System\.)?Net\.WebClient\)?\.DownloadString|(?:iwr|irm|Invoke-WebRequest|Invoke-RestMethod)\b)/gi,
     /\b(?:ba|z)?sh\s+<\(\s*(?:curl|wget)\b/gi,
     /\b(?:ba|z)?sh\s+-c\s+["']\$\(\s*(?:curl|wget)\b/gi,
 ];
+const lookBehind = 400;
 
-export function pipeToShell(text: string, ctx: TextContext): Finding[] {
-    const hits: Finding[] = [];
-    for (const re of pipeShell) {
+function pipeMatches(text: string): { index: number; line: string }[] {
+    const out: { index: number; line: string }[] = [];
+    for (const { tail, head } of pipeTails) {
+        let seen = 0;
+        for (const m of text.matchAll(tail)) {
+            if (++seen > 200 || out.length >= 50) break;
+            const lineStart = text.lastIndexOf("\n", m.index) + 1;
+            const from = Math.max(lineStart, m.index - lookBehind);
+            const h = head.exec(text.slice(from, m.index));
+            if (!h) continue;
+            const index = from + h.index;
+            const end = m.index + m[0].length;
+            out.push({
+                index,
+                line: text.slice(index, end) + (text.slice(end, end + 300).split("\n")[0] ?? ""),
+            });
+        }
+    }
+    for (const re of pipeInline) {
         let seen = 0;
         for (const m of text.matchAll(re)) {
             if (++seen > 50) break;
             const end = m.index + m[0].length;
-            const near = m[0] + (text.slice(end, end + 300).split("\n")[0] ?? "");
-            const shady = urlsIn(near).some((u) => shadyHost(u.host));
-            hits.push({
-                id: "pipe_to_shell",
-                severity: shady ? "high" : shift("medium", ctx.trust),
-                title: `${where(ctx)} pipes a downloaded script straight into a shell`,
-                evidence: excerpt(text, m.index, ctx.kind === "command" ? undefined : ctx.path),
+            out.push({
+                index: m.index,
+                line: m[0] + (text.slice(end, end + 300).split("\n")[0] ?? ""),
             });
         }
     }
+    return out;
+}
+
+export function pipeToShell(text: string, ctx: TextContext): Finding[] {
+    const hits = pipeMatches(text).map((m): Finding => ({
+        id: "pipe_to_shell",
+        severity: urlsIn(m.line).some((u) => shadyHost(u.host))
+            ? "high"
+            : shift("medium", ctx.trust),
+        title: `${where(ctx)} pipes a downloaded script straight into a shell`,
+        evidence: excerpt(text, m.index, ctx.kind === "command" ? undefined : ctx.path),
+    }));
     return pick(hits);
 }
 
@@ -169,7 +202,8 @@ const decodeExec =
     /\b(?:eval|exec|Function|Invoke-Expression|iex)\s*\(\s*(?:(?:[\w$]{1,40}\.){0,4}(?:atob|b64decode|b32decode|b85decode|a85decode|unhexlify|fromhex|decompress|loads|FromBase64String)\s*\(|Buffer\.from\s*\(|__import__\s*\(\s*['"](?:base64|zlib|marshal|codecs|binascii)['"])/i;
 const encodedPowershell =
     /\b(?:powershell|pwsh)(?:\.exe)?\b[^\n]{0,80}?\s-e(?:nc(?:odedcommand)?)?\s+[A-Za-z0-9+/=]{40,}/i;
-const longBlob = /[A-Za-z0-9+/]{200,}={0,2}|(?:[0-9a-fA-F]{2}){100,}|(?:\\x[0-9a-fA-F]{2}){40,}/g;
+// Maximal runs keep the search linear, hex digits fall inside the base64 class
+const blobRun = /[A-Za-z0-9+/]+={0,2}|(?:\\x[0-9a-fA-F]{2})+/g;
 const decodeSink =
     /\b(?:eval|exec|Function|atob|b64decode|b32decode|b85decode|unhexlify|fromhex|FromBase64String|decompress|loads|Invoke-Expression|iex)\b|Buffer\.from|\bbase64\s+(?:-d|--decode|-D)\b/;
 
@@ -188,7 +222,8 @@ export function obfuscatedExec(text: string, ctx: TextContext): Finding[] {
                 },
             ];
     }
-    for (const m of text.matchAll(longBlob)) {
+    for (const m of text.matchAll(blobRun)) {
+        if (m[0].length < (m[0].startsWith("\\x") ? 160 : 200)) continue;
         const before = text.slice(Math.max(0, m.index - 300), m.index);
         if (/data:[^\s,;]+;base64,\s*$/.test(before.slice(-100))) continue;
         const after = text.slice(m.index + m[0].length, m.index + m[0].length + 100);
