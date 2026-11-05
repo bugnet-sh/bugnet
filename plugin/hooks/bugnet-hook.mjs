@@ -2766,14 +2766,22 @@ var failureCause = {
   platform_unsupported: "a tool that does not support this operating system",
   docker_daemon: "no running Docker daemon on this machine"
 };
-var sandbox = "a disposable Bugnet cloud Linux sandbox, which bugnet_assess in this session checks and prices for free";
-var choice = {
-  prompt: `The user has not been asked yet where it should run: this computer, or ${sandbox}. Checks of this machine only matter if it runs here.`,
-  command: `The user has not been asked yet where it should run: this computer, or ${sandbox}.`,
-  failure: `The user has not been asked yet whether to retry it here or in ${sandbox}.`
-};
-var offThisComputer = `The user has not been asked yet whether to use ${sandbox}.`;
-var notOffered = "Bugnet has not been offered in this session.";
+var sandbox = "a disposable Bugnet cloud Linux sandbox";
+var assessFact = "bugnet_assess prices it and checks it for free, and no Bugnet tool has been used in this session.";
+var probeFact = "Checks of this machine only matter if it runs here.";
+function choice(kind, firstPrompt) {
+  if (kind === "failure") {
+    const retry = `a retry can run here or in ${sandbox}.`;
+    return `Unless the conversation already settled it, ${retry} ${assessFact}`;
+  }
+  const open = kind === "prompt" && firstPrompt ? "The user has not been asked yet where it should run" : "Unless the conversation already settled it, where it runs is open";
+  const probe = kind === "prompt" ? ` ${probeFact}` : "";
+  return `${open}: this computer, or ${sandbox}. ${assessFact}${probe}`;
+}
+function offThisComputer(firstPrompt) {
+  const open = firstPrompt ? "The user has not been asked yet whether to use" : "Unless the conversation already settled it, an option is";
+  return `${open} ${sandbox}. ${assessFact}`;
+}
 function lead(c) {
   return c.signals.find((s) => s.weight > 0 && s.category === c.category);
 }
@@ -2799,17 +2807,17 @@ function detection(c, kind, max) {
   }
   return `the prompt asks to run or set up ${described(c, max)}.`;
 }
-function hintFor(c, kind) {
+function hintFor(c, kind, firstPrompt = false) {
   if (!c.suggest || !c.category) return "";
   const top = lead(c);
   const asked = kind !== "failure" && top !== void 0 && top.id in signalWhy;
   const reason = kind === "failure" ? failureWhy[c.category] : (top && signalWhy[top.id]) ?? why[c.category];
-  const next = asked ? offThisComputer : choice[kind];
+  const next = asked ? offThisComputer(kind === "prompt" && firstPrompt) : choice(kind, firstPrompt);
   for (const max of [60, 36, 20]) {
-    const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${next} ${notOffered}`;
+    const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${next}`;
     if (text.length <= maxHintChars) return text;
   }
-  return `${hintPrefix} ${reason} ${next} ${notOffered}`;
+  return `${hintPrefix} ${reason} ${next}`;
 }
 
 // packages/intent/src/prompt.ts
@@ -3247,10 +3255,11 @@ function loadState(env, session) {
       hinted: Array.isArray(s.hinted) ? s.hinted : [],
       clonedDirs: Array.isArray(s.clonedDirs) ? s.clonedDirs : [],
       clonedRepos: repos && typeof repos === "object" && !Array.isArray(repos) ? repos : {},
-      bugnetUsed: s.bugnetUsed === true
+      bugnetUsed: s.bugnetUsed === true,
+      prompts: typeof s.prompts === "number" ? s.prompts : 0
     };
   } catch {
-    return { hinted: [], clonedDirs: [], clonedRepos: {}, bugnetUsed: false };
+    return { hinted: [], clonedDirs: [], clonedRepos: {}, bugnetUsed: false, prompts: 0 };
   }
 }
 function saveState(env, session, state) {
@@ -3316,6 +3325,11 @@ function runHook(mode, input, env, now = Date.now()) {
     }
     return null;
   }
+  const firstPrompt = mode === "prompt" && state.prompts === 0;
+  if (mode === "prompt" && state.prompts < 2) {
+    state.prompts++;
+    saveState(env, session, state);
+  }
   if (state.bugnetUsed || state.hinted.length >= maxHintsPerSession) return null;
   if (env.hints === "quiet" && mode !== "failure") return null;
   const dir = mode === "prompt" ? null : clonedAt(state, cwd, command);
@@ -3340,7 +3354,7 @@ function runHook(mode, input, env, now = Date.now()) {
   if (!c.suggest || !c.category) return null;
   const key = c.category;
   if (state.hinted.includes(key)) return null;
-  const text = hintFor(c, mode);
+  const text = hintFor(c, mode, firstPrompt);
   if (!text) return null;
   state.hinted.push(key);
   saveState(env, session, state);

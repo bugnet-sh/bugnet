@@ -51,14 +51,13 @@ function cases(): [string, Classification, "prompt" | "command" | "failure"][] {
 describe("hintFor", () => {
     it.each(cases())("writes one factual paragraph for %s", (_name, c, kind) => {
         expect(c.suggest).toBe(true);
-        const text = hintFor(c, kind);
+        const text = hintFor(c, kind, kind === "prompt");
         expect(text.startsWith(hintPrefix)).toBe(true);
         expect(text.length).toBeLessThanOrEqual(maxHintChars);
         expect(text).not.toContain("\n");
         expect(text).toContain("disposable Bugnet cloud Linux sandbox");
-        expect(text).toContain("bugnet_assess in this session checks and prices for free");
-        expect(text).toContain("The user has not been asked yet");
-        expect(text.endsWith("Bugnet has not been offered in this session.")).toBe(true);
+        expect(text).toContain("bugnet_assess prices it and checks it for free");
+        expect(text).toContain("no Bugnet tool has been used in this session");
         expect(text.slice(hintPrefix.length)).not.toMatch(imperative);
     });
 
@@ -71,12 +70,24 @@ describe("hintFor", () => {
 
     it("names the unvetted code and what it could reach", () => {
         const c = classifyPrompt("clone https://github.com/someone/thing and run it", mac);
-        const text = hintFor(c, "prompt");
+        const text = hintFor(c, "prompt", true);
         expect(text).toContain("github.com/someone/thing");
         expect(text).toContain("files, SSH keys and credentials");
         expect(text).toContain("even from a temporary folder");
         expect(text).toContain("where it should run: this computer, or a disposable Bugnet cloud");
         expect(text).toContain("Checks of this machine only matter if it runs here.");
+    });
+
+    it("leaves whether the user was asked to the conversation after the first prompt", () => {
+        const c = classifyPrompt("clone https://github.com/someone/thing and run it", mac);
+        expect(hintFor(c, "prompt", true)).toContain("The user has not been asked yet");
+        const later = hintFor(c, "prompt");
+        expect(later).not.toContain("has not been asked");
+        expect(later).toContain(
+            "Unless the conversation already settled it, where it runs is open",
+        );
+        const cmd = hintFor(classifyCommand("pip install flash-attn", mac), "command", true);
+        expect(cmd).not.toContain("has not been asked");
     });
 
     it("says a command is about to run", () => {
@@ -94,7 +105,10 @@ describe("hintFor", () => {
         const text = hintFor(c, "failure");
         expect(text).toContain("docker compose up");
         expect(text).toContain("no running Docker daemon on this machine");
-        expect(text).toContain("whether to retry it here or in a disposable Bugnet cloud Linux");
+        expect(text).toContain(
+            "a retry can run here or in a disposable Bugnet cloud Linux sandbox",
+        );
+        expect(text).not.toContain("has not been asked");
     });
 
     it("is empty when nothing suggests Bugnet", () => {
@@ -138,7 +152,7 @@ describe("hint subjects", () => {
         "try it somewhere else, not on my machine",
     ])("describes a request to work off this computer as such in %s", (text) => {
         const c = classifyPrompt(text, mac);
-        const h = hintFor(c, "prompt");
+        const h = hintFor(c, "prompt", true);
         expect(c.suggest).toBe(true);
         expect(h).toContain("this computer");
         expect(h).toContain("whether to use a disposable Bugnet cloud Linux sandbox");

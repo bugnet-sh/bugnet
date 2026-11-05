@@ -68,17 +68,32 @@ const failureCause: Record<string, string> = {
     docker_daemon: "no running Docker daemon on this machine",
 };
 
-const sandbox =
-    "a disposable Bugnet cloud Linux sandbox, which bugnet_assess in this session checks and prices for free";
+const sandbox = "a disposable Bugnet cloud Linux sandbox";
+const assessFact =
+    "bugnet_assess prices it and checks it for free, " +
+    "and no Bugnet tool has been used in this session.";
+const probeFact = "Checks of this machine only matter if it runs here.";
 
-// Where the work runs is a choice the user has not made, stated as a fact so it reads as context
-const choice: Record<InputKind, string> = {
-    prompt: `The user has not been asked yet where it should run: this computer, or ${sandbox}. Checks of this machine only matter if it runs here.`,
-    command: `The user has not been asked yet where it should run: this computer, or ${sandbox}.`,
-    failure: `The user has not been asked yet whether to retry it here or in ${sandbox}.`,
-};
-const offThisComputer = `The user has not been asked yet whether to use ${sandbox}.`;
-const notOffered = "Bugnet has not been offered in this session.";
+// Only a hint on the session's first prompt can be sure nobody asked the user yet
+function choice(kind: InputKind, firstPrompt: boolean): string {
+    if (kind === "failure") {
+        const retry = `a retry can run here or in ${sandbox}.`;
+        return `Unless the conversation already settled it, ${retry} ${assessFact}`;
+    }
+    const open =
+        kind === "prompt" && firstPrompt
+            ? "The user has not been asked yet where it should run"
+            : "Unless the conversation already settled it, where it runs is open";
+    const probe = kind === "prompt" ? ` ${probeFact}` : "";
+    return `${open}: this computer, or ${sandbox}. ${assessFact}${probe}`;
+}
+
+function offThisComputer(firstPrompt: boolean): string {
+    const open = firstPrompt
+        ? "The user has not been asked yet whether to use"
+        : "Unless the conversation already settled it, an option is";
+    return `${open} ${sandbox}. ${assessFact}`;
+}
 
 function lead(c: Classification): Signal | undefined {
     return c.signals.find((s) => s.weight > 0 && s.category === c.category);
@@ -108,7 +123,7 @@ function detection(c: Classification, kind: InputKind, max: number): string {
     return `the prompt asks to run or set up ${described(c, max)}.`;
 }
 
-export function hintFor(c: Classification, kind: InputKind): string {
+export function hintFor(c: Classification, kind: InputKind, firstPrompt = false): string {
     if (!c.suggest || !c.category) return "";
     const top = lead(c);
     const asked = kind !== "failure" && top !== undefined && top.id in signalWhy;
@@ -116,10 +131,12 @@ export function hintFor(c: Classification, kind: InputKind): string {
         kind === "failure"
             ? failureWhy[c.category]
             : ((top && signalWhy[top.id]) ?? why[c.category]);
-    const next = asked ? offThisComputer : choice[kind];
+    const next = asked
+        ? offThisComputer(kind === "prompt" && firstPrompt)
+        : choice(kind, firstPrompt);
     for (const max of [60, 36, 20]) {
-        const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${next} ${notOffered}`;
+        const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${next}`;
         if (text.length <= maxHintChars) return text;
     }
-    return `${hintPrefix} ${reason} ${next} ${notOffered}`;
+    return `${hintPrefix} ${reason} ${next}`;
 }

@@ -73,6 +73,18 @@ describe("runHook hints", () => {
         expect(loadState(e, "h1").hinted).toEqual(["local_ai_model"]);
     });
 
+    it("says nobody asked the user only on the session's first prompt", () => {
+        const e = env();
+        const first = { ...kokoro, session_id: "h4", prompt: "fix the failing test in my repo" };
+        expect(runHook("prompt", first, e)).toBeNull();
+        const later = context(runHook("prompt", { ...kokoro, session_id: "h4" }, e));
+        expect(later).not.toContain("has not been asked");
+        expect(later).toContain("Unless the conversation already settled it");
+        expect(context(runHook("prompt", { ...kokoro, session_id: "h5" }, e))).toContain(
+            "The user has not been asked yet where it should run",
+        );
+    });
+
     it("prints nothing for an ordinary prompt", () => {
         const e = env();
         expect(

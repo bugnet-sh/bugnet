@@ -67,9 +67,8 @@ function quoteLines(quote: BuiltQuote | null): string[] {
     const pkg = rec ? q.packages.find((p) => p.id === rec.packageId) : undefined;
     if (rec) {
         const size = pkg ? `, ${describeSize(pkg)}, ${pkg.minutes} min` : "";
-        lines.push(
-            `Recommended Bugnet package: ${rec.packageId}${size}, ${rec.priceUsd} USDC, because ${rec.why}.`,
-        );
+        const price = `${rec.priceUsd} USDC, because ${rec.why}`;
+        lines.push(`Recommended Bugnet package: ${rec.packageId}${size}, ${price}.`);
     } else if (q.packages.length > 0) {
         const why = q.largeEnough ? "fits these needs" : "is large enough";
         lines.push(`No package ${why}, ${q.packages.length} others are in the quote.`);
