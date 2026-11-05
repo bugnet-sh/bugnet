@@ -14,7 +14,9 @@
 import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
+import { clonesIn } from "./command.ts";
 import { classifyCommand, classifyFailure, classifyPrompt, hintFor } from "./index.ts";
+import { clip } from "./normalize.ts";
 import type { Classification, SessionContext } from "./types.ts";
 
 export type Mode = "prompt" | "command" | "failure" | "track";
@@ -83,28 +85,13 @@ function prune(env: Env, now: number): void {
     }
 }
 
-const cloneRe =
-    /\bgit\s+clone\b(?:\s+--?[\w-]+(?:[= ](?!https?:|git@)\S+)?)*\s+(['"]?)((?:https?:\/\/|git@)[^\s'"]+)\1(?:\s+(['"]?)([^\s'";&|]+)\3)?/g;
-
 // Directories a command clones into, resolved against the hook's cwd
 export function clonedDirs(command: string, cwd: string): string[] {
-    const out: string[] = [];
-    for (const m of command.matchAll(cloneRe)) {
-        const url = m[2] as string;
-        const name =
-            m[4] ??
-            url
-                .replace(/\.git$/, "")
-                .replace(/\/+$/, "")
-                .split(/[/:]/)
-                .pop();
-        if (name) out.push(isAbsolute(name) ? name : resolve(cwd, name));
-    }
-    return out;
+    return clonesIn(command).map((c) => (isAbsolute(c.dir) ? c.dir : resolve(cwd, c.dir)));
 }
 
 function inCloned(state: State, cwd: string, command: string): boolean {
-    const cds = [...command.matchAll(/\bcd\s+(['"]?)([^\s'";&|]+)\1/g)].map((m) =>
+    const cds = [...clip(command).matchAll(/\bcd\s+(['"]?)([^\s'";&|]+)\1/g)].map((m) =>
         resolve(cwd, m[2] as string),
     );
     return [cwd, ...cds].some((d) =>

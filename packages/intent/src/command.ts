@@ -288,7 +288,12 @@ function remoteExec(segs: Segment[], i: number, st: State): void {
     let url: string | null = null;
     let how = "";
     let sink: Segment | undefined;
-    for (let j = i + 1; seg.pipesTo && j < segs.length && segs[j]?.pipedFrom; j++) {
+    const last = Math.min(segs.length, i + 6);
+    for (
+        let j = i + 1;
+        fetchers.has(seg.head) && seg.pipesTo && j < last && segs[j]?.pipedFrom;
+        j++
+    ) {
         if (interpreters.has((segs[j] as Segment).head)) {
             sink = segs[j];
             break;
@@ -356,27 +361,52 @@ function downloadThenRun(seg: Segment, st: State): void {
 
 /* Clones and the code inside them */
 
-function gitClone(seg: Segment, st: State): void {
+const cloneValueFlags =
+    /^(?:--depth|-b|--branch|--origin|-o|--filter|--config|-c|--jobs|-j|--reference|--separate-git-dir|--template|--shallow-since|--shallow-exclude|-u|--upload-pack)$/;
+
+// The URL a git clone or gh repo clone fetches, and the directory it creates
+function cloneOf(seg: Segment): { url: string; dir: string } | null {
     let url: string | null = null;
+    let dir: string | undefined;
     if (seg.head === "git") {
         const at = seg.lower.indexOf("clone");
-        if (at === -1) return;
-        const valueFlags =
-            /^(?:--depth|-b|--branch|--origin|-o|--filter|--config|-c|--jobs|-j|--reference|--separate-git-dir|--template|--shallow-since|--shallow-exclude|-u|--upload-pack)$/;
+        if (at === -1) return null;
+        const rest: string[] = [];
         for (let j = at + 1; j < seg.argv.length; j++) {
             const a = seg.argv[j] as string;
-            if (valueFlags.test(a)) j++;
-            else if (!a.startsWith("-")) {
-                url = a;
-                break;
-            }
+            if (cloneValueFlags.test(a)) j++;
+            else if (!a.startsWith("-")) rest.push(a);
         }
+        [url = null, dir] = rest;
     } else if (seg.head === "gh" && seg.lower[1] === "repo" && seg.lower[2] === "clone") {
         const target = seg.argv[3];
         if (target)
             url = target.includes("/") && !target.includes(":") ? `github.com/${target}` : target;
+        dir = seg.argv[4];
     }
-    if (!url || !/^(?:https?:\/\/|git@|ssh:\/\/|git:\/\/|[\w.-]+\.[a-z]{2,}\/)/i.test(url)) return;
+    if (!url || !/^(?:https?:\/\/|git@|ssh:\/\/|git:\/\/|[\w.-]+\.[a-z]{2,}\/)/i.test(url))
+        return null;
+    const name = url
+        .replace(/\.git$/, "")
+        .replace(/\/+$/, "")
+        .split(/[/:]/)
+        .pop();
+    return { url, dir: dir ?? name ?? "" };
+}
+
+// Repositories a command clones, for the hook to remember which directories hold them
+export function clonesIn(command: string): { repo: string; dir: string }[] {
+    const out: { repo: string; dir: string }[] = [];
+    for (const seg of parse(ascii(clip(command)).trim())) {
+        const c = cloneOf(seg);
+        if (c && c.dir) out.push({ repo: repoOf(c.url).short, dir: c.dir });
+    }
+    return out;
+}
+
+function gitClone(seg: Segment, st: State): void {
+    const url = cloneOf(seg)?.url;
+    if (!url) return;
     const repo = repoOf(url);
     st.cloned = true;
     st.clonedRepo = repo.short;
@@ -1336,6 +1366,18 @@ function quarantine(seg: Segment, st: State): void {
     }
 }
 
+// PowerShell that downloads a script and runs it with iex, in either order on one line
+function downloadCradle(raw: string): string | null {
+    for (const line of raw.split("\n")) {
+        if (!/\b(?:iex|invoke-expression)\b/i.test(line)) continue;
+        if (!/downloadstring|\b(?:iwr|irm)\b|invoke-webrequest|invoke-restmethod/i.test(line))
+            continue;
+        const url = /https?:\/\/[^\s'")]+/i.exec(line);
+        if (url) return url[0];
+    }
+    return null;
+}
+
 /* Never offered */
 
 const abuseHeads = new Set([
@@ -1416,21 +1458,9 @@ export function classifyCommand(command: string, ctx: SessionContext = {}): Clas
         ranClonedCode: false,
         downloads: new Set(),
     };
-    const cradle =
-        /\b(?:iex|invoke-expression)\b[^\n]*?(?:downloadstring|iwr|irm|invoke-webrequest|invoke-restmethod)[^\n]*?(https?:\/\/[^\s'")]+)/i.exec(
-            raw,
-        );
-    if (cradle && !isMainstream(cradle[1] as string)) {
-        add(
-            st,
-            hit(
-                "pipe_to_shell",
-                "untrusted_code",
-                6,
-                "iex download",
-                hostPath(cradle[1] as string),
-            ),
-        );
+    const cradle = downloadCradle(raw);
+    if (cradle && !isMainstream(cradle)) {
+        add(st, hit("pipe_to_shell", "untrusted_code", 6, "iex download", hostPath(cradle)));
     }
     if (/:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/.test(raw)) {
         add(st, hit("fork_bomb", "risky_experiment", 5, ":(){ :|:& };:"));

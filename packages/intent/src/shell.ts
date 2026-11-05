@@ -53,6 +53,18 @@ const plainPrefixes = new Set([
 ]);
 const sudoValueFlags = new Set(["-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-T", "-U"]);
 
+// Index of the newline that ends a heredoc's closing line, scanning each line once
+function heredocEnd(cmd: string, from: number, delim: string): number {
+    let at = from;
+    while (at < cmd.length) {
+        const nl = cmd.indexOf("\n", at);
+        const end = nl === -1 ? cmd.length : nl;
+        if (cmd.slice(at, end).trim() === delim) return end;
+        at = end + 1;
+    }
+    return cmd.length;
+}
+
 function split(cmd: string): Raw[] {
     const out: Raw[] = [];
     let words: string[] = [];
@@ -148,12 +160,8 @@ function split(cmd: string): Raw[] {
         if (c === "\n") {
             endSeg(false);
             if (heredoc !== null) {
-                const delim = heredoc;
+                i = heredocEnd(cmd, i + 1, heredoc) - 1;
                 heredoc = null;
-                const lines = cmd.slice(i + 1).split("\n");
-                const stop = lines.findIndex((l) => l.trim() === delim);
-                const skipped = stop === -1 ? lines : lines.slice(0, stop + 1);
-                i += skipped.reduce((n, l) => n + l.length + 1, 0);
             }
             continue;
         }

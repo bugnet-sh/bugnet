@@ -39,6 +39,9 @@ const commandStart =
 const errorLike =
     /cuda|nvidia|nvcc|libcud|memory|space|errno|quota|killed|kill|137|sigkill|alloc|externally|wheel|requirement|exec format|cpu type|binary file|instruction|architecture|platform|linux|command not found|docker/;
 
+// Pasted logs can hold thousands of commands, and the first few say what the paste is
+const maxPasted = 8;
+
 function clauseStarts(t: string): number[] {
     const starts = [0];
     for (const m of findAll(clauseBreak, t)) starts.push(m.index + m[0].length);
@@ -46,19 +49,31 @@ function clauseStarts(t: string): number[] {
 }
 
 function clauseOf(starts: number[], at: number): number {
-    let i = 0;
-    while (i + 1 < starts.length && (starts[i + 1] as number) <= at) i++;
-    return i;
+    let lo = 0;
+    let hi = starts.length - 1;
+    while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if ((starts[mid] as number) <= at) lo = mid;
+        else hi = mid - 1;
+    }
+    return lo;
 }
 
 // URLs become spaces of the same length, so indices stay valid and words inside them do not match
 function blank(t: string, spans: RegExpExecArray[]): string {
-    let out = t;
-    for (const m of spans) {
-        const at = m.index as number;
-        out = out.slice(0, at) + " ".repeat(m[0].length) + out.slice(at + m[0].length);
+    const ranges = spans
+        .map((m) => [m.index as number, (m.index as number) + m[0].length] as const)
+        .sort((a, b) => a[0] - b[0]);
+    const parts: string[] = [];
+    let at = 0;
+    for (const [from, to] of ranges) {
+        if (to <= at) continue;
+        const start = Math.max(from, at);
+        parts.push(t.slice(at, start), " ".repeat(to - start));
+        at = to;
     }
-    return out;
+    parts.push(t.slice(at));
+    return parts.join("");
 }
 
 // Widens a match that starts at a file extension to the whole file name before it
@@ -290,7 +305,7 @@ export function classifyPrompt(text: string, ctx: SessionContext = {}): Classifi
     // A fetch command mentioned in prose without a URL is talk about it, not a command
     const typed = (x: RegExpExecArray) =>
         x[0].startsWith("`") || /:\/\//.test(x[0]) || !/^(?:curl|wget|iwr|irm|invoke)/.test(x[0]);
-    for (const m of findAll(commandStart, t).filter(typed)) {
+    for (const m of findAll(commandStart, t).filter(typed).slice(0, maxPasted)) {
         const c = classifyCommand(m[0].replace(/^`|`$/g, ""), ctx);
         if (c.suggest && c.category) {
             const pts = Math.min(Math.round(c.score * 8), 6);

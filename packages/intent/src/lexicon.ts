@@ -153,9 +153,10 @@ export const repoUrl =
 export const hfUrl =
     /(?:https?:\/\/)?huggingface\.co\/(?:spaces\/|datasets\/)?[\w.-]+\/[\w.-]*[\w-]/g;
 
-export const anyUrl = /https?:\/\/[^\s'"<>)\]]*[^\s'"<>)\].,;:!?]/g;
+export const anyUrl = /https?:\/\/[^\s'"<>)\]]{0,400}[^\s'"<>)\].,;:!?]/g;
 
-export const scriptUrl = /https?:\/\/[^\s'"<>)\]]+\.(?:sh|bash|ps1|py|js|bat|cmd|vbs)(?![\w])/g;
+export const scriptUrl =
+    /https?:\/\/[^\s'"<>)\]]{1,400}\.(?:sh|bash|ps1|py|js|bat|cmd|vbs)(?![\w])/g;
 
 export const ownRepoBefore = family(String.raw`
     (?:my|our|mine|benim|kendi|mi|nuestro|meu|nosso|mein\w*|unser\w*) (?:own |propio |eigene\w* )?(?:\w+ )?(?:repo|repository|fork|project|app|site|code|repom|projem|proyecto|projeto|projekt)\w*[ :]*(?:at |on |from |is |here |-)?$

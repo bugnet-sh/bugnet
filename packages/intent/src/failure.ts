@@ -14,7 +14,7 @@ interface Signature {
     re: RegExp;
 }
 
-const heavyWheel = String.raw`flash[-_]?attn|xformers|bitsandbytes|deepspeed|triton|auto[-_]?gptq|llama[-_]cpp[-_]python|mamba[-_]ssm|causal[-_]conv1d|vllm|apex|tensorrt|pycuda|cupy|dlib|insightface|tts|pyaudio|sentencepiece|tokenizers|torch\w*|onnxruntime\w*|exllamav2|detectron2`;
+const heavyWheel = String.raw`flash[-_]?attn|xformers|bitsandbytes|deepspeed|triton|auto[-_]?gptq|llama[-_]cpp[-_]python|mamba[-_]ssm|causal[-_]conv1d|vllm|apex|tensorrt|pycuda|cupy|dlib|insightface|tts|pyaudio|sentencepiece|tokenizers|torch\w{0,12}|onnxruntime[\w-]{0,12}|exllamav2|detectron2`;
 
 export const signatures: Signature[] = [
     {
@@ -46,7 +46,7 @@ export const signatures: Signature[] = [
         id: "ml_wheel_build",
         category: "environment",
         re: new RegExp(
-            String.raw`(?:failed (?:building wheel|to build)|could not build wheels|building wheel for [\w.-]+ \(pyproject\.toml\) did not run successfully|error: subprocess-exited-with-error)[^\n]{0,120}?(?:${heavyWheel})|(?:${heavyWheel})[^\n]{0,60}?(?:failed (?:building wheel|to build))|could not find a version that satisfies the requirement (?:torch|torchvision|torchaudio)[^\s]*\+cu\d+`,
+            String.raw`(?:failed (?:building wheel|to build)|could not build wheels|building wheel for [\w.-]{1,80} \(pyproject\.toml\) did not run successfully|error: subprocess-exited-with-error)[^\n]{0,120}?(?:${heavyWheel})|(?<![\w-])(?:${heavyWheel})[^\n]{0,60}?(?:failed (?:building wheel|to build))|could not find a version that satisfies the requirement (?:torch|torchvision|torchaudio)[^\s]{0,40}\+cu\d+`,
         ),
     },
     {
