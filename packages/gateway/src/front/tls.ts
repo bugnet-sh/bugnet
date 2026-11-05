@@ -79,6 +79,7 @@ function accept(raw: Socket, o: FrontOptions, pending: Set<Socket>): void {
     const { proxy_timeout, proxy_max_bytes } = o.settings;
     readProxyHeader(raw, { timeoutMs: proxy_timeout, maxBytes: proxy_max_bytes }).then(
         (header) => {
+            if (raw.destroyed) return;
             const client = header.command === "proxy" ? header.source.address : undefined;
             handshake(raw, client, o, pending);
         },

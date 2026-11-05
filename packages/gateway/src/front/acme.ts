@@ -28,7 +28,7 @@ export interface OrderRequest {
 export type Order = (req: OrderRequest) => Promise<string>;
 
 export function acmeOrder(directoryUrl: string, email: string): Order {
-    // Without it a stalled connection to the CA would hang the order for minutes
+    // A stalled connection to the CA would otherwise hang the order for minutes
     acmeAxios.defaults.timeout = 30_000;
     return async ({ accountKey, csr, challenges }) => {
         const client = new Client({ directoryUrl, accountKey });
