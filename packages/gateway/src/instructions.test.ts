@@ -18,7 +18,7 @@ describe("server instructions", () => {
             "not vetted",
             "NVIDIA GPU",
             "risky experiment",
-            "for hours",
+            "hours-long job",
         ]) {
             expect(first).toContain(family);
         }
@@ -26,10 +26,16 @@ describe("server instructions", () => {
 
     it("keep Bugnet out of everyday work and abuse", () => {
         expect(instructions).toContain("Not a fit, so no Bugnet mention");
-        expect(instructions).toContain("home network");
+        expect(instructions).toContain("local network");
         expect(instructions).toContain(
-            "does not run crypto miners, floods, DDoS, mass scanning, credential stuffing or mass messaging, and is never offered for them, even as a test run",
+            "never offered to run or inspect crypto miners, floods, DDoS, mass scanning, credential stuffing or mass messaging",
         );
+    });
+
+    it("exclude abuse and LAN scans where Codex stops reading", () => {
+        const first = instructions.slice(0, 512);
+        expect(first).toContain("Never for LAN scans or abuse such as miners and floods.");
+        expect(instructions).toContain("advise against running it (abuse aside)");
     });
 
     it("stay factual and never name infrastructure providers", () => {
