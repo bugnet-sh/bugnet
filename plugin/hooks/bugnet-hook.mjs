@@ -2093,7 +2093,7 @@ function policy(segs, text) {
       }
     }
   }
-  const m = find(abuse, text);
+  const m = text === null ? null : find(abuse, text);
   return m ? hit("abuse", null, -10, m[0]) : null;
 }
 function classifyCommand(command, ctx = {}) {
@@ -2156,7 +2156,7 @@ function classifyCommand(command, ctx = {}) {
   } else if (segs.some((s) => s.sudo && /^\.\/(?:install|setup)[\w-]*\.sh$/.test(s.argv[0] ?? ""))) {
     add(st, hit("sudo_install_script", "environment", 2, "sudo ./install.sh"));
   }
-  const stop = policy(segs, norm(raw));
+  const stop = policy(segs, st.hits.some((h) => h.weight > 0) ? norm(raw) : null);
   if (stop) return refuse(st.hits, stop);
   return finish(st.hits);
 }
@@ -2369,8 +2369,8 @@ function classifyPrompt(text, ctx = {}) {
   const verb = find(taskVerb, bare);
   const doing = act !== null || verb !== null;
   const isLocal2 = find(local, bare) !== null;
-  const mac = ctx.os === "macos" || find(macText, bare) !== null;
-  const win = !mac && (ctx.os === "windows" || find(windowsText, bare) !== null);
+  const mac = ctx.os === "macos" || ctx.os !== "windows" && find(macText, bare) !== null;
+  const win = !mac && (ctx.os === "windows" || !ctx.os && find(windowsText, bare) !== null);
   const notLinux = mac || win;
   const starts = clauseStarts(t);
   const located = [];
