@@ -150,7 +150,7 @@ describe("fromRouter", () => {
         expect(other.message).not.toMatch(/handle/);
     });
 
-    it("keeps a bare FailedPrecondition as not ready and an unknown reason as a precondition", () => {
+    it("keeps a bare FailedPrecondition as not ready, an unknown reason as a precondition", () => {
         expect(fromRouter(routerError(Code.FailedPrecondition), "exec").kind).toBe("not_ready");
         const e = fromRouter(routerError(Code.FailedPrecondition, "SOMETHING_NEW"), "exec");
         expect(e.kind).toBe("precondition");

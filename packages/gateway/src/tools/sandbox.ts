@@ -383,7 +383,7 @@ export const registerSandboxTools: Register = (server, deps) => {
                     });
                 } catch (e) {
                     const err = fromRouter(e, "start");
-                    // Only these codes mean the router recorded nothing, so Payments refunds in full
+                    // Only these codes mean the router recorded nothing, so Payments refunds it
                     const outright =
                         e instanceof ConnectError &&
                         (e.code === Code.PermissionDenied || e.code === Code.InvalidArgument);

@@ -83,7 +83,8 @@ describe("bugnet_extend", () => {
         const r = await callTool(client, "bugnet_extend", args("0.4"));
         expect(r.isError).toBe(true);
         expect(r.text).toBe(
-            "extend: more-10m costs $0.04, tell the user that price and pass it as confirmPriceUsd.",
+            "extend: more-10m costs $0.04, tell the user that price and pass it as " +
+                "confirmPriceUsd.",
         );
         expect(payments.orders).toEqual([]);
     });
@@ -135,6 +136,19 @@ describe("bugnet_extend", () => {
         expect(r.text).toMatch(/^extend: the paying wallet is blocked/);
         expect(r.text).toMatch(/not applied and the payment is refunded/);
         expect(payments.abandoned).toEqual([{ orderId: "toolu_x", reason: "not_applied" }]);
+    });
+
+    it("keeps the refund wording when the refusal is a bare NotFound", async () => {
+        const { client, payments } = await connect({
+            ...checked,
+            extendPlacement() {
+                throw routerError(Code.NotFound);
+            },
+            getPlacement: () => ({ placement: placement() }),
+        });
+        const r = await callTool(client, "bugnet_extend", args());
+        expect(r.text).toMatch(/not applied and the payment is refunded/);
+        expect(payments.abandoned).toHaveLength(1);
     });
 
     it("retries an extension whose answer was lost", async () => {

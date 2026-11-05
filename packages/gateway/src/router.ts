@@ -119,7 +119,7 @@ interface Rule {
 
 /* Reasons */
 
-// Data-plane 11.3 and control-plane 13.1, each honoured only under the code the router pairs it with
+// Data-plane 11.3 and control-plane 13.1, each honoured only under the code it comes with
 const rules: Record<string, Rule> = {
     PORT_REFUSED: {
         code: Code.InvalidArgument,
@@ -299,7 +299,9 @@ const rules: Record<string, Rule> = {
     LINK_LOCKED: {
         code: Code.FailedPrecondition,
         kind: "precondition",
-        text: "the secret link locked after too many failed tries, bugnet_secret_link makes a new one",
+        text:
+            "the secret link locked after too many failed tries, bugnet_secret_link makes " +
+            "a new one",
     },
     HOST_NOT_ALLOWED: {
         code: Code.FailedPrecondition,
@@ -353,7 +355,9 @@ const rules: Record<string, Rule> = {
     TOO_MANY_TRANSFERS: {
         code: Code.ResourceExhausted,
         kind: "limit",
-        text: "this sandbox has as many open transfer links as it may, until one is used or expires",
+        text:
+            "this sandbox has as many open transfer links as it may, until one is used or " +
+            "expires",
     },
     TOO_MANY_KEYS: {
         code: Code.ResourceExhausted,

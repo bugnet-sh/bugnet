@@ -61,7 +61,7 @@ export function failure(err: unknown, what: string): CallToolResult {
     return { content: [{ type: "text", text: `${e.message}.${retry}` }], isError: true };
 }
 
-// The router also answers an unknown job id with a bare NotFound, which must not read as a lost sandbox
+// An unknown job id also gets a bare NotFound, which must not read as a lost sandbox
 async function notFound(
     deps: Deps,
     handle: string,
@@ -86,8 +86,11 @@ export async function sandboxFailure(
     err: unknown,
     what: string,
 ): Promise<CallToolResult> {
-    const e = err instanceof GatewayError ? err : fromRouter(err, what);
-    if (e.kind === "not_found" && e.reason === null) return notFound(deps, handle, e, what);
+    const fromTool = err instanceof GatewayError;
+    const e = fromTool ? err : fromRouter(err, what);
+    if (!fromTool && e.kind === "not_found" && e.reason === null) {
+        return notFound(deps, handle, e, what);
+    }
     if (e.kind !== "not_ready") return failure(e, what);
     try {
         const p = (await deps.router.getPlacement({ handle })).placement;
