@@ -103,7 +103,7 @@ describe("latency", () => {
     it.each(families)("keeps 50 KB of repeated %s tokens under 50 ms each", (_name, words) => {
         mixed(50);
         const ctx = { os: "macos", arch: "arm64" } as const;
-        for (const sep of [" ", "\n", ""]) {
+        for (const sep of [" ", "\n", "", "-", "."]) {
             const text = repeated(words.join(sep) + sep);
             expect(cpuMs(() => classifyPrompt(text, ctx))).toBeLessThan(50);
             expect(cpuMs(() => classifyCommand(text, ctx))).toBeLessThan(50);

@@ -170,7 +170,7 @@ export const ownRepoBefore = family(String.raw`
 `);
 
 // Things a person can hand over that run as code, so a client sending a bug report does not count
-const codeNoun = String.raw`(?:repo|repos|repository|script|scripts|(?<!(?:csv|json|pdf|data|log|text|config|excel|word|design|figma|image|video|audio) )files?|binary|binaries|tool|tools|bot|bots|exe|executable|zip|archive|app|apk|dmg|msi|installer|program|plugin|extension|package|mod|mods|patcher|crack|cheat|hack|cli|one[- ]liner|take[- ]home|mcp server|[\w-]+\.(?:exe|zip|rar|7z|apk|dmg|pkg|app|msi|jar|sh|py|js|ps1|bat))(?![a-z0-9_])`;
+const codeNoun = String.raw`(?:repo|repos|repository|script|scripts|(?<!(?:csv|json|pdf|data|log|text|config|excel|word|design|figma|image|video|audio) )files?|binary|binaries|tool|tools|bot|bots|exe|executable|zip|archive|app|apk|dmg|msi|installer|program|plugin|extension|package|mod|mods|patcher|crack|cheat|hack|cli|one[- ]liner|take[- ]home|mcp server|\w[\w-]{0,40}\.(?:exe|zip|rar|7z|apk|dmg|pkg|app|msi|jar|sh|py|js|ps1|bat))(?![a-z0-9_])`;
 
 const person = String.raw`(?:an? |my |some |this |that |the |random )?(?:random )?(?:friend|buddy|mate|cousin|brother|sister|someone|somebody|some ?one|guy|dude|stranger|recruiter|client|vendor|person|user|redditor|youtuber|streamer|seller|account|anon)s?(?! (?:on|from|in|at) (?:my|our) (?:team|company|org|work|office|department))`;
 
@@ -181,17 +181,17 @@ const place = String.raw`(?:reddit|subreddit|discord|telegram|youtube|tiktok|twi
 
 const pronoun = String.raw`(?:this|it|these|them|that)(?= *(?:$|[\n,.!?:;]|(?:on|over|via|in|from|earlier|yesterday|today|last|and|but|to|so|which|for)(?![a-z])))`;
 
-const handedObject = String.raw`(?: (?:me|us|him|her|them))?(?: (?:${pronoun}|(?:(?:a|an|the|this|that|these|those|their|his|her|some|over|along) )?(?:link to (?:(?:a|an|the|this|their|his|her|some) )?)?(?:[\w'.-]+ ){0,3}?${codeNoun}))`;
+const handedObject = String.raw`(?: (?:me|us|him|her|them))?(?: (?:${pronoun}|(?:(?:a|an|the|this|that|these|those|their|his|her|some|over|along) )?(?:link to (?:(?:a|an|the|this|their|his|her|some) )?)?(?:[\w'.-]{1,40} ){0,3}?${codeNoun}))`;
 
 // Code that reached the user from someone else, and the place or person it came from
 export const origin = family(String.raw`
     ${person}\b[^\n.?!]{0,40}?\b${handed}${handedObject}
-    (?:this|that|the|a|an|some|these) (?:[\w'.-]+ ){0,3}?${codeNoun} (?:that |which )?(?:i |we )?(?:got |received )?(?:from )?${person}[^\n.?!]{0,30}? ${handed}
-    ${codeNoun} (?:[\w'.-]+ ){0,3}?(?:from|by) ${person}
-    (?:found|saw|seen|got|spotted|came across|stumbled (?:on|upon|across)|downloaded|grabbed|picked up) (?:${pronoun}|(?:a|an|the|this|that|some) (?:[\w'.-]+ ){0,3}?${codeNoun})(?: [\w'.-]+){0,4}? (?:on|in|at|from|via|off) (?:a |an |the |some |this )?(?:[\w'.-]+ ){0,2}?${place}
-    ${codeNoun} (?:that |which )?(?:i |we |someone |somebody |a guy |some guy )?(?:found|saw|seen|got|spotted|came across|downloaded|grabbed|posted|shared|linked|dropped)(?: it)? (?:on|in|at|from|via|off) (?:a |an |the |some |this )?(?:[\w'.-]+ ){0,2}?${place}
-    ${codeNoun} (?:from|off|via) (?:a |an |the |some |this |that )?(?:[\w'.-]+ ){0,2}?${place}
-    ${codeNoun} (?:[\w'.-]+ ){0,3}?(?:that |which )?(?:supposedly|apparently|allegedly|claims? to|claiming to|promises to|promising to|is supposed to|swears it)
+    (?:this|that|the|a|an|some|these) (?:[\w'.-]{1,40} ){0,3}?${codeNoun} (?:that |which )?(?:i |we )?(?:got |received )?(?:from )?${person}[^\n.?!]{0,30}? ${handed}
+    ${codeNoun} (?:[\w'.-]{1,40} ){0,3}?(?:from|by) ${person}
+    (?:found|saw|seen|got|spotted|came across|stumbled (?:on|upon|across)|downloaded|grabbed|picked up) (?:${pronoun}|(?:a|an|the|this|that|some) (?:[\w'.-]{1,40} ){0,3}?${codeNoun})(?: [\w'.-]{1,40}){0,4}? (?:on|in|at|from|via|off) (?:a |an |the |some |this )?(?:[\w'.-]{1,40} ){0,2}?${place}
+    ${codeNoun} (?:that |which )?(?:i |we |someone |somebody |a guy |some guy )?(?:found|saw|seen|got|spotted|came across|downloaded|grabbed|posted|shared|linked|dropped)(?: it)? (?:on|in|at|from|via|off) (?:a |an |the |some |this )?(?:[\w'.-]{1,40} ){0,2}?${place}
+    ${codeNoun} (?:from|off|via) (?:a |an |the |some |this |that )?(?:[\w'.-]{1,40} ){0,2}?${place}
+    ${codeNoun} (?:[\w'.-]{1,40} ){0,3}?(?:that |which )?(?:supposedly|apparently|allegedly|claims? to|claiming to|promises to|promising to|is supposed to|swears it)
     take[- ]home|coding (?:test|challenge|assignment|exercise)|interview (?:task|project|assignment|test)
     tech(?:nical)? (?:test|assessment)
     (?:reddit|discord|telegram|youtube|tiktok|twitter|forum|eksi|instagram|github)\w*'?(?:te|ta|de|da|ten|tan|den|dan|deki|daki)\b[^\n.?!]{0,40}?(?:buldum|gordum|rastladim|paylas\w*|atti\w*|gonder\w*|yolla\w*|indir\w*|onerdi\w*|verdi\w*)
