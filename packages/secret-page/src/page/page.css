@@ -295,6 +295,10 @@ textarea[aria-invalid="true"] {
     margin: 0 0 1rem;
 }
 
+.facts + .problem-inline {
+    margin: 0.75rem 0 0;
+}
+
 .code-line {
     color: var(--muted);
     font-size: 0.9rem;

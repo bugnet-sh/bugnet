@@ -290,6 +290,27 @@ describe.runIf(launcher !== null)(`in a headless browser (${launcher?.label ?? "
         expect(await o.page.evaluate(() => "pwned" in window)).toBe(false);
     });
 
+    it("keeps its times current and says when the link has expired", async () => {
+        const t = token();
+        links[t] = link();
+        const context = await browser.newContext();
+        contexts.push(context);
+        await context.clock.install({ time: Date.now() });
+        const page = await context.newPage();
+        await page.goto(`${route.origin}/l/${t}`);
+        await visible(page, "#form");
+        expect(await page.textContent("#expires")).toMatch(/\(in [89] minutes\)$/);
+        expect(await page.isHidden("#expired")).toBe(true);
+        await page.clock.fastForward(4 * 60_000);
+        expect(await page.textContent("#expires")).toMatch(/\(in [45] minutes\)$/);
+        expect(await page.textContent("#created")).toMatch(/\(16 minutes ago\)$/);
+        expect(await page.isHidden("#expired")).toBe(true);
+        await page.clock.fastForward(8 * 60_000);
+        expect(await page.textContent("#expires")).toMatch(/\([23] minutes ago\)$/);
+        await visible(page, "#expired");
+        expect(await page.textContent("#expired")).toMatch(/^\s*This link has expired\./);
+    });
+
     it("says Source: unknown when the router recorded none", async () => {
         const t = token();
         links[t] = link({ sourceLabel: "", sandboxCreatedAt: "" });

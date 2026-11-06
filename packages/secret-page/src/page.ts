@@ -57,6 +57,8 @@ const reasonField: Record<string, Field> = {
 };
 
 const fields: readonly Field[] = ["name", "value", "hosts", "headers"];
+// Often enough that a minute-grained relative time never lags by more than half a minute
+const timeRefreshMs = 30_000;
 
 function canMask(doc: Document): boolean {
     const css = doc.defaultView?.CSS;
@@ -103,6 +105,9 @@ export async function startPage(env: PageEnv): Promise<void> {
     // What the page itself last filled in, which a name change may replace
     let autoHosts = "";
     let autoHeaders = "";
+    let createdAt: Date | null = null;
+    let expiresAt: Date | null = null;
+    let clock: ReturnType<typeof setInterval> | undefined;
 
     byId("dev-build").hidden = !env.development;
 
@@ -116,9 +121,21 @@ export async function startPage(env: PageEnv): Promise<void> {
         if (date) el.setAttribute("datetime", date.toISOString());
     }
 
+    function showTimes(): void {
+        setTime("created", createdAt);
+        setTime("expires", expiresAt);
+        byId("expired").hidden = !expiresAt || env.now().getTime() < expiresAt.getTime();
+    }
+
+    function stopClock(): void {
+        clearInterval(clock);
+        clock = undefined;
+    }
+
     function showProblem(p: PageProblem, again: (() => void) | null = null): void {
         loading.hidden = true;
         if (p.final) {
+            stopClock();
             value.value = "";
             form.hidden = true;
             checkPanel.hidden = true;
@@ -227,6 +244,9 @@ export async function startPage(env: PageEnv): Promise<void> {
     function showDone(answer: SecretAnswer): void {
         value.value = "";
         form.hidden = true;
+        // The link is used up now, so its expiry no longer matters
+        stopClock();
+        byId("expired").hidden = true;
         const spec = answer.spec;
         let text: string;
         if (answer.state === "FAILED") {
@@ -309,8 +329,11 @@ export async function startPage(env: PageEnv): Promise<void> {
     function render(link: LinkInfo): void {
         setText("pairing-code", link.pairingCode);
         setText("source", link.sourceLabel || "unknown");
-        setTime("created", link.sandboxCreatedAt);
-        setTime("expires", link.expiresAt);
+        createdAt = link.sandboxCreatedAt;
+        expiresAt = link.expiresAt;
+        showTimes();
+        stopClock();
+        clock = setInterval(showTimes, timeRefreshMs);
 
         const filled = prefill(link.suggested);
         name.value = filled.name;
