@@ -10,14 +10,23 @@ import {
 } from "./config.ts";
 import { fromRouter, safeMessage } from "./router.ts";
 import { cleanText, looksLikeText, tail } from "./sanitize.ts";
+import vectors from "./testing/sanitize-vectors.json" with { type: "json" };
 import { secretLooking } from "./tools/jobs.ts";
 import { recommend } from "./tools/quote.ts";
 import type { QuotedPackage } from "./quote.ts";
 
 describe("sanitize", () => {
-    it("strips escape sequences, controls and bidi overrides", () => {
-        const raw = "\u001b[31mred\u001b[0m \u001b]0;title\u0007ok\r\nnext\u0000\u202eevil";
-        expect(cleanText(raw)).toBe("red ok\nnextevil");
+    // The vectors are plain JSON so the router's Go sanitiser can run the same cases
+    it.each(vectors)("cleans $name", ({ in: raw, out }) => {
+        expect(cleanText(raw)).toBe(out);
+    });
+
+    it("cleans hostile input in linear time", () => {
+        const raw = ("x" + "\u0301".repeat(50) + "\r\u200b\udb40\udc41").repeat(20_000);
+        const started = performance.now();
+        const clean = cleanText(raw);
+        expect(performance.now() - started).toBeLessThan(2_000);
+        expect(clean).not.toMatch(/[\u200b\r]/);
     });
 
     it("keeps the last bytes on a line boundary", () => {
@@ -89,6 +98,7 @@ describe("router errors", () => {
 describe("exec env", () => {
     it("flags values shaped like tokens", () => {
         expect(secretLooking({ A: "plain", B: "hf_" + "a".repeat(34) })).toBe("B");
+        expect(secretLooking({ K: "bnk_" + "Ab9-_".repeat(9) })).toBe("K");
         expect(secretLooking({ PATH: "/usr/bin" })).toBeNull();
     });
 });
