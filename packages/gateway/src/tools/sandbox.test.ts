@@ -703,6 +703,29 @@ describe("bugnet_start on a router with PricePackage", () => {
         expect(waits.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(40_000 - 18_000 - 6_000);
     });
 
+    it("returns the paid sandbox's handle when the wait for ready fails", async () => {
+        const { client, deps } = await setup(
+            priced(fresh(), {
+                createPlacement: () => ({
+                    handle: testHandle,
+                    placement: placement(PlacementState.PLACING),
+                }),
+                getPlacement() {
+                    throw routerError(Code.Unavailable);
+                },
+            }),
+        );
+        const r = await callTool<{ handle: string; state: string }>(
+            client,
+            "bugnet_start",
+            startArgs(signed(deps)),
+        );
+        expect(r.isError).toBe(false);
+        expect(r.structured).toEqual(
+            expect.objectContaining({ handle: testHandle, state: "starting" }),
+        );
+    });
+
     it("charges nothing when the price check leaves too little time to start", async () => {
         const clock = { now: testNow };
         const { client, deps, payments } = await setup(

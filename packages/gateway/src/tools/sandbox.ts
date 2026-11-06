@@ -348,13 +348,14 @@ export const registerSandboxTools: Register = (server, deps) => {
                 const handle = created.handle;
                 const keep = claims.github ? fetchMs + 1_000 : 0;
                 const waitBudget = Math.min(25_000, budget.left() - keep);
-                // Past the deadline the handle still goes back, as a sandbox that is starting
-                const p = await withProgress(ctx, "starting the sandbox", (signal) =>
-                    waitReady(deps, handle, created.placement, waitBudget, signal),
-                ).catch((e: unknown) => {
+                // Past the deadline or on a lost wait the handle still goes back as starting
+                const p = await withProgress(ctx, "starting the sandbox", (signal) => {
+                    const cut = AbortSignal.timeout(Math.max(1, waitBudget + 3_000));
+                    const both = AbortSignal.any([signal, cut]);
+                    return waitReady(deps, handle, created.placement, waitBudget, both);
+                }).catch(() => {
                     deps.log.warn("wait for ready failed", { handle: handleTag(handle) });
-                    if (created.placement) return created.placement;
-                    throw e;
+                    return created.placement;
                 });
                 deps.log.info("placement started", {
                     handle: handleTag(handle),
