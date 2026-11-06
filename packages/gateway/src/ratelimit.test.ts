@@ -4,9 +4,11 @@ import { parseSettings } from "./config.ts";
 import {
     AddressLimiter,
     addressKey,
+    isLoopbackRange,
     maxTrackedAddresses,
     parseCidr,
     quoteLimiter,
+    rangeFilter,
 } from "./ratelimit.ts";
 
 const limits = {
@@ -121,6 +123,21 @@ describe("addressKey", () => {
         expect(addressKey("64:ff9b::192.0.2.1")).toBe("64:ff9b:0:0::/64");
         expect(addressKey("fe80::1%en0")).toBe("fe80:0:0:0::/64");
         expect(addressKey("203.0.113.9")).toBe("203.0.113.9");
+    });
+});
+
+describe("rangeFilter", () => {
+    it("matches a dual-stack listener's IPv4 peers and refuses everything outside", () => {
+        const loopback = rangeFilter(["127.0.0.1/32", "::1/128"]);
+        for (const a of ["127.0.0.1", "::ffff:127.0.0.1", "::FFFF:127.0.0.1", "::1"]) {
+            expect(loopback(a), a).toBe(true);
+        }
+        for (const a of ["127.0.0.2", "::ffff:10.0.0.1", "10.0.0.1", "::2", "nope", undefined]) {
+            expect(loopback(a), String(a)).toBe(false);
+        }
+        expect(isLoopbackRange({ address: "127.0.0.0", prefix: 8, v6: false })).toBe(true);
+        expect(isLoopbackRange({ address: "127.0.0.0", prefix: 7, v6: false })).toBe(false);
+        expect(isLoopbackRange({ address: "::", prefix: 127, v6: true })).toBe(false);
     });
 });
 
