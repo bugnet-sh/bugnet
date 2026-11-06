@@ -15,17 +15,18 @@ import type { OrderResult } from "../payments/port.ts";
 import {
     approvalMeta,
     Budget,
+    type Deps,
     failure,
+    handleInput,
     handleTag,
     ok,
+    type Register,
+    sshAliasPattern,
     timeLeft,
     toolUseId,
     usd,
     waitMs,
     withProgress,
-    type Deps,
-    type Register,
-    handleInput,
 } from "./common.ts";
 import { describeSize, quoted, unavailableWords } from "./quote.ts";
 import { fetchAfterStart, sentence, sourceView, unplacedNote, type SourceView } from "./source.ts";
@@ -57,7 +58,7 @@ export function terminationText(code: string): string {
     return Object.hasOwn(terminationWords, code) ? (terminationWords[code] as string) : "ended";
 }
 
-const aliasShape = /^[a-z0-9-]{1,40}$/;
+const aliasShape = sshAliasPattern;
 // A code such as no_candidate, never free text that could carry a provider's words
 const failureCode = /^[a-z0-9_]{1,64}$/i;
 

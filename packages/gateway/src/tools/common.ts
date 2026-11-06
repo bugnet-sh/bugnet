@@ -24,6 +24,8 @@ export interface Deps {
 export type Register = (server: McpServer, deps: Deps) => void;
 
 export const handlePattern = /^sbx_[a-z2-7]{26}$/;
+// Data-plane 9.2, bn- and 10 lower-case base32 characters
+export const sshAliasPattern = /^bn-[a-z2-7]{10}$/;
 
 export const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
 

@@ -54,7 +54,7 @@ async function quoteId(client: Client): Promise<string> {
 }
 
 const estimateId = "0f8b6c2e-41d7-4a3b-9c5e-7d2a1b3c4d5e";
-const alias = "bn-k3f9x2q7ma";
+const alias = "bn-k3fz2q7max";
 
 // A quote as bugnet_quote signs it once the router's estimate names the source
 function signed(deps: Deps, claims: Partial<QuoteClaims> = {}): string {
@@ -1139,6 +1139,19 @@ describe("bugnet_status shows why a sandbox ended, its repo and its SSH alias", 
         expect(r.structured.source.path).toBeUndefined();
         expect(r.text).not.toMatch(/boxd|Ignore/);
     });
+
+    it.each(["bn-k3f9x2q7ma", "bn-K3FZ2Q7MAX", "bn-k3fz2q7ma", "bugnet-k3fz2q7max"])(
+        "drops an SSH alias that is not bn- and 10 base32 characters, %s",
+        async (sshAlias) => {
+            const { client } = await setup({
+                getPlacement: () => ({ placement: placement(PlacementState.READY, { sshAlias }) }),
+            });
+            const r = await callTool<{ sshAlias?: string }>(client, "bugnet_status", {
+                handle: testHandle,
+            });
+            expect(r.structured.sshAlias).toBeUndefined();
+        },
+    );
 
     it("reports a rate limit with its RetryInfo delay", async () => {
         const { client } = await setup({

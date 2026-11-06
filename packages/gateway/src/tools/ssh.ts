@@ -4,14 +4,15 @@ import type { AddSshKeyResponse } from "../gen/bugnet/router/v1/router_pb.ts";
 import { GatewayError, fromRouter } from "../router.ts";
 import { KeyError, parsePublicKey } from "../sshkey.ts";
 import {
+    type Deps,
+    handleInput,
     handleTag,
     ok,
     okBody,
-    sandboxFailure,
-    underDomain,
-    type Deps,
     type Register,
-    handleInput,
+    sandboxFailure,
+    sshAliasPattern,
+    underDomain,
 } from "./common.ts";
 
 // The router's own rule for the paths it echoes into the command, data-plane 9.2
@@ -57,7 +58,7 @@ function sshError(err: unknown, what: string): GatewayError {
 /* Router output */
 
 // Data-plane 9.2 says base32 but its own example has a 9, so any lower-case letter or digit
-const aliasShape = /^bn-[a-z0-9]{10}$/;
+const aliasShape = sshAliasPattern;
 const hostShape = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}$/;
 const fingerprintShape = /^SHA256:[A-Za-z0-9+/]{43}$/;
 const keyTypes = "ssh-ed25519|ecdsa-sha2-nistp(?:256|384|521)|ssh-rsa|rsa-sha2-(?:256|512)";

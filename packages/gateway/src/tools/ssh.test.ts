@@ -28,7 +28,7 @@ import {
 const body = "AAAAC3NzaC1lZDI1NTE5AAAAIPtybGGsm+VyEjrrr3g41O4+iiVBe2YoFLs+PfxiHbnM";
 const publicKey = `ssh-ed25519 ${body} me@laptop.local`;
 const fingerprint = "SHA256:UOTMgQOqiiMfzLDkpttT80jlnh7DzrYQ+TwhD7RrU6Y";
-const alias = "bn-k3f9x2q7ma";
+const alias = "bn-k3fz2q7max";
 const hostLine = "ssh.bugnet.sh ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHostKeyHostKeyHostKeyHostKey";
 const providers = /\b(koyeb|boat|e2b|boxd|instabox|daytona)\b/i;
 
@@ -139,7 +139,7 @@ describe("bugnet_ssh", () => {
                 expiresAt: "2026-11-05T12:10:00.000Z",
             }),
         );
-        expect(r.structured.config).toMatch(/^Host bugnet-bn-k3f9x2q7ma\n/);
+        expect(r.structured.config).toMatch(/^Host bugnet-bn-k3fz2q7max\n/);
         expect(r.structured.message).toBe(
             [
                 `Added key ${fingerprint} for SSH to ${alias}, valid until 2026-11-05T12:10:00.000Z.`,
@@ -287,7 +287,7 @@ describe("bugnet_ssh", () => {
             "",
         ]);
         expect(r.structured.config).toMatch(
-            /^Host bugnet-bn-k3f9x2q7ma\n {4}HostName ssh\.bugnet\.sh\n/,
+            /^Host bugnet-bn-k3fz2q7max\n {4}HostName ssh\.bugnet\.sh\n/,
         );
         expect(r.structured.config).not.toMatch(/evil|other|600/);
     });

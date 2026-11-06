@@ -159,7 +159,7 @@ describe("parsePublicKey", () => {
             ],
             [`command="echo hi" ${opensshEd25519}`, /^options before the key type/],
             [`restrict,pty ${opensshEd25519}`, /^options before the key type/],
-            ["~/.ssh/bugnet_bn-k3f9x2q7ma.pub", /not the file's path$/],
+            ["~/.ssh/bugnet_bn-k3fz2q7max.pub", /not the file's path$/],
             [`${opensshEd25519}\n${opensshEd25519}`, /more than one line/],
             [
                 `---- BEGIN SSH2 PUBLIC KEY ----\n${body}\n---- END SSH2 PUBLIC KEY ----`,
