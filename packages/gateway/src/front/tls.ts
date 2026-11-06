@@ -1,13 +1,4 @@
-/**
- * The public TLS front.
- *
- * HAProxy passes mcp.bugnet.sh's raw TLS through with a PROXY v2 header first. A connection from a
- * peer outside proxy_protocol_from closes unread. Every other one reads that header, records the
- * real client for clientAddress(), then terminates TLS and hands the decrypted socket to the same
- * HTTP server the plain listener uses. A connection offering acme-tls/1 for a name with a
- * challenge in flight gets the challenge certificate instead and closes after the handshake, as
- * RFC 8737 asks.
- */
+// HAProxy passes raw TLS behind a PROXY v2 header, so the front names the client and ends TLS
 import { createServer, type Server as NetServer, type Socket } from "node:net";
 import type { Server as HttpServer } from "node:http";
 import { createSecureContext, TLSSocket } from "node:tls";

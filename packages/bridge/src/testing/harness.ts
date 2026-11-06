@@ -1,10 +1,4 @@
-/**
- * Test harness for the bridge.
- *
- * fakeGateway serves the real gateway over HTTP on an ephemeral port with a fake router,
- * fakeSecretsRoute plays secrets.bugnet.sh and opens every box with the development key the way
- * the egress proxy would, and connectBridge drives the bridge with an MCP client in either era.
- */
+// Drives the real gateway and a fake secrets route that opens boxes with the development key
 import { createServer, type IncomingMessage, type Server as HttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { timestampFromMs } from "@bufbuild/protobuf/wkt";

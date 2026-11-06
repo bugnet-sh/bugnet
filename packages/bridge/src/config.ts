@@ -1,10 +1,4 @@
-/**
- * Bridge settings.
- *
- * They come from an optional TOML file decoded strictly, so a misspelt key is an error that names
- * it, then from the command line. The bridge holds no secrets of its own, and
- * config/example.toml lists every setting with its default.
- */
+// Decoded strictly so a misspelt key is an error naming it, and the bridge holds no secrets
 import { readFileSync } from "node:fs";
 import { isIPv4 } from "node:net";
 import { homedir } from "node:os";

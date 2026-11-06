@@ -1,10 +1,4 @@
-/**
- * The bridge's MCP server, the remote gateway's tools passed through plus bugnet_secret_from_env.
- *
- * Tool calls go to the gateway with their arguments and _meta unchanged, x402 payments included.
- * Input requests from the gateway come back to the local client as they are, and its answers go
- * back to the gateway on the retried call, so both eras of the protocol work on either side.
- */
+// Calls reach the gateway unchanged, _meta and input requests included, so both protocol eras work
 import {
     ProtocolError as RemoteProtocolError,
     type Progress,

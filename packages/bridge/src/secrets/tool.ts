@@ -1,14 +1,4 @@
-/**
- * bugnet_secret_from_env, the bridge's own tool.
- *
- * It reads a secret on this machine and stores it sealed for the sandbox's egress proxy, so the
- * value never passes through the agent. The user confirms the name, the source and the hosts on
- * every call (data-plane 19, question 6). A client that cannot ask the user gets only the preset
- * hosts of the named secret, read from the environment variable or .env key of that name, for a
- * sandbox this bridge process started. Otherwise an injected agent could hand any local secret
- * to a sandbox of its own. The value is read after that, and appears in no argument, result, log
- * line or error.
- */
+// The value is read only after the user confirms, and never enters an argument, result or log
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { basename } from "node:path";
 import {

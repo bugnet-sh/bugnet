@@ -1,13 +1,4 @@
-/**
- * OpenTelemetry trace continuation into the router, one trace per order (data-plane 20.13).
- *
- * The gateway is stateless, so a call about a sandbox finds its order's trace by deriving the ids
- * from the handle, as every other party does (20.2.1). Each tool call gets a span, and each router
- * call a client span whose traceparent the router continues. While telemetry.traces is off nothing
- * is built, no header is sent and no exporter connects. No global provider, context manager or
- * propagator is set, and no OTEL_ variable changes anything, since settings live in TOML and the
- * environment holds secrets only. Spans name a sandbox only by bugnet.handle_hash.
- */
+// Ids derive from the handle, so the stateless gateway joins its order's trace (data-plane 20.13)
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { Code, ConnectError, type Interceptor } from "@connectrpc/connect";

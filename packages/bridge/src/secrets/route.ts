@@ -1,10 +1,4 @@
-/**
- * The bridge's two calls to the secrets route, in the JSON of data-plane 8.4.
- *
- * The put grant travels only in Authorization, the handle never. Requests carry no Origin and no
- * Sec-Fetch-Site, which the route refuses on grant calls, and errors are turned into fixed
- * sentences so nothing from the response body reaches the agent verbatim.
- */
+// The grant rides only in Authorization and no Origin is sent, as the route's bridge calls require
 import { z } from "zod";
 import { failureCode, type SealedValue, type SealingKey, type SecretSpec } from "@bugnet/seal";
 

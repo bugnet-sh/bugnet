@@ -1,11 +1,4 @@
-/**
- * An OTLP/HTTP trace receiver for tests.
- *
- * It listens on 127.0.0.1 at a free port, keeps each export request's headers and raw body, and
- * decodes ExportTraceServiceRequest far enough for the trace tests, meaning ids, names, kinds,
- * attributes, links, status and the resource. It reads the wire format itself, so tests need no
- * OTLP schema.
- */
+// Reads the OTLP wire format itself, so the trace tests need no OTLP schema
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { gunzipSync } from "node:zlib";

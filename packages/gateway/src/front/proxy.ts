@@ -1,10 +1,4 @@
-/**
- * PROXY protocol version 2 receiver.
- *
- * HAProxy's send-proxy-v2 opens every connection with a binary header naming the real client,
- * laid out as section 2.2 of HAProxy's doc/proxy-protocol.txt describes. The receiver reads it
- * from the raw socket before TLS starts and hands the rest of the bytes on untouched.
- */
+// HAProxy's PROXY v2 header names the real client, so it is read from the raw socket before TLS
 import type { Socket } from "node:net";
 
 export const proxySignature = Buffer.from([

@@ -1,9 +1,4 @@
-/**
- * A real Connect router for tests that need the gateway's own client and transport.
- *
- * It serves h2c on 127.0.0.1 at a free port, records the headers of every call, and answers with
- * the methods given. Methods left out answer Unimplemented.
- */
+// A real Connect server over h2c, for tests that need the gateway's own client and transport
 import { createServer, type Http2Server, type ServerHttp2Session } from "node:http2";
 import type { AddressInfo } from "node:net";
 import { connectNodeAdapter } from "@connectrpc/connect-node";

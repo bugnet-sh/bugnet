@@ -1,12 +1,4 @@
-/**
- * Certificates from an ACME CA by the TLS-ALPN-01 challenge of RFC 8737.
- *
- * The CA reaches the TLS front through HAProxy's SNI split and checks the challenge certificate
- * the front answers acme-tls/1 with. The account key and the issued pair stay in acme_dir, so a
- * restart neither registers a new account nor orders a certificate it already holds. A
- * certificate renews acme_renew_before its expiry, and never before half its lifetime, so a
- * short-lived certificate cannot make the gateway order in a loop.
- */
+// TLS-ALPN-01 through HAProxy's SNI split, with state in acme_dir so a restart orders nothing new
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { axios as acmeAxios, Client, crypto as acmeCrypto, type Authorization } from "acme-client";
