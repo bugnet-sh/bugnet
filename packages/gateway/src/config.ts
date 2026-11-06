@@ -8,7 +8,7 @@
 import { readFileSync } from "node:fs";
 import { parse } from "smol-toml";
 import { z } from "zod";
-import { parseCidr } from "./ratelimit.ts";
+import { isLoopbackRange, parseCidr } from "./ratelimit.ts";
 
 const duration = z
     .string()
@@ -77,6 +77,7 @@ const settingsSchema = z
             .object({
                 tls_addr: z.string().default(""),
                 proxy_protocol: z.boolean().default(true),
+                proxy_protocol_from: z.array(cidr).max(100).default(["127.0.0.1/32", "::1/128"]),
                 proxy_timeout: duration.prefault("3s"),
                 proxy_max_bytes: z.int().min(52).max(65551).default(536),
                 handshake_timeout: duration.prefault("10s"),
@@ -199,6 +200,22 @@ export function acmeDomains(s: Settings): string[] {
     return [new URL(s.public_url).hostname];
 }
 
+function checkProxyPeers(ranges: string[], loopbackFront: boolean): void {
+    const parsed = ranges.map((r) => parseCidr(r) as NonNullable<ReturnType<typeof parseCidr>>);
+    if (parsed.length === 0) {
+        throw new ConfigError("front.proxy_protocol_from is empty, so no proxy could connect");
+    }
+    if (parsed.some((c) => c.prefix === 0)) {
+        throw new ConfigError("front.proxy_protocol_from must not trust every address");
+    }
+    // A front reachable beyond this machine must name the proxy, or any peer could name a client
+    if (!loopbackFront && parsed.every(isLoopbackRange)) {
+        throw new ConfigError(
+            "front.tls_addr is not loopback, so front.proxy_protocol_from must name the proxy",
+        );
+    }
+}
+
 function checkFront(s: Settings): void {
     const f = s.front;
     const acme = f.acme_directory !== "";
@@ -230,8 +247,9 @@ function checkFront(s: Settings): void {
             }
         }
     }
-    // A PROXY header means a proxy relays strangers, which dev payments must never serve
     const loopback = host === "localhost" || host === "::1" || /^127\./.test(host);
+    if (f.proxy_protocol) checkProxyPeers(f.proxy_protocol_from, loopback);
+    // A PROXY header means a proxy relays strangers, which dev payments must never serve
     if (s.payments.mode === "dev" && (f.proxy_protocol || !loopback)) {
         throw new ConfigError(
             "payments.mode dev needs a loopback front.tls_addr, no proxy_protocol",

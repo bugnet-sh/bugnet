@@ -44,6 +44,7 @@ scan_urls = true                        # fetch and scan script URLs agents pass
 [front]
 tls_addr = ""                           # host:port of the TLS front, such as 127.0.0.1:8444 behind HAProxy, empty turns it off
 proxy_protocol = true                   # every TLS front connection opens with a PROXY v2 header, as HAProxy send-proxy-v2 sends
+proxy_protocol_from = ["127.0.0.1/32", "::1/128"] # peers trusted to send that header, every other connection closes unread
 proxy_timeout = "3s"                    # deadline for that header, the spec asks for 3 s or more
 proxy_max_bytes = 536                   # largest PROXY header accepted, TLVs included, 52 to 65551
 handshake_timeout = "10s"               # deadline for the TLS handshake after the header

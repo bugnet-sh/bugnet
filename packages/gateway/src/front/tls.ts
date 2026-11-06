@@ -1,17 +1,19 @@
 /**
  * The public TLS front.
  *
- * HAProxy passes mcp.bugnet.sh's raw TLS through with a PROXY v2 header first. Each connection
- * reads that header, records the real client for clientAddress(), then terminates TLS and hands
- * the decrypted socket to the same HTTP server the plain listener uses. A connection offering
- * acme-tls/1 for a name with a challenge in flight gets the challenge certificate instead and
- * closes after the handshake, as RFC 8737 asks.
+ * HAProxy passes mcp.bugnet.sh's raw TLS through with a PROXY v2 header first. A connection from a
+ * peer outside proxy_protocol_from closes unread. Every other one reads that header, records the
+ * real client for clientAddress(), then terminates TLS and hands the decrypted socket to the same
+ * HTTP server the plain listener uses. A connection offering acme-tls/1 for a name with a
+ * challenge in flight gets the challenge certificate instead and closes after the handshake, as
+ * RFC 8737 asks.
  */
 import { createServer, type Server as NetServer, type Socket } from "node:net";
 import type { Server as HttpServer } from "node:http";
 import { createSecureContext, TLSSocket } from "node:tls";
 import { hostPort, type Settings } from "../config.ts";
 import type { Log } from "../log.ts";
+import { rangeFilter } from "../ratelimit.ts";
 import { setPeerAddress } from "../request.ts";
 import type { CertStore } from "./certs.ts";
 import { minVersion } from "./certs.ts";
@@ -68,7 +70,12 @@ function handshake(
     });
 }
 
-function accept(raw: Socket, o: FrontOptions, pending: Set<Socket>): void {
+function accept(raw: Socket, o: FrontOptions, pending: Set<Socket>, proxy: Peers): void {
+    if (o.settings.proxy_protocol && !proxy.trusted(raw.remoteAddress)) {
+        proxy.refused();
+        raw.destroy();
+        return;
+    }
     pending.add(raw);
     raw.once("close", () => pending.delete(raw));
     raw.on("error", () => raw.destroy());
@@ -92,10 +99,29 @@ function accept(raw: Socket, o: FrontOptions, pending: Set<Socket>): void {
     );
 }
 
+interface Peers {
+    trusted(address: string | undefined): boolean;
+    refused(): void;
+}
+
+// Only a peer in proxy_protocol_from may name the client, so any other closes unread
+function proxyPeers(o: FrontOptions): Peers {
+    let warnedAt = Number.NEGATIVE_INFINITY;
+    return {
+        trusted: rangeFilter(o.settings.proxy_protocol_from),
+        refused() {
+            if (Date.now() - warnedAt < 60_000) return;
+            warnedAt = Date.now();
+            o.log.warn("closed a connection from outside front.proxy_protocol_from");
+        },
+    };
+}
+
 export function startFront(o: FrontOptions): Promise<Front> {
     // Connections still before their handshake, the HTTP server owns the rest
     const pending = new Set<Socket>();
-    const server = createServer((raw) => accept(raw, o, pending));
+    const proxy = proxyPeers(o);
+    const server = createServer((raw) => accept(raw, o, pending, proxy));
     const { host, port } = hostPort(o.settings.tls_addr, "front.tls_addr");
     const close = () =>
         new Promise<void>((resolve) => {

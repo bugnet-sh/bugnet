@@ -41,6 +41,30 @@ export function parseCidr(cidr: string): { address: string; prefix: number; v6: 
     return null;
 }
 
+const loopback = new BlockList();
+loopback.addSubnet("127.0.0.0", 8, "ipv4");
+loopback.addAddress("::1", "ipv6");
+
+export function isLoopbackRange(c: { address: string; prefix: number; v6: boolean }): boolean {
+    const inside = loopback.check(c.address, c.v6 ? "ipv6" : "ipv4");
+    return inside && c.prefix >= (c.v6 ? 128 : 8);
+}
+
+// Peers a set of CIDR ranges names, an IPv4 peer of a dual-stack listener included
+export function rangeFilter(ranges: readonly string[]): (address: string | undefined) => boolean {
+    const list = new BlockList();
+    for (const range of ranges) {
+        const c = parseCidr(range);
+        if (c) list.addSubnet(c.address, c.prefix, c.v6 ? "ipv6" : "ipv4");
+    }
+    return (address) => {
+        if (!address) return false;
+        const v4 = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(address)?.[1] ?? address;
+        if (isIPv4(v4)) return list.check(v4, "ipv4");
+        return isIPv6(address) && list.check(address, "ipv6");
+    };
+}
+
 function hextets(address: string): string[] | null {
     let a = address.split("%")[0] as string;
     const v4 = /(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(a);
@@ -78,24 +102,18 @@ function refilled(b: Bucket, now: number): number {
 export class AddressLimiter {
     // Kept in least recently used order, the first entry the stalest
     private readonly buckets = new Map<string, Bucket>();
-    private readonly shared = new BlockList();
+    private readonly shared: (address: string) => boolean;
     private readonly block: Rate;
 
     constructor(private readonly limits: AddressLimits) {
-        for (const range of limits.sharedRanges) {
-            const c = parseCidr(range);
-            if (c) this.shared.addSubnet(c.address, c.prefix, c.v6 ? "ipv6" : "ipv4");
-        }
+        this.shared = rangeFilter(limits.sharedRanges);
         const m = limits.v6BlockMultiple;
         this.block = { perMinute: limits.normal.perMinute * m, burst: limits.normal.burst * m };
     }
 
     private levels(address: string): Level[] {
-        const v4 = isIPv4(address);
-        if (this.shared.check(address, v4 ? "ipv4" : "ipv6")) {
-            return [{ key: `shared ${address}`, rate: this.limits.shared }];
-        }
-        const parts = v4 ? null : hextets(address);
+        if (this.shared(address)) return [{ key: `shared ${address}`, rate: this.limits.shared }];
+        const parts = isIPv4(address) ? null : hextets(address);
         if (!parts) return [{ key: address, rate: this.limits.normal }];
         return [
             { key: prefixKey(parts, 4), rate: this.limits.normal },

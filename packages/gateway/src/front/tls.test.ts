@@ -149,13 +149,20 @@ async function get(socket: TLSSocket, path: string, host = name): Promise<string
 async function post(socket: TLSSocket, host: string): Promise<string> {
     const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" });
     const chunks: Buffer[] = [];
-    socket.on("data", (c: Buffer) => chunks.push(c));
+    // An SSE answer keeps the connection alive despite Connection close, so its last chunk ends it
+    const done = new Promise<void>((resolve) => {
+        socket.on("data", (c: Buffer) => {
+            chunks.push(c);
+            if (Buffer.concat(chunks).toString().endsWith("\r\n0\r\n\r\n")) resolve();
+        });
+        socket.once("end", resolve);
+    });
     socket.write(
         `POST /mcp HTTP/1.1\r\nHost: ${host}\r\nContent-Type: application/json\r\n` +
             `Accept: application/json, text/event-stream\r\nContent-Length: ${body.length}\r\n` +
             `Connection: close\r\n\r\n${body}`,
     );
-    await once(socket, "end");
+    await done;
     return Buffer.concat(chunks).toString();
 }
 
@@ -240,6 +247,20 @@ describe("TLS front", () => {
         expect(await refused(tlsTo(f, undefined))).toMatch(/closed|ECONNRESET|socket/);
         await expect.poll(() => f.logs.map((l) => l.msg)).toContain("proxy header refused");
         expect(f.logs[0]?.fields?.err).toMatch(/signature/);
+    });
+
+    it("closes a peer outside proxy_protocol_from before reading its header", async () => {
+        const f = await start('proxy_protocol_from = ["192.0.2.0/24", "2001:db8::/32"]');
+        const silent = await rawConnect(f.port);
+        expect(await closedWithin(silent, 200)).toBeLessThan(200);
+        expect(await refused(tlsTo(f, v4Header))).toMatch(/closed|ECONNRESET|socket/);
+        expect(f.logs.map((l) => l.msg)).not.toContain("proxy header refused");
+    });
+
+    it("takes the header from a loopback peer by default", async () => {
+        const f = await start();
+        const client = await mcpClient(f, v6Header);
+        expect((await callTool(client, "test_whoami")).structured.address).toBe("2001:db8::7");
     });
 
     it("refuses garbage, an oversized header and a silent client", async () => {
