@@ -95,12 +95,19 @@ node_modules/.bin/tsx eval/agent/run.ts --split test     # live judge, real Clau
 The end-to-end run starts and stops one sandbox through a gateway in dev payments mode, so point
 it only at a local router.
 
-The live judge spends Claude usage: each session is a real model run (about $0.01 to $0.10 at API
-prices), capped by `budgetUsd` in [`eval/agent/config.json`](eval/agent/config.json). It runs every
-prompt in an empty directory with the user's settings, memory, CLAUDE.md and connectors left out,
-denies shell commands, and allows only the free Bugnet tools. `--arms mcp`, `--limit N` and
-`--gateway-url URL` make a smaller run, and the header of
-[`eval/agent/run.ts`](eval/agent/run.ts) lists every flag.
+The live judge spends Claude usage: each session is a real model run, up to `perRun.maxBudgetUsd`
+($0.40) at API prices, and the whole run is capped by `budgetUsd` in
+[`eval/agent/config.json`](eval/agent/config.json). One session cost $0.15 on 2026-11-06. It runs
+every prompt in an empty directory with the user's settings, memory, CLAUDE.md and connectors left
+out, denies shell commands, and allows only the free Bugnet tools. The smallest run is one
+session:
+
+```sh
+node_modules/.bin/tsx eval/agent/run.ts --split test --arms mcp --limit 1 --budget 0.4 \
+    --gateway-url http://127.0.0.1:8787/mcp
+```
+
+The header of [`eval/agent/run.ts`](eval/agent/run.ts) lists every flag.
 
 ### The README's tools table
 
