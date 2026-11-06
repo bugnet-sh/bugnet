@@ -291,7 +291,7 @@ describe("tracing on", () => {
             events: 0,
             status: { code: 0, message: "" },
         });
-        expect(call.resource).toMatchObject({
+        expect(call.resource).toEqual({
             "service.name": "bugnet-gateway",
             "service.version": "0.1.0",
             "deployment.environment.name": "main",
