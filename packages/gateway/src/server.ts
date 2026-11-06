@@ -35,8 +35,9 @@ export const registrations: Register[] = [
 
 type AnyHandler = (...a: unknown[]) => unknown;
 
-// Each tool call runs in its own scope, which the router client reads to cancel its calls
-function scopeToolCalls(server: McpServer): void {
+// Each tool call runs in its own scope, which the router client reads to cancel and trace its calls
+function scopeToolCalls(server: McpServer, deps: Deps): void {
+    const tracing = deps.tracing;
     const register = server.registerTool.bind(server) as (
         name: string,
         config: unknown,
@@ -45,7 +46,10 @@ function scopeToolCalls(server: McpServer): void {
     const scoped = (name: string, config: unknown, cb: AnyHandler) =>
         register(name, config, (...a: unknown[]) => {
             const ctx = a[a.length - 1] as ServerContext;
-            return withToolCall(ctx.mcpReq.signal, () => cb(...a));
+            const args = a.length > 1 ? a[0] : undefined;
+            const run = () => cb(...a);
+            const traced = tracing ? () => tracing.tool(name, args, run) : run;
+            return withToolCall(ctx.mcpReq.signal, traced);
         });
     server.registerTool = scoped as typeof server.registerTool;
 }
@@ -55,7 +59,7 @@ export function buildMcpServer(deps: Deps, extra: Register[] = []): McpServer {
         { name: "bugnet", title: "Bugnet sandboxes", version },
         { instructions },
     );
-    scopeToolCalls(server);
+    scopeToolCalls(server, deps);
     for (const register of [...registrations, ...extra]) register(server, deps);
     return server;
 }

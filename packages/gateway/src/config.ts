@@ -73,6 +73,22 @@ const settingsSchema = z
             })
             .strict()
             .prefault({}),
+        telemetry: z
+            .object({
+                traces: z.boolean().default(false),
+                otlp_endpoint: z.url().or(z.literal("")).default(""),
+                sample_ratio: z.number().min(0).max(1).default(1),
+                environment: z
+                    .string()
+                    .regex(/^[a-z0-9-]{1,64}$/, "lowercase letters, digits and hyphens")
+                    .default("main"),
+                export_timeout: duration.prefault("10s"),
+                batch_timeout: duration.prefault("5s"),
+                batch_size: z.int().min(1).max(65536).default(512),
+                queue_size: z.int().min(1).max(65536).default(2048),
+            })
+            .strict()
+            .prefault({}),
         front: z
             .object({
                 tls_addr: z.string().default(""),
@@ -104,6 +120,8 @@ export interface Secrets {
     paymentsToken: string;
     githubToken: string;
     huggingfaceToken: string;
+    // The whole Authorization header value for the trace backend, empty for a local collector
+    otlpAuthorization?: string;
 }
 
 export interface Config extends Settings {
@@ -175,6 +193,7 @@ export function readSecrets(env: NodeJS.ProcessEnv, settings: Settings): Secrets
         paymentsToken,
         githubToken: env.GITHUB_TOKEN ?? "",
         huggingfaceToken: env.HF_TOKEN ?? "",
+        otlpAuthorization: env.BUGNET_OTLP_AUTHORIZATION ?? "",
     };
 }
 
@@ -257,6 +276,23 @@ function checkFront(s: Settings): void {
     }
 }
 
+function checkTelemetry(t: Settings["telemetry"]): void {
+    if (t.batch_size > t.queue_size) {
+        throw new ConfigError("telemetry.batch_size is over telemetry.queue_size");
+    }
+    if (!t.traces) return;
+    if (!t.otlp_endpoint) throw new ConfigError("telemetry.traces needs telemetry.otlp_endpoint");
+    const url = new URL(t.otlp_endpoint);
+    if (url.username || url.password) {
+        throw new ConfigError("telemetry.otlp_endpoint must not hold a user or password");
+    }
+    // Spans may only cross the network encrypted, plain http stays on this machine
+    const plainOk = url.protocol === "http:" && isLoopback(t.otlp_endpoint);
+    if (url.protocol !== "https:" && !plainOk) {
+        throw new ConfigError("telemetry.otlp_endpoint must be https, or http to a loopback host");
+    }
+}
+
 export function checkSettings(s: Settings): void {
     const listenHost = s.listen_addr.slice(0, s.listen_addr.lastIndexOf(":"));
     if (s.payments.mode === "dev") {
@@ -267,6 +303,7 @@ export function checkSettings(s: Settings): void {
         }
     }
     checkFront(s);
+    checkTelemetry(s.telemetry);
     if (s.payments.mode === "http" && !s.payments.url) {
         throw new ConfigError("payments.mode http needs payments.url");
     }

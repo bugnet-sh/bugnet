@@ -41,6 +41,16 @@ cache_ttl = "10m"                       # how long one replica reuses an assessm
 max_file_bytes = 262144                 # largest file read for scanning
 scan_urls = true                        # fetch and scan script URLs agents pass to bugnet_assess
 
+[telemetry]
+traces = false                          # export spans over OTLP and send traceparent to the router, nothing is built or sent while false
+otlp_endpoint = ""                      # the full traces URL, https, or http to a loopback host only
+sample_ratio = 1.0                      # 0 to 1, share of orders and other new traces kept, the router's value
+environment = "main"                    # deployment.environment.name on every span
+export_timeout = "10s"                  # one export request
+batch_timeout = "5s"                    # the longest a finished span waits before export
+batch_size = 512                        # spans per export request, 1 to queue_size
+queue_size = 2048                       # finished spans waiting for export, more are dropped
+
 [front]
 tls_addr = ""                           # host:port of the TLS front, such as 127.0.0.1:8444 behind HAProxy, empty turns it off
 proxy_protocol = true                   # every TLS front connection opens with a PROXY v2 header, as HAProxy send-proxy-v2 sends
