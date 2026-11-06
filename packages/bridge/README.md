@@ -48,7 +48,8 @@ claude mcp add --transport stdio bugnet -- npx -y @bugnet/mcp
 codex mcp add bugnet -- npx -y @bugnet/mcp
 ```
 
-**Cursor** (`.cursor/mcp.json`) **and Windsurf** (Cascade's MCP config file)
+**Cursor** (`.cursor/mcp.json`) **and Devin Desktop, formerly Windsurf**
+(`~/.config/devin/mcp_config.json`)
 
 ```json
 {
@@ -123,7 +124,7 @@ instead. It takes:
 - a macOS keychain item: `{ "type": "keychain", "service": "huggingface", "account": "me" }`,
   where `account` is optional
 
-A `.env` file must sit in the folder your client started the bridge in, or in your home folder.
+A `.env` file must be inside the folder your client started the bridge in, or your home folder.
 The keychain works on macOS only. An environment variable must be visible to the bridge, so set it
 where your client runs, or in the client's `env` block for the server.
 

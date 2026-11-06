@@ -79,4 +79,5 @@ against you for your research:
 ## Supported versions
 
 Only the latest release of the bridge and the plugin, and the current public server, get
-security fixes. Update with `npx -y @bugnet/mcp@latest` and `claude plugin update bugnet@bugnet`.
+security fixes. Use `npx -y @bugnet/mcp@latest` in your client's settings so the bridge always
+starts at the latest release, and update the plugin with `claude plugin update bugnet@bugnet`.

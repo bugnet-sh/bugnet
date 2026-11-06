@@ -18,7 +18,7 @@ When the time is up, the machine and everything on it are deleted.
 
 - **No account and no API key.** Your agent pays per run in USDC on Solana with x402.
 - **Works with the agent you already use.** Claude Code, claude.ai, Cursor, VS Code, Codex,
-  Windsurf, or any other MCP client.
+  Devin Desktop (formerly Windsurf), or any other MCP client.
 - **No AI on our side.** Bugnet is plain code. Your own agent does the thinking.
 
 ## Contents
@@ -51,14 +51,14 @@ flowchart LR
    downloads a binary, or the model needs more memory than your machine has. It also gives a
    price.
 3. Your agent tells you that in a sentence or two, and waits for your answer.
-4. If you say yes, the agent starts a sandbox. Your client asks you to approve the payment.
+4. If you say yes, the agent starts a sandbox. Your client asks you to approve that paid call.
 5. The agent runs commands in the sandbox, reads the results and shows you what happened.
 6. When the time is up, or when the agent stops it, the sandbox and everything in it are
    deleted.
 
-Your agent learns when to offer Bugnet from a short note the server sends every MCP client. The
-Claude Code plugin adds a skill and local hints on top. The hints are computed on your machine and
-send nothing anywhere.
+Your agent learns when to offer Bugnet from the server's MCP instructions. The Claude Code plugin
+adds a skill and local hints on top. The hints are computed on your machine and send nothing
+anywhere.
 
 ## Quick start
 
@@ -118,7 +118,8 @@ project, or `--scope project` to share it with your team through `.mcp.json`. Ch
 
 1. Open **Customize > Connectors**.
 2. Click **+ Add**, then **Add custom connector**.
-3. Name it `Bugnet` and enter `https://mcp.bugnet.sh/mcp` as the URL. Click **Continue**.
+3. Name it `Bugnet` and enter `https://mcp.bugnet.sh/mcp` as the URL. Click **Continue**, and
+   **Continue** again on the detected settings.
 4. Under **Authentication**, choose **No sign in**. Click **Add**.
 5. In a chat, click **+** at the lower left, then **Connectors**, and turn Bugnet on.
 
@@ -144,7 +145,7 @@ Add this to `.cursor/mcp.json` in your project, or to `~/.cursor/mcp.json` for e
 }
 ```
 
-Cursor does not say it reads the note MCP servers send, so copy
+Cursor's docs do not say it reads MCP server instructions, so copy
 [`integrations/cursor/bugnet.mdc`](integrations/cursor/bugnet.mdc) to `.cursor/rules/bugnet.mdc`
 too. It tells the agent when to offer a sandbox.
 
@@ -186,21 +187,22 @@ url = "https://mcp.bugnet.sh/mcp"
 `codex mcp list` shows it, and so does `/mcp` inside Codex. Every Bugnet tool answers within 45
 seconds, inside Codex's default 60 second limit.
 
-### Windsurf
+### Devin Desktop (formerly Windsurf)
 
-In Cascade, open the MCP menu and choose **Open MCP config file**, then add:
+Add this to `~/.config/devin/mcp_config.json`, or to `.devin/mcp_config.json` in your project:
 
 ```json
 {
     "mcpServers": {
         "bugnet": {
-            "serverUrl": "https://mcp.bugnet.sh/mcp"
+            "url": "https://mcp.bugnet.sh/mcp"
         }
     }
 }
 ```
 
-Save the file and press the refresh button in the MCP panel.
+Then open **Customize**, click **MCPs**, and refresh the list. An older Windsurf takes the same
+entry in the file that Cascade's **Open MCP config file** opens.
 
 ### Any MCP client
 
@@ -256,7 +258,7 @@ newer.
 | Claude Code | `claude mcp add --transport stdio bugnet -- npx -y @bugnet/mcp`                  |
 | Codex CLI   | `codex mcp add bugnet -- npx -y @bugnet/mcp`                                     |
 | Cursor      | `"bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp"] }`                  |
-| Windsurf    | `"bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp"] }`                  |
+| Devin       | `"bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp"] }`                  |
 | VS Code     | `"bugnet": { "type": "stdio", "command": "npx", "args": ["-y", "@bugnet/mcp"] }` |
 
 The bridge reads `~/.config/bugnet/mcp.toml` if it exists, or the file `--config` names.
@@ -320,18 +322,17 @@ field. Without a wallet, a paid call stops at the payment step and nothing is ch
 
 **Prices.** A sandbox comes in fixed sizes: CPU, memory, disk and minutes. Each has a fixed price
 in USDC. `bugnet_assess` and `bugnet_quote` show the prices for free before anything is paid, and
-`bugnet_status` shows what more time costs. A small sandbox for ten minutes costs a few cents.
+`bugnet_status` shows what more time costs. Stopping early does not refund the unused time. A
+small sandbox for ten minutes costs a few cents.
 <!-- PENDING: the launch price list is not set, the local test list charges $0.05 for 1 vCPU, 1 GiB and 10 minutes -->
 
-Stopping early does not refund the unused time.
-
 **The approval click.** `bugnet_start` and `bugnet_extend` are marked as tools a person must
-approve. Claude Code asks you before every call. The call carries `confirmPriceUsd`, the price
+approve. Claude Code asks you before every call, even in modes that skip other prompts, and
+refuses the call when there is no person to ask. The call carries `confirmPriceUsd`, the price
 your agent told you, so you see it in the prompt. Bugnet refuses the call if that price is not
 the exact price of the size you picked. So approving means "yes, pay this exact amount for this
 sandbox". Other clients ask according to their own tool approval settings, so keep approval on
-for these two tools. Claude Code never runs them in unattended modes, so a script or CI job
-cannot start a paid sandbox on its own.
+for these two tools.
 
 ## Security model
 
@@ -370,11 +371,11 @@ lets the value pass through the chat or your agent.
   type the token in your browser. The page seals it in your browser before sending it. It sets no
   cookies and loads nothing from other sites.
 - **The bridge.** `bugnet_secret_from_env` reads the token from an environment variable, a `.env`
-  file in your project or home folder, or a macOS keychain item. It asks you every time to
-  confirm the name, where it reads from, and which hosts may receive it. Then it seals the token
-  on your computer. If your client cannot ask you, the bridge only sends well-known tokens to
-  their usual hosts, such as `HF_TOKEN` to `huggingface.co`, only from a variable of that name,
-  and only to a sandbox it started itself.
+  file inside the folder your client runs in or your home folder, or a macOS keychain item. It
+  asks you every time to confirm the name, where it reads from, and which hosts may receive it.
+  Then it seals the token on your computer. If your client cannot ask you, the bridge only sends
+  well-known tokens to their usual hosts, such as `HF_TOKEN` to `huggingface.co`, only from a
+  variable or `.env` key of that name, and only to a sandbox it started itself.
 
 "Sealed" means encrypted with a public key built into the page and the bridge, so only Bugnet's
 outgoing proxy can open it. Neither will seal to any other key, so no server can swap in a key of
@@ -391,7 +392,7 @@ Bugnet can see:
 
 - the tool calls your agent sends, such as commands, file contents and repo or model names;
 - what the sandbox sends back, such as output and files;
-- your IP address, which limits how often the free tools are called;
+- your IP address, which limits how often `bugnet_assess` and `bugnet_quote` are called;
 - the wallet that paid, which is public on Solana anyway;
 - web preview, file transfer and SSH traffic, which passes through Bugnet's servers;
 - a secret's value inside the outgoing proxy, and all traffic to the hosts you allowed for it,
@@ -440,12 +441,11 @@ Found a security problem? See [SECURITY.md](SECURITY.md).
   `bugnet_transfer` gives a one-use `curl` link.
   <!-- PENDING: transfers are still being built -->
 - A quote is valid for 10 minutes, and so is a secret page link.
-- `bugnet_assess` and `bugnet_quote` allow 12 calls a minute per IP address, in bursts of up to 10.
+- `bugnet_assess` and `bugnet_quote` together allow 12 calls a minute per IP address, in bursts
+  of up to 10.
 - Everything is deleted at the deadline. Unused time is not refunded when you stop early.
 - A private GitHub repo needs a GitHub token, added through the secret page or the bridge.
   <!-- PENDING: fetching a repo and adding secrets are still being built -->
-- In Claude Code, paid tools need a person to approve them, so unattended runs cannot start a
-  sandbox.
 
 ## FAQ
 
@@ -466,8 +466,8 @@ no.
 **What does a run cost?** You see the price before you pay. See [Paying](#paying).
 
 **How do I get files out?** Your agent reads small files with `bugnet_read_file`. For big ones,
-`bugnet_transfer` gives a `curl` link, and downloads land in `./bugnet-downloads/`, never over one
-of your files. <!-- PENDING: transfers are still being built -->
+`bugnet_transfer` gives a `curl` link. Downloads go to `./bugnet-downloads/` unless you name
+another file. <!-- PENDING: transfers are still being built -->
 
 **Can I open a web app running in the sandbox?** Yes, if the agent asked for previews in the
 quote. `bugnet_preview` gives an HTTPS link. Anyone with that link can reach the app until the
@@ -476,7 +476,8 @@ deadline, so share it with care. <!-- PENDING: previews are still being built --
 **Can I SSH in?** Yes, if the agent asked for SSH in the quote. `bugnet_ssh` adds your public key
 and gives you the command. <!-- PENDING: SSH is still being built -->
 
-**Can I run it in CI?** Free tools, yes. Paid tools need a person to approve them in Claude Code.
+**Can I run it in CI?** Free tools, yes. In Claude Code, paid tools need a person to approve
+them, so an unattended run cannot start a sandbox.
 
 **How do I turn off the plugin's hints?** Set `BUGNET_HINTS=off`, or `BUGNET_HINTS=quiet` to keep
 only hints after a failed command.
