@@ -200,6 +200,23 @@ describe("check", () => {
         );
     });
 
+    // JSON escaping can grow a value past the 70 KiB box even under 64 KiB of UTF-8
+    it("refuses a value that fits 64 KiB but not the sealed box", () => {
+        const quotes = check(draft({ value: '"'.repeat(64 * 1024) }));
+        expect(quotes.ok).toBe(false);
+        expect(!quotes.ok && quotes.problems).toEqual([
+            {
+                field: "value",
+                message:
+                    "This value is too large once sealed, because quotes, backslashes and " +
+                    "control characters take more room. Up to 64 KiB of plain text fit.",
+            },
+        ]);
+        expect(check(draft({ value: "\u0001".repeat(12 * 1024) })).ok).toBe(false);
+        expect(check(draft({ value: '"'.repeat(30 * 1024) })).ok).toBe(true);
+        expect(check(draft({ value: "x".repeat(64 * 1024) })).ok).toBe(true);
+    });
+
     it("holds at most 10 hosts and 8 extra headers", () => {
         const hosts = Array.from({ length: 11 }, (_, i) => `h${i}.example`).join("\n");
         expect(check(draft({ hosts })).ok).toBe(false);

@@ -9,10 +9,12 @@ import {
     CanonicalError,
     canonicalHeaderName,
     canonicalHost,
+    maxBoxBytes,
     maxValueBytes,
     namePattern,
     presetFor,
     presets,
+    sealedBytes,
     valueBytes,
     type SecretSpec,
 } from "@bugnet/seal";
@@ -242,15 +244,19 @@ export function check(draft: Draft): Checked {
     }
 
     if (problems.length > 0) return { ok: false, problems };
-    return {
-        ok: true,
-        spec: {
-            name,
-            hosts: hosts.hosts,
-            headerNames: headers.names,
-            fetchOnly: canFetchSource(hosts.hosts) && !draft.sandboxUse,
-        },
+    const spec: SecretSpec = {
+        name,
+        hosts: hosts.hosts,
+        headerNames: headers.names,
+        fetchOnly: canFetchSource(hosts.hosts) && !draft.sandboxUse,
     };
+    if (sealedBytes(spec, draft.value) > maxBoxBytes) {
+        const message =
+            "This value is too large once sealed, because quotes, backslashes and control " +
+            "characters take more room. Up to 64 KiB of plain text fit.";
+        return { ok: false, problems: [{ field: "value", message }] };
+    }
+    return { ok: true, spec };
 }
 
 // Things worth a second look that the router would still accept

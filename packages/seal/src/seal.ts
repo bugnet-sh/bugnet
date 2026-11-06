@@ -27,8 +27,11 @@ export const maxValueBytes = 64 * 1024;
 export const maxBoxBytes = 70 * 1024;
 
 const keyBytes = 32;
+// crypto_box_SEALBYTES, an ephemeral public key and a MAC
+const sealOverhead = 48;
 // Data-plane 4.4, RFC 4648 base32 of a SHA-256, upper case and unpadded
-const bindingPattern = /^[A-Z2-7]{52}$/;
+const bindingLength = 52;
+const bindingPattern = new RegExp(`^[A-Z2-7]{${bindingLength}}$`);
 
 export function toBase64Url(bytes: Uint8Array): string {
     let binary = "";
@@ -90,6 +93,12 @@ export function boundPayload(binding: string, spec: SecretSpec, value: string): 
 
 export function valueBytes(value: string): number {
     return new TextEncoder().encode(value).length;
+}
+
+// Every binding has the same length, so the box's size is known before any key is fetched
+export function sealedBytes(spec: SecretSpec, value: string): number {
+    const payload = boundPayload("A".repeat(bindingLength), canonicalSpec(spec), value);
+    return sealOverhead + valueBytes(payload);
 }
 
 export interface Sealed {

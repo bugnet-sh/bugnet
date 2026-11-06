@@ -4,8 +4,10 @@ import {
     boundPayload,
     chooseKey,
     fromBase64Url,
+    maxBoxBytes,
     maxValueBytes,
     sealSecret,
+    sealedBytes,
     toBase64Url,
     type SealingKey,
 } from "./seal.ts";
@@ -78,6 +80,23 @@ describe("chooseKey", () => {
     it("never pins the development key in a release", () => {
         expect(pinnedKeys.map((k) => k.publicKey)).not.toContain(developmentKey.publicKey);
         expect(() => chooseKey([listed], pinnedKeys)).toThrow(SealError);
+    });
+});
+
+describe("sealedBytes", () => {
+    it("is exactly the size of the box sealSecret makes", async () => {
+        for (const value of ["hf_secret", '"'.repeat(1000), "\u0001é\\".repeat(300)]) {
+            const sealed = await sealSecret(spec, value, listed);
+            expect(sealedBytes(spec, value), value.slice(0, 10)).toBe(
+                fromBase64Url(sealed.value.box).length,
+            );
+        }
+    });
+
+    it("tells a value that cannot fit the box, which sealSecret refuses", async () => {
+        const value = '"'.repeat(maxValueBytes);
+        expect(sealedBytes(spec, value)).toBeGreaterThan(maxBoxBytes);
+        await expect(sealSecret(spec, value, listed)).rejects.toThrow(/over 70 KiB/);
     });
 });
 

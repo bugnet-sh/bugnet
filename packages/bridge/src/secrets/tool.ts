@@ -28,9 +28,11 @@ import {
     canonicalHosts,
     chooseKey,
     failureWhy,
+    maxBoxBytes,
     namePattern,
     presetFor,
     sealSecret,
+    sealedBytes,
     withinPreset,
     type PinnedKey,
     type Sealed,
@@ -425,6 +427,12 @@ export async function secretFromEnv(
     const signal = ctx.mcpReq.signal;
     try {
         const value = await readSource(checked, deps.sources, signal);
+        if (sealedBytes(spec, value) > maxBoxBytes) {
+            throw new Refusal(
+                `${spec.name} is too large once sealed, because quotes, backslashes and ` +
+                    "control characters take more room. Up to 64 KiB of plain text fit",
+            );
+        }
         const grant = await putGrant(deps.remote, args.handle, signal);
         const answer = await store(deps, spec, value, grant, idempotencyKey(ctx), signal);
         const s = answer.secret;

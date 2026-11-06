@@ -466,6 +466,17 @@ describe("arguments", () => {
         expect(r.bridge.prompts).toEqual([]);
     });
 
+    it("refuses a value that cannot fit the sealed box before asking for a grant", async () => {
+        const r = await rig({ elicit: accept }, grantRouter, { HF_TOKEN: '"'.repeat(65536) });
+        const res = await call(r, hf());
+        expect(res.text).toBe(
+            "secret: HF_TOKEN is too large once sealed, because quotes, backslashes and control " +
+                "characters take more room. Up to 64 KiB of plain text fit.",
+        );
+        expect(r.grants).toBe(0);
+        expect(r.route.requests).toEqual([]);
+    });
+
     it("refuses a value over 64 KiB and sends nothing", async () => {
         const r = await rig({ elicit: accept }, grantRouter, { HF_TOKEN: "x".repeat(65537) });
         const res = await call(r, hf());

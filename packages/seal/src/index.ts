@@ -19,6 +19,7 @@ export {
     maxBoxBytes,
     maxValueBytes,
     sealSecret,
+    sealedBytes,
     toBase64Url,
     valueBytes,
     type PinnedKey,
