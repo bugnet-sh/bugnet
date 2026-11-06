@@ -127,6 +127,9 @@ describe("bugnet_start", () => {
             }),
         );
         expect(r.structured.message).toMatch(new RegExp(`handle: ${testHandle}`));
+        expect(r.structured.message).toMatch(
+            /When the work is done and its results are read, call bugnet_stop with the handle/,
+        );
         expect(payments.orders).toEqual([
             expect.objectContaining({
                 kind: "start",
@@ -348,6 +351,7 @@ describe("bugnet_start", () => {
             expect.objectContaining({ state: "failed", refundable: true }),
         );
         expect(r.text).toMatch(/failed to start, the payment will be refunded/);
+        expect(r.text).not.toMatch(/bugnet_stop/);
     });
 });
 

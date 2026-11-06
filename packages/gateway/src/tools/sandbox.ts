@@ -402,6 +402,10 @@ export const registerSandboxTools: Register = (server, deps) => {
                     sshLine(view.sshAlias),
                     "Keep the handle, it is the only key to this sandbox. Commands run as root " +
                         "or as a user with passwordless sudo: use $HOME, prefix system changes with sudo.",
+                    p?.state === PlacementState.FAILED
+                        ? ""
+                        : "When the work is done and its results are read, call bugnet_stop with " +
+                          "the handle, so the sandbox does not keep running until its deadline.",
                 ]
                     .filter(Boolean)
                     .join("\n");
