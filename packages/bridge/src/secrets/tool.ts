@@ -4,10 +4,13 @@
  * It reads a secret on this machine and stores it sealed for the sandbox's egress proxy, so the
  * value never passes through the agent. The user confirms the name, the source and the hosts on
  * every call (data-plane 19, question 6). A client that cannot ask the user gets only the preset
- * hosts of the named secret. The value is read after that, and appears in no argument, result,
- * log line or error.
+ * hosts of the named secret, read from the environment variable or .env key of that name, for a
+ * sandbox this bridge process started. Otherwise an injected agent could hand any local secret
+ * to a sandbox of its own. The value is read after that, and appears in no argument, result, log
+ * line or error.
  */
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { basename } from "node:path";
 import {
     inputRequired,
     inputResponse,
@@ -144,6 +147,8 @@ export interface SecretToolDeps {
     sources: SourceDeps;
     log: Log;
     now: () => number;
+    // Handles of the sandboxes that bugnet_start results relayed by this bridge process named
+    started: ReadonlySet<string>;
     clientCapabilities: (ctx: ServerContext) => ClientCapabilities | undefined;
 }
 
@@ -205,13 +210,14 @@ function plain(s: string): string {
 }
 
 // The handle's end lets the user match the sandbox with the chat's, against an injected handle
-function prompt(handle: string, spec: SecretSpec, checked: CheckedSource): string {
+function prompt(handle: string, spec: SecretSpec, checked: CheckedSource, known: boolean): string {
     const preset = presetFor(spec.name);
     const headers = ["Authorization", ...spec.headerNames].join(", ");
+    const unknown = known ? "" : ", which this bridge did not start, so check it is yours";
     const lines = [
         "Add a secret to your Bugnet sandbox?",
         "",
-        `Sandbox: handle ending ${handle.slice(-6)}`,
+        `Sandbox: handle ending ${handle.slice(-6)}${unknown}`,
         `Name: ${spec.name}`,
         `Read from: ${plain(checked.label)}`,
         `Sent only to: ${spec.hosts.join(", ")}`,
@@ -232,15 +238,55 @@ function prompt(handle: string, spec: SecretSpec, checked: CheckedSource): strin
     return lines.join("\n");
 }
 
-function presetRefusal(spec: SecretSpec): string {
-    const preset = presetFor(spec.name);
-    const usual = preset
-        ? `sends ${spec.name} only to ${preset.hosts.join(", ")}`
-        : "sends only known secrets to their usual hosts, such as HF_TOKEN to huggingface.co";
+function unconfirmed(rule: string): string {
     return (
-        `this client cannot ask the user to confirm, so the bridge ${usual}. ` +
+        `this client cannot ask the user to confirm, so the bridge ${rule}. ` +
         "bugnet_secret_link gives the user a page to add it instead"
     );
+}
+
+// A preset's own names, so GH_TOKEN may come from GITHUB_TOKEN but never from an unrelated key
+function ownSource(spec: SecretSpec, checked: CheckedSource): boolean {
+    const names = presetFor(spec.name)?.names ?? [];
+    const source = checked.source;
+    switch (source.type) {
+        case "env":
+            return names.includes(source.variable);
+        case "dotenv":
+            return names.includes(source.key) && basename(source.path).startsWith(".env");
+        case "keychain":
+            return false;
+    }
+}
+
+// Without a human in the loop the bridge decides alone, so it takes only what is plainly the user's
+function unconfirmedRefusal(
+    args: Args,
+    spec: SecretSpec,
+    checked: CheckedSource,
+    deps: SecretToolDeps,
+): string | null {
+    const preset = presetFor(spec.name);
+    if (!withinPreset(spec.name, spec.hosts, spec.headerNames)) {
+        return unconfirmed(
+            preset
+                ? `sends ${spec.name} only to ${preset.hosts.join(", ")}`
+                : "sends only known secrets to their usual hosts, such as HF_TOKEN to " +
+                      "huggingface.co",
+        );
+    }
+    if (checked.source.type === "keychain") return unconfirmed("reads no keychain item");
+    if (!ownSource(spec, checked)) {
+        return unconfirmed(
+            `reads ${spec.name} only from the environment variable or .env key of that name`,
+        );
+    }
+    if (!deps.started.has(args.handle)) {
+        return unconfirmed(
+            "adds secrets only to sandboxes it started itself, and it did not start that one",
+        );
+    }
+    return null;
 }
 
 function idempotencyKey(ctx: ServerContext): string {
@@ -364,15 +410,16 @@ export async function secretFromEnv(
             return inputRequired({
                 inputRequests: {
                     confirm: inputRequired.elicit({
-                        message: prompt(args.handle, spec, checked),
+                        message: prompt(args.handle, spec, checked, deps.started.has(args.handle)),
                         requestedSchema: { type: "object", properties: {} },
                     }),
                 },
                 requestState: confirmState(shown, deps.now()),
             });
         }
-    } else if (!withinPreset(spec.name, spec.hosts, spec.headerNames)) {
-        return failure(presetRefusal(spec));
+    } else {
+        const refusal = unconfirmedRefusal(args, spec, checked, deps);
+        if (refusal) return failure(refusal);
     }
     const signal = ctx.mcpReq.signal;
     try {

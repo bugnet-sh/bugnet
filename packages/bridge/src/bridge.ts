@@ -43,6 +43,8 @@ export interface BridgeDeps {
     sources: SourceDeps;
     log: Log;
     now: () => number;
+    // One set for the process, which bugnet_secret_from_env trusts when no one can be asked
+    started: Set<string>;
     paymentSigner?: PaymentSigner;
     // How long to wait before listing the gateway's tools again after a failed listing
     relistMs?: number;
@@ -50,6 +52,18 @@ export interface BridgeDeps {
 
 function toolError(text: string): CallToolResult {
     return { content: [{ type: "text", text }], isError: true };
+}
+
+const handlePattern = /^sbx_[a-z2-7]{26}$/;
+
+// Only a start's result names a sandbox the user paid for, a status call echoes any handle given
+function noteStarted(name: string, result: RemoteResult, started: Set<string>): void {
+    if (name !== "bugnet_start" || isInputRequiredResult(result)) return;
+    const r = result as CallToolResult;
+    const handle = (r.structuredContent as { handle?: unknown } | undefined)?.handle;
+    if (!r.isError && typeof handle === "string" && handlePattern.test(handle)) {
+        started.add(handle);
+    }
 }
 
 function errText(e: unknown): string {
@@ -186,6 +200,7 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             deps.log.warn("gateway call failed", { tool: req.params.name, err: errText(e) });
             return toolError("Bugnet's gateway did not answer, a retry may work.");
         }
+        noteStarted(req.params.name, result, deps.started);
         return withoutEnvelope(result) as CallToolResult | InputRequiredResult;
     };
 

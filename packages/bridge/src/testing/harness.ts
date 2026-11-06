@@ -299,6 +299,7 @@ export async function connectBridge(setup: BridgeSetup): Promise<ConnectedBridge
         sources: setup.sources ?? testSources(),
         log,
         now: () => testNow,
+        started: new Set(),
         ...setup.deps,
     };
     const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();

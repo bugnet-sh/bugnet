@@ -350,6 +350,31 @@ describe("pass-through", () => {
         expect(r._meta).toEqual({ "x402/x": 1 });
     });
 
+    it("remembers a sandbox only from a successful bugnet_start result", async () => {
+        const named = (handle: string, isError = false): CallToolResult => ({
+            ...done,
+            structuredContent: { message: "fine", handle },
+            ...(isError ? { isError } : {}),
+        });
+        const handles = {
+            status: "sbx_aaaaaaaaaaaaaaaaaaaaaaaaaa",
+            failed: "sbx_bbbbbbbbbbbbbbbbbbbbbbbbbb",
+            started: "sbx_cccccccccccccccccccccccccc",
+        };
+        const remote = fakeRemote((params) => {
+            if (params.name === "bugnet_status") return named(handles.status);
+            if ((params.arguments as { fail?: boolean }).fail) return named(handles.failed, true);
+            return named(handles.started);
+        });
+        const started = new Set<string>();
+        const b = await bridge({ remote, deps: { started } });
+        await b.client.callTool({ name: "bugnet_status", arguments: {} });
+        await b.client.callTool({ name: "bugnet_start", arguments: { fail: true } });
+        expect(started).toEqual(new Set());
+        await b.client.callTool({ name: "bugnet_start", arguments: {} });
+        expect(started).toEqual(new Set([handles.started]));
+    });
+
     for (const era of ["legacy", "modern"] as const) {
         it(`hands the gateway's input requests to a ${era} client and back`, async () => {
             const remote = fakeRemote((params) => {

@@ -3,12 +3,15 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { PlacementState } from "@bugnet/gateway/gen";
+import { packageOption, placement } from "@bugnet/gateway/testing";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/client/stdio";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
     fakeGateway,
     fakeSecretsRoute,
+    grantRouter,
     testHandle,
     type FakeGateway,
     type FakeSecretsRoute,
@@ -26,7 +29,12 @@ let route: FakeSecretsRoute;
 
 beforeAll(async () => {
     dir = await mkdtemp(join(tmpdir(), "bugnet-bridge-stdio-"));
-    gateway = await fakeGateway();
+    gateway = await fakeGateway({
+        ...grantRouter,
+        estimate: () => ({ options: [packageOption("small-10m", 50_000n)] }),
+        createPlacement: () => ({ handle: testHandle, placement: placement(PlacementState.READY) }),
+        getPlacement: () => ({ placement: placement(PlacementState.READY) }),
+    });
     route = await fakeSecretsRoute();
     await writeFile(join(dir, "mcp.toml"), `secrets_url = "${route.url}"\n`);
 });
@@ -77,6 +85,16 @@ describe("the bugnet-mcp command", () => {
                     const { tools } = await client.listTools();
                     expect(tools.map((t) => t.name)).toContain("bugnet_quote");
                     expect(tools.map((t) => t.name)).not.toContain("bugnet_secret_put_grant");
+                    const q = await client.callTool({
+                        name: "bugnet_quote",
+                        arguments: { workload: "script" },
+                    });
+                    const quoteId = (q.structuredContent as { quoteId: string }).quoteId;
+                    // A client that cannot ask the user adds secrets only to sandboxes it started
+                    await client.callTool({
+                        name: "bugnet_start",
+                        arguments: { quoteId, packageId: "small-10m", confirmPriceUsd: "0.05" },
+                    });
                     const r = await client.callTool({
                         name: "bugnet_secret_from_env",
                         arguments: {
