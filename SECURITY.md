@@ -13,7 +13,7 @@ Report it privately in one of these two ways:
 
 - Email **security@bugnet.sh**.
 - Use GitHub's private reporting: the **Report a vulnerability** button under this repository's
-  [Security tab](https://github.com/OWNER/REPO/security/advisories/new).
+  [Security tab](https://github.com/bugnet-sh/bugnet/security/advisories/new).
 
 <!-- PENDING: private vulnerability reporting must be turned on in the repository settings -->
 

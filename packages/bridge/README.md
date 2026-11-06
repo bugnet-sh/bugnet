@@ -1,6 +1,6 @@
 # @bugnet/mcp
 
-The local bridge to [Bugnet](https://github.com/OWNER/REPO): your AI coding agent runs risky or
+The local bridge to [Bugnet](https://github.com/bugnet-sh/bugnet): your AI coding agent runs risky or
 heavy code in a throwaway cloud Linux sandbox instead of on your computer, and pays for it per
 run.
 
@@ -18,7 +18,7 @@ your machine can do.
 
 Most people do not. Every client that speaks Streamable HTTP can use
 `https://mcp.bugnet.sh/mcp` directly, with no sign-in and no API key. The
-[main README](https://github.com/OWNER/REPO#install) shows how for each client.
+[main README](https://github.com/bugnet-sh/bugnet#install) shows how for each client.
 
 Use the bridge when you want one of these:
 
@@ -152,8 +152,8 @@ The well-known tokens are `HF_TOKEN`, `GH_TOKEN` and `GITHUB_TOKEN`, `OPENAI_API
 
 The bridge is a package on your computer, so no server can change the code that seals your
 secrets. The rest of Bugnet's security model, and what Bugnet can and cannot see, is in the
-[main README](https://github.com/OWNER/REPO#security-model). Report a security problem as
-[SECURITY.md](https://github.com/OWNER/REPO/blob/main/SECURITY.md) says, never in a public issue.
+[main README](https://github.com/bugnet-sh/bugnet#security-model). Report a security problem as
+[SECURITY.md](https://github.com/bugnet-sh/bugnet/blob/main/SECURITY.md) says, never in a public issue.
 
 ## License
 

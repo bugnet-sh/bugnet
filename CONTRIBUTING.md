@@ -4,7 +4,7 @@ Thanks for helping. This file covers how to build, test and run this repository,
 out, and what a pull request needs. What Bugnet is and how people install it is in the
 [README](README.md).
 
-- **Bugs and ideas:** use the [issue forms](https://github.com/OWNER/REPO/issues/new/choose).
+- **Bugs and ideas:** use the [issue forms](https://github.com/bugnet-sh/bugnet/issues/new/choose).
 - **Security problems:** never in a public issue. See [SECURITY.md](SECURITY.md).
 - **Pull requests:** small and focused, with tests. The checklist is in the
   [pull request template](.github/PULL_REQUEST_TEMPLATE.md).

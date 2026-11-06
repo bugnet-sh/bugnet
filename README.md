@@ -5,12 +5,12 @@ your computer, and pays for it per run.
 
 <!-- PENDING: .github/workflows/ci.yml is built on another branch, and @bugnet/mcp is not on npm yet -->
 
-[![CI](https://img.shields.io/github/actions/workflow/status/OWNER/REPO/ci.yml?branch=main&label=CI)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/bugnet-sh/bugnet/ci.yml?branch=main&label=CI)](https://github.com/bugnet-sh/bugnet/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@bugnet/mcp)](https://www.npmjs.com/package/@bugnet/mcp)
 [![npm downloads](https://img.shields.io/npm/dw/@bugnet/mcp)](https://www.npmjs.com/package/@bugnet/mcp)
-[![License](https://img.shields.io/github/license/OWNER/REPO)](#license)
-[![GitHub stars](https://img.shields.io/github/stars/OWNER/REPO)](https://github.com/OWNER/REPO/stargazers)
-[![Last commit](https://img.shields.io/github/last-commit/OWNER/REPO)](https://github.com/OWNER/REPO/commits)
+[![License](https://img.shields.io/github/license/bugnet-sh/bugnet)](#license)
+[![GitHub stars](https://img.shields.io/github/stars/bugnet-sh/bugnet)](https://github.com/bugnet-sh/bugnet/stargazers)
+[![Last commit](https://img.shields.io/github/last-commit/bugnet-sh/bugnet)](https://github.com/bugnet-sh/bugnet/commits)
 
 You ask your agent to try a GitHub repo someone sent you, or to get an AI model running. Bugnet
 lets the agent do that on a fresh cloud machine. Your files, keys and network stay out of reach.
@@ -89,11 +89,11 @@ sign-in, header or API key. Pick your client.
 The plugin adds the MCP server, a skill that tells Claude when a sandbox fits, and hint hooks.
 
 ```sh
-claude plugin marketplace add OWNER/REPO
+claude plugin marketplace add bugnet-sh/bugnet
 claude plugin install bugnet@bugnet
 ```
 
-Inside a session, `/plugin marketplace add OWNER/REPO` and then `/plugin install bugnet@bugnet`
+Inside a session, `/plugin marketplace add bugnet-sh/bugnet` and then `/plugin install bugnet@bugnet`
 do the same. Start a new session afterwards. The tools show up as
 `mcp__plugin_bugnet_sandbox__bugnet_*`.
 
@@ -485,7 +485,7 @@ only hints after a failed command.
 **Is it open source?** Yes. This repository holds the MCP server, the bridge, the secret page and
 the Claude Code plugin. See [License](#license).
 
-**Where do I report a bug?** [Open an issue](https://github.com/OWNER/REPO/issues/new/choose).
+**Where do I report a bug?** [Open an issue](https://github.com/bugnet-sh/bugnet/issues/new/choose).
 Report security problems privately, as [SECURITY.md](SECURITY.md) says.
 
 **Can I help?** Yes, see [CONTRIBUTING.md](CONTRIBUTING.md).

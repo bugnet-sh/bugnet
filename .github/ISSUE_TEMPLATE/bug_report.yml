@@ -5,7 +5,7 @@ body:
     - type: markdown
       attributes:
           value: |
-              Thanks for reporting. A security problem goes to [SECURITY.md](https://github.com/OWNER/REPO/blob/main/SECURITY.md), never here.
+              Thanks for reporting. A security problem goes to [SECURITY.md](https://github.com/bugnet-sh/bugnet/blob/main/SECURITY.md), never here.
 
               Never paste a sandbox handle (it starts with `sbx_`), a token, a wallet key or a seed phrase. A handle is the full key to a sandbox.
     - type: textarea
