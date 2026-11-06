@@ -96,22 +96,22 @@ jobs:
               run: |
                   pnpm build:plugin
                   if ! git diff --quiet -- plugin/hooks/bugnet-hook.mjs; then
-                      echo "::error::The hook bundle is stale, so run pnpm build:plugin and commit it"
+                      echo "::error::Stale hook bundle, so run pnpm build:plugin and commit it"
                       exit 1
                   fi
 
-            - name: Read the Playwright version
+            - name: Key the browser cache by Playwright version
               id: playwright
               run: |
                   cd packages/secret-page
                   version=$(node -p 'require("playwright-core/package.json").version')
-                  echo "version=$version" >> "$GITHUB_OUTPUT"
+                  echo "key=playwright-$RUNNER_OS-$RUNNER_ARCH-$version" >> "$GITHUB_OUTPUT"
 
             - name: Cache the Playwright browsers
               uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
               with:
                   path: ~/.cache/ms-playwright
-                  key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+                  key: ${{ steps.playwright.outputs.key }}
 
             - name: Install the Playwright browsers and their system dependencies
               run: >-
@@ -135,4 +135,38 @@ jobs:
               run: go -C packages/seal/interop mod download
 
             - name: Test
-              run: pnpm test
+              run: >-
+                  pnpm test --reporter=default --reporter=json
+                  --outputFile.json="$RUNNER_TEMP/vitest.json"
+
+            # Skipped suites pass silently, so this fails when the Go or browser tests did not run
+            - name: Check the Go and browser tests ran
+              run: |
+                  node --input-type=module -e '
+                      const { readFileSync } = await import("node:fs");
+                      const report = JSON.parse(readFileSync(process.argv[1], "utf8"));
+                      const tests = report.testResults.flatMap((file) =>
+                          file.assertionResults.map((test) => ({
+                              file: file.name,
+                              suite: test.ancestorTitles[0] ?? "",
+                              status: test.status,
+                          })),
+                      );
+                      const wanted = {
+                          "Go interop": (t) => t.file.endsWith("seal/src/interop.test.ts"),
+                          Chromium: (t) => t.suite.startsWith("in a headless browser ("),
+                          Firefox: (t) => /^in (Playwright )?firefox\b/.test(t.suite),
+                          WebKit: (t) => /^in (Playwright )?webkit\b/.test(t.suite),
+                      };
+                      let short = 0;
+                      for (const [name, match] of Object.entries(wanted)) {
+                          const found = tests.filter(match);
+                          const passed = found.filter((t) => t.status === "passed").length;
+                          console.log(name + " " + passed + " of " + found.length + " passed");
+                          if (passed === 0 || passed < found.length) short += 1;
+                      }
+                      if (short > 0) {
+                          console.log("::error::Go or browser tests skipped instead of running");
+                          process.exit(1);
+                      }
+                  ' "$RUNNER_TEMP/vitest.json"
