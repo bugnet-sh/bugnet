@@ -76,7 +76,8 @@ describe("bugnet_fetch_source", () => {
     });
 
     it("points at bugnet_secret_link for a private repo, as a state and as a refusal", async () => {
-        const want = /token\. bugnet_secret_link adds one, then bugnet_fetch_source fetches it\.$/;
+        const want =
+            /token\. bugnet_secret_link with name GITHUB_TOKEN adds one, then bugnet_fetch_source fetches it\.$/;
         const state = await fetch(await connect(answering({ state: BootstrapState.NEEDS_SECRET })));
         expect(state.isError).toBe(false);
         expect(state.structured.source.state).toBe("needs_secret");
@@ -105,27 +106,23 @@ describe("bugnet_fetch_source", () => {
                 expect.objectContaining({ state: "failed", failure: reason }),
             );
             expect(failed.structured.message).toMatch(left);
-            const code =
-                reason === "BUDGET_SPENT" ? Code.ResourceExhausted : Code.FailedPrecondition;
-            const refused = await fetch(
-                await connect({
-                    fetchSource() {
-                        throw routerError(code, reason);
-                    },
-                }),
-            );
-            expect(refused.isError).toBe(false);
-            expect(refused.structured.source.failure).toBe(reason);
-            expect(refused.structured.message).toMatch(left);
         },
     );
 
     it("says another call retries a fetch that failed for a passing reason", async () => {
-        for (const reason of ["CLONE_FAILED", "FETCH_FAILED", "INTERRUPTED", "SOMETHING_NEW"]) {
+        for (const [reason, words] of [
+            ["CLONE_FAILED", "Git could not clone the repo, bugnet_fetch_source tries again."],
+            ["FETCH_FAILED", "The repo's download failed, bugnet_fetch_source tries again."],
+            [
+                "INTERRUPTED",
+                "The fetch stopped before it finished, bugnet_fetch_source starts it again.",
+            ],
+            ["SOMETHING_NEW", "The fetch failed, bugnet_fetch_source tries again."],
+        ]) {
             const r = await fetch(
                 await connect(answering({ state: BootstrapState.FAILED, failureReason: reason })),
             );
-            expect(r.structured.message).toBe("The fetch failed, bugnet_fetch_source tries again.");
+            expect(r.structured.message).toBe(words);
         }
         const big = await fetch(
             await connect(answering({ state: BootstrapState.FAILED, failureReason: "TOO_LARGE" })),

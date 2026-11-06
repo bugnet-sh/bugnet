@@ -1,7 +1,7 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { z } from "zod";
 import { BootstrapState, type Bootstrap } from "../gen/bugnet/router/v1/router_pb.ts";
-import { GatewayError, reasonOf } from "../router.ts";
+import { GatewayError, reasonOf, retryDelayMs } from "../router.ts";
 import {
     failure,
     handlePattern,
@@ -35,8 +35,8 @@ const pathShape = /^~\/[A-Za-z0-9._/-]{1,300}$/;
 const revisionShape = /^[0-9a-f]{4,64}$/;
 
 export const needsSecretNote =
-    "the repo is private or missing, so the fetch needs a GitHub token. bugnet_secret_link adds " +
-    "one, then bugnet_fetch_source fetches it";
+    "the repo is private or missing, so the fetch needs a GitHub token. bugnet_secret_link with " +
+    "name GITHUB_TOKEN adds one, then bugnet_fetch_source fetches it";
 
 const notFetching =
     "Bugnet does not fetch repos yet, so a retry now or later gets the same answer. Cloning by " +
@@ -44,18 +44,21 @@ const notFetching =
 
 const byHand = "so the choices left are cloning it by hand with bugnet_exec or stopping";
 
-// Failures after which another FetchSource call cannot help
-const final: Record<string, string> = {
+// Bootstrap.failure_reason, the only way a fetch's failure arrives
+const failureWords: Record<string, string> = {
     ATTEMPTS_SPENT: `the fetch has used all its attempts, ${byHand}`,
     BUDGET_SPENT: `the sandbox's network allowance for the fetch is spent, ${byHand}`,
     TOOL_MISSING: `the sandbox lacks git or tar, which the fetch needs, ${byHand}`,
     TOO_LARGE:
         "the repo is over the fetch's size limit, a shallow clone by hand with bugnet_exec " +
         "may work",
+    CLONE_FAILED: "git could not clone the repo, bugnet_fetch_source tries again",
+    FETCH_FAILED: "the repo's download failed, bugnet_fetch_source tries again",
+    INTERRUPTED: "the fetch stopped before it finished, bugnet_fetch_source starts it again",
 };
 
 function failedNote(reason: string): string {
-    if (Object.hasOwn(final, reason)) return final[reason] as string;
+    if (Object.hasOwn(failureWords, reason)) return failureWords[reason] as string;
     return "the fetch failed, bugnet_fetch_source tries again";
 }
 
@@ -88,22 +91,28 @@ export function sourceView(b: Bootstrap | undefined): SourceView | null {
     };
 }
 
-// FetchSource refusals that are a state for the agent to act on rather than a failure
+// A token the repo needs is a state for the agent to act on, the fetch's failures come as states
 function refusalView(err: unknown): SourceView | null {
-    const reason = reasonOf(err);
-    if (reason === "SECRET_REQUIRED") return { state: "needs_secret", note: needsSecretNote };
-    if (reason !== null && Object.hasOwn(final, reason)) {
-        return { state: "failed", failure: reason, note: final[reason] as string };
-    }
+    if (reasonOf(err) === "SECRET_REQUIRED")
+        return { state: "needs_secret", note: needsSecretNote };
     return null;
 }
 
-// bugnet_start's one fetch once the sandbox is ready, which never fails the start
-export async function fetchAfterStart(deps: Deps, handle: string): Promise<SourceView> {
+export const unplacedNote =
+    "Bugnet did not place the quoted repo in this sandbox, cloning it by hand with bugnet_exec " +
+    "works";
+
+// The fetch bugnet_start and bugnet_status make once the sandbox is ready, which never fails them
+export async function fetchAfterStart(
+    deps: Deps,
+    handle: string,
+    timeoutMs = 5_000,
+): Promise<SourceView> {
+    let later = "";
     try {
         const res = await deps.router.fetchSource(
             { handle },
-            { signal: AbortSignal.timeout(5_000) },
+            { signal: AbortSignal.timeout(timeoutMs) },
         );
         const view = sourceView(res.bootstrap);
         if (view) return view;
@@ -119,16 +128,13 @@ export async function fetchAfterStart(deps: Deps, handle: string): Promise<Sourc
         if (e instanceof ConnectError && e.code === Code.Unimplemented) {
             return { state: "not_fetched", note: notFetching };
         }
-        if (reasonOf(e) === "NO_SOURCE") {
-            return {
-                state: "not_fetched",
-                note: "the sandbox has no repo on record, cloning by hand with bugnet_exec works",
-            };
-        }
+        if (reasonOf(e) === "NO_SOURCE") return { state: "not_fetched", note: unplacedNote };
+        const wait = e instanceof ConnectError ? retryDelayMs(e) : null;
+        if (wait !== null) later = ` after ${Math.max(1, Math.ceil(wait / 1000))} s`;
     }
     return {
         state: "not_fetched",
-        note: "the repo is not fetched yet, bugnet_fetch_source tries again",
+        note: `the repo is not fetched yet, bugnet_fetch_source tries again${later}`,
     };
 }
 

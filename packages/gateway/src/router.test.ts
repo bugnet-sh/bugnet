@@ -50,7 +50,6 @@ const table: [string, Code, string][] = [
     ["HOST_NOT_ALLOWED", Code.FailedPrecondition, "precondition"],
     ["NO_SOURCE", Code.FailedPrecondition, "precondition"],
     ["SECRET_REQUIRED", Code.FailedPrecondition, "precondition"],
-    ["TOOL_MISSING", Code.FailedPrecondition, "precondition"],
     ["OVER_CAP", Code.OutOfRange, "limit"],
     ["RANGE", Code.OutOfRange, "invalid"],
     ["RATE_LIMITED", Code.ResourceExhausted, "rate_limited"],

@@ -420,11 +420,13 @@ export async function buildQuote(
     let estimateId: string | null = null;
     if (isEstimateId(est.estimateId)) estimateId = est.estimateId.toLowerCase();
     else if (est.estimateId) deps.log.warn("estimate id is not a UUID, quoting without it");
-    const github = est.source?.kind === SourceKind.GITHUB && estimateId !== null;
+    const named = est.source?.kind === SourceKind.GITHUB;
+    const github = named && estimateId !== null;
     const expiresAt = deps.now() + deps.config.limits.quote_ttl;
     const quoteId = signQuote(deps.config.secrets.quoteKey, {
         requirements,
         github,
+        githubUnplaced: named && !github,
         estimateId,
         expiresAt,
     });

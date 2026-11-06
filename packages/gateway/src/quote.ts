@@ -10,7 +10,8 @@ const flagOrder = [
     ["secrets", "x"],
 ] as const;
 const githubFlag = "r";
-const flagsPattern = /^(-|s?p?g?x?r?)$/;
+const unplacedFlag = "h";
+const flagsPattern = /^(-|s?p?g?x?r?h?)$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const packedPattern = /^[A-Za-z0-9_-]{22}$/;
 
@@ -35,6 +36,8 @@ export interface QuoteClaims {
     requirements: QuoteRequirements;
     // The router resolved the source to a GitHub repository it can put in the sandbox
     github: boolean;
+    // The quote named a GitHub repository the router will not put in the sandbox
+    githubUnplaced?: boolean;
     // The router's estimate as a lower-case UUID, null when it gave none
     estimateId: string | null;
     expiresAt: number;
@@ -69,7 +72,8 @@ function mac(key: Buffer, body: string): string {
 
 export function signQuote(key: Buffer, claims: QuoteClaims): string {
     const needs = flagOrder.map(([k, f]) => (claims.requirements[k] ? f : "")).join("");
-    const flags = needs + (claims.github ? githubFlag : "") || "-";
+    const repo = claims.github ? githubFlag : claims.githubUnplaced ? unplacedFlag : "";
+    const flags = needs + repo || "-";
     const exp = Math.ceil(claims.expiresAt / 1000).toString(36);
     const body = `${exp}.${flags}.${packEstimate(claims.estimateId)}`;
     return `${prefix}${body}.${mac(key, body)}`;
@@ -117,6 +121,7 @@ export function verifyQuote(key: Buffer, token: string, now: number): QuoteClaim
     return {
         requirements,
         github: flags.includes(githubFlag),
+        ...(flags.includes(unplacedFlag) ? { githubUnplaced: true } : {}),
         estimateId: unpackEstimate(est),
         expiresAt,
     };
