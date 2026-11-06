@@ -22,6 +22,7 @@ import {
     type ServerContext,
 } from "@modelcontextprotocol/server";
 import type { PinnedKey } from "@bugnet/seal";
+import pkg from "../package.json" with { type: "json" };
 import type { Log } from "./log.ts";
 import { paymentMetaKey, paymentRequired, type PaymentSigner } from "./payment.ts";
 import type { RemoteResult, RemoteTools } from "./remote.ts";
@@ -34,7 +35,8 @@ import {
     secretFromEnvTool,
 } from "./secrets/tool.ts";
 
-export const version = "0.1.0";
+// The bundle inlines it at build time, so --version and clientInfo follow every release bump
+export const version: string = pkg.version;
 
 export interface BridgeDeps {
     remote: RemoteTools;

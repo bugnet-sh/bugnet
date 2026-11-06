@@ -15,7 +15,8 @@
     },
     "scripts": {
         "typecheck": "tsc -p .",
-        "build": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node20 --legal-comments=none --banner:js=\"#!/usr/bin/env node\" --outfile=dist/main.js"
+        "build": "tsx src/build-main.ts",
+        "prepack": "pnpm run build"
     },
     "devDependencies": {
         "@bufbuild/protobuf": "2.16.0",
@@ -24,6 +25,7 @@
         "@connectrpc/connect": "2.3.0",
         "@modelcontextprotocol/client": "2.4.0",
         "@modelcontextprotocol/server": "2.4.0",
+        "esbuild": "0.28.2",
         "libsodium-wrappers": "0.8.4",
         "smol-toml": "1.9.1",
         "zod": "4.6.7"
