@@ -1,5 +1,6 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { Duplex } from "node:stream";
 import { hostHeaderValidation, toNodeHandler } from "@modelcontextprotocol/node";
 import { McpServer, createMcpHandler, type ServerContext } from "@modelcontextprotocol/server";
 import { allowedHosts } from "./config.ts";
@@ -79,6 +80,30 @@ export function foreignRequest(req: IncomingMessage, origins: ReadonlySet<string
     return origin !== undefined && !origins.has(origin.replace(/\/$/, ""));
 }
 
+const cookieAdvice =
+    "This browser sent more bugnet.sh cookies than Bugnet reads. Clear the cookies for bugnet.sh " +
+    "in your browser's site settings, then reload the page.\n";
+
+// Node's own answer is gone once a clientError listener exists, so this keeps its status codes
+function answerClientError(err: Error & { code?: string }, socket: Duplex): void {
+    if (err.code === "ECONNRESET" || !socket.writable) {
+        socket.destroy();
+        return;
+    }
+    const tooLarge = err.code === "HPE_HEADER_OVERFLOW";
+    const status = tooLarge
+        ? "431 Request Header Fields Too Large"
+        : err.code === "ERR_HTTP_REQUEST_TIMEOUT"
+          ? "408 Request Timeout"
+          : "400 Bad Request";
+    const body = tooLarge ? cookieAdvice : "";
+    socket.end(
+        `HTTP/1.1 ${status}\r\ncontent-type: text/plain; charset=utf-8\r\n` +
+            `content-security-policy: frame-ancestors 'none'\r\n` +
+            `content-length: ${Buffer.byteLength(body)}\r\nconnection: close\r\n\r\n${body}`,
+    );
+}
+
 export function startHttp(deps: Deps, extra: Register[] = []): Promise<Server> {
     const handler = createMcpHandler(() => buildMcpServer(deps, extra), {
         legacy: "stateless",
@@ -86,6 +111,7 @@ export function startHttp(deps: Deps, extra: Register[] = []): Promise<Server> {
     });
     const mcp = toNodeHandler(handler);
     const validHost = hostHeaderValidation(allowedHosts(deps.config));
+    const home = deps.config.home_url;
     // Hosted clients such as claude.ai send their own Origin, and the gateway reads no cookie
     const origins = new Set([
         new URL(deps.config.public_url).origin,
@@ -96,6 +122,10 @@ export function startHttp(deps: Deps, extra: Register[] = []): Promise<Server> {
         res.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
         delete req.headers.cookie;
         const path = (req.url ?? "/").split("?")[0];
+        if (path === "/" && home && (req.method === "GET" || req.method === "HEAD")) {
+            res.writeHead(302, { location: home }).end();
+            return;
+        }
         if (path === "/healthz") {
             res.writeHead(200, { "content-type": "text/plain" }).end("ok\n");
             return;
@@ -114,6 +144,8 @@ export function startHttp(deps: Deps, extra: Register[] = []): Promise<Server> {
             if (!res.headersSent) res.writeHead(500).end();
         });
     });
+    // A preview can set bugnet.sh cookies past any header limit, so the answer says how to clear them
+    http.on("clientError", answerClientError);
     const addr = deps.config.listen_addr;
     const at = addr.lastIndexOf(":");
     const host = addr.slice(0, at).replace(/^\[|\]$/g, "") || "0.0.0.0";

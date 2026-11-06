@@ -3,6 +3,7 @@
 
 listen_addr = "127.0.0.1:8787"          # host:port the MCP endpoint /mcp listens on
 public_url = "http://127.0.0.1:8787"    # base URL clients reach, used for links and Host checks
+home_url = "https://bugnet.sh/"         # where a browser opening / is sent, empty answers not found
 allowed_hosts = []                      # Host header values to accept, public_url's host when empty
 allowed_origins = ["https://claude.ai"] # Origins of hosted MCP clients /mcp accepts beside its own, https only
 
