@@ -122,13 +122,21 @@ const startInput = z.object({
         .describe("x402 PaymentPayload for this order if your wallet tool produced one"),
 });
 
-// Claude Code shows the model only structuredContent, so the guide rides beside the x402 fields
-export function paymentRequiredResult(r: Extract<OrderResult, { status: "payment_required" }>) {
+// Claude Code shows the model only the text of an error result, other clients read the fields
+export function paymentRequiredResult(
+    r: Extract<OrderResult, { status: "payment_required" }>,
+    sentOrderId?: string,
+) {
     const guide = [
-        `Payment required for order ${r.orderId}.`,
+        sentOrderId === r.orderId
+            ? `Order ${r.orderId} is not paid yet, and a payment can take a few seconds to confirm.`
+            : `Payment required for order ${r.orderId}.`,
         "If an x402-capable wallet is connected it pays automatically.",
         r.payUrl ? `Otherwise the user can pay at ${r.payUrl}.` : "",
-        `After paying, call the same tool again with orderId "${r.orderId}".`,
+        `After paying, call the same tool again with orderId "${r.orderId}", since a call ` +
+            "without it opens a new order the user would pay again.",
+        // Live runs saw the model tell users they had 60 s to pay
+        "The x402 maxTimeoutSeconds limits a wallet's signed payment, not the user's time to pay.",
     ]
         .filter(Boolean)
         .join(" ");
@@ -267,8 +275,12 @@ export const registerSandboxTools: Register = (server, deps) => {
                 try {
                     claims = verifyQuote(deps.config.secrets.quoteKey, args.quoteId, deps.now());
                 } catch (e) {
-                    if (e instanceof QuoteError) throw new GatewayError("invalid", e.message);
-                    throw e;
+                    if (!(e instanceof QuoteError)) throw e;
+                    const keep = args.orderId
+                        ? `. Keep orderId "${args.orderId}" on the next bugnet_start, so the ` +
+                          "order is not paid twice"
+                        : "";
+                    throw new GatewayError("invalid", e.message + keep);
                 }
                 const budget = new Budget(deps);
                 const pkg = quoted(
@@ -304,7 +316,9 @@ export const registerSandboxTools: Register = (server, deps) => {
                     },
                     budget.signal(30_000, placeReserveMs),
                 );
-                if (order.status === "payment_required") return paymentRequiredResult(order);
+                if (order.status === "payment_required") {
+                    return paymentRequiredResult(order, args.orderId);
+                }
                 if (order.status === "refused") {
                     throw new GatewayError("denied", `payment refused: ${order.reason}`);
                 }

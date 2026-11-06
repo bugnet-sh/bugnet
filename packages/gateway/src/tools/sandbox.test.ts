@@ -236,7 +236,9 @@ describe("bugnet_start", () => {
         const guide =
             "Payment required for order ord_2. If an x402-capable wallet is connected it pays " +
             "automatically. Otherwise the user can pay at https://pay.bugnet.sh/ord_2. After " +
-            'paying, call the same tool again with orderId "ord_2".';
+            'paying, call the same tool again with orderId "ord_2", since a call without it ' +
+            "opens a new order the user would pay again. The x402 maxTimeoutSeconds limits a " +
+            "wallet's signed payment, not the user's time to pay.";
         expect(r.structured).toEqual({
             ...required,
             message: guide,
@@ -245,6 +247,47 @@ describe("bugnet_start", () => {
         });
         expect(r.text).toBe(`${JSON.stringify(required)}\n${guide}`);
         expect(r.text).not.toMatch(/bridge/);
+    });
+
+    it("says a retried order is not paid yet and keeps its x402 fields", async () => {
+        const required = {
+            x402Version: 2,
+            accepts: [{ amount: "50000", maxTimeoutSeconds: 60 }],
+        };
+        const payments = testPayments(() => ({
+            status: "payment_required",
+            orderId: "ord_3",
+            paymentRequired: required,
+            payUrl: "https://pay.bugnet.sh/ord_3",
+        }));
+        const { client } = await setup(startRouter({ waits: [] }), payments);
+        const r = await callTool<Record<string, unknown>>(client, "bugnet_start", {
+            ...startArgs(await quoteId(client)),
+            orderId: "ord_3",
+        });
+        expect(r.isError).toBe(true);
+        expect(r.text.startsWith(`${JSON.stringify(required)}\n`)).toBe(true);
+        expect(r.text).toMatch(
+            /\nOrder ord_3 is not paid yet, and a payment can take a few seconds to confirm\. /,
+        );
+        expect(r.text).not.toMatch(/Payment required/);
+        expect(r.structured).toEqual(
+            expect.objectContaining({ ...required, orderId: "ord_3", payUrl: expect.any(String) }),
+        );
+        expect(payments.orders).toEqual([expect.objectContaining({ orderId: "ord_3" })]);
+    });
+
+    it("keeps the orderId in a quote error, so a requote does not open a second order", async () => {
+        const { client, clock, payments } = await setup(startRouter({ waits: [] }));
+        const id = await quoteId(client);
+        clock.now = testNow + 11 * 60_000;
+        const r = await callTool(client, "bugnet_start", { ...startArgs(id), orderId: "ord_4" });
+        expect(r.isError).toBe(true);
+        expect(r.text).toBe(
+            'quote expired, call bugnet_quote again. Keep orderId "ord_4" on the next ' +
+                "bugnet_start, so the order is not paid twice.",
+        );
+        expect(payments.orders).toEqual([]);
     });
 
     it.each(["WALLET_BLOCKED", "PAYER_REQUIRED"])(

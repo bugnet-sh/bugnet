@@ -100,6 +100,22 @@ describe("bugnet_extend", () => {
         expect(payments.orders).toEqual([]);
     });
 
+    it("says a retried extension order is not paid yet", async () => {
+        const payments = testPayments(() => ({
+            status: "payment_required",
+            orderId: "ord_x",
+            paymentRequired: { x402Version: 2, accepts: [{ amount: "40000" }] },
+        }));
+        const deps = testDeps({ router: fakeRouter(checked), payments });
+        const client = await connectTools(deps);
+        const first = await callTool(client, "bugnet_extend", args());
+        expect(first.text).toMatch(/\nPayment required for order ord_x\. /);
+        const again = await callTool(client, "bugnet_extend", { ...args(), orderId: "ord_x" });
+        expect(again.isError).toBe(true);
+        expect(again.text).toMatch(/\nOrder ord_x is not paid yet/);
+        expect(again.text).toMatch(/call the same tool again with orderId "ord_x"/);
+    });
+
     it("lists the options for a package that does not extend this sandbox", async () => {
         const { client } = await connect({
             ...checked,
