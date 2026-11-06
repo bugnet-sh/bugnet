@@ -16,7 +16,8 @@ url = ""                                # Payments service base URL, required fo
 order_token_ttl = "10m"                 # lifetime of order tokens dev mode signs
 
 [limits]
-max_wait_seconds = 45                   # longest any tool waits, 1 to 45
+tool_budget = "44s"                     # every tool call ends by then, 5s to 45s, router calls included
+max_wait_seconds = 38                   # longest any tool waits, plus 6 s it must fit tool_budget
 default_wait_seconds = 25               # wait when a tool call gives none
 output_tail_bytes = 8192                # stdout and stderr kept per stream per call
 read_file_max_bytes = 262144            # bugnet_read_file chunk limit, router maximum 256 KiB

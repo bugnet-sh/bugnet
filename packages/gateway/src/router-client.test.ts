@@ -74,6 +74,18 @@ describe("router client deadline", () => {
         expect(r.isError).toBe(true);
     });
 
+    it("ends every tool call within limits.tool_budget, whatever the router does", async () => {
+        const cancelled: string[] = [];
+        const router = await routerAt({ getPlacement: stall(cancelled, "getPlacement") }, "30s");
+        const config = testConfig('[limits]\ntool_budget = "300ms"\nmax_wait_seconds = 1');
+        const client = await connectTools(testDeps({ router, config }));
+        const started = Date.now();
+        const r = await within(callTool(client, "bugnet_status", { handle: testHandle }), 3000);
+        expect(r.isError).toBe(true);
+        expect(r.text).toMatch(/timed out/);
+        expect(Date.now() - started).toBeLessThan(2000);
+    });
+
     it("lets a call set a longer deadline of its own", async () => {
         const router = await routerAt(
             {

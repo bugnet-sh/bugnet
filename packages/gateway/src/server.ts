@@ -1,3 +1,4 @@
+import { Code, ConnectError } from "@connectrpc/connect";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { hostHeaderValidation, toNodeHandler } from "@modelcontextprotocol/node";
 import { McpServer, createMcpHandler, type ServerContext } from "@modelcontextprotocol/server";
@@ -49,7 +50,13 @@ function scopeToolCalls(server: McpServer, deps: Deps): void {
             const args = a.length > 1 ? a[0] : undefined;
             const run = () => cb(...a);
             const traced = tracing ? () => tracing.tool(name, args, run) : run;
-            return withToolCall(ctx.mcpReq.signal, traced);
+            const limit = new AbortController();
+            const timer = setTimeout(
+                () => limit.abort(new ConnectError("tool time limit", Code.DeadlineExceeded)),
+                deps.config.limits.tool_budget,
+            );
+            const signal = AbortSignal.any([ctx.mcpReq.signal, limit.signal]);
+            return Promise.resolve(withToolCall(signal, traced)).finally(() => clearTimeout(timer));
         });
     server.registerTool = scoped as typeof server.registerTool;
 }
