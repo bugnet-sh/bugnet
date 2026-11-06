@@ -109,6 +109,24 @@ describe("bugnet_fetch_source", () => {
         },
     );
 
+    it("says cloning by hand or stopping is left on a TOOL_MISSING refusal", async () => {
+        const client = await connect({
+            fetchSource() {
+                throw routerError(Code.FailedPrecondition, "TOOL_MISSING");
+            },
+        });
+        const r = await fetch(client);
+        expect(r.isError).toBe(false);
+        expect(r.structured.source).toEqual({
+            state: "failed",
+            failure: "TOOL_MISSING",
+            note:
+                "the sandbox lacks git or tar, which the fetch needs, so the choices left are " +
+                "cloning it by hand with bugnet_exec or stopping",
+        });
+        expect(r.structured.message).not.toMatch(/tries again/);
+    });
+
     it("says another call retries a fetch that failed for a passing reason", async () => {
         for (const [reason, words] of [
             ["CLONE_FAILED", "Git could not clone the repo, bugnet_fetch_source tries again."],

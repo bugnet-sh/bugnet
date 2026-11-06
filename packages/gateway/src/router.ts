@@ -366,6 +366,13 @@ const rules: Record<string, Rule> = {
             "the repo is private or missing. A GitHub token added with bugnet_secret_link " +
             "lets the next call read it",
     },
+    TOOL_MISSING: {
+        code: Code.FailedPrecondition,
+        kind: "precondition",
+        text:
+            "the sandbox lacks git or tar, which the fetch needs, so the choices left are " +
+            "cloning it by hand with bugnet_exec or stopping",
+    },
     OVER_CAP: {
         code: Code.OutOfRange,
         kind: "limit",

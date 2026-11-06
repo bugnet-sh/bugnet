@@ -557,6 +557,14 @@ describe("bugnet_start on a router with PricePackage", () => {
             /Bugnet did not place the quoted repo in this sandbox, cloning it by hand/,
         ],
         [
+            "TOOL_MISSING",
+            routerError(Code.FailedPrecondition, "TOOL_MISSING", {
+                message: "api: git is not in this image",
+            }),
+            "failed",
+            /^The sandbox lacks git or tar, .* cloning it by hand with bugnet_exec or stopping\.$/m,
+        ],
+        [
             "RATE_LIMITED",
             routerError(Code.ResourceExhausted, "RATE_LIMITED", { retryAfterMs: 10_000 }),
             "not_fetched",

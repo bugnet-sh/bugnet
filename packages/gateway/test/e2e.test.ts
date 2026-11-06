@@ -94,7 +94,9 @@ describe.skipIf(!url)("gateway end to end", () => {
     it("says why the quoted repo is not fetched for a quote without a source", async () => {
         const r = await call("bugnet_fetch_source", { handle });
         const said = text(r);
-        expect(said).toMatch(/not open yet|no GitHub repo|named no source/);
+        expect(said).toMatch(
+            /does not fetch repos yet|not open yet|no GitHub repo|named no source/,
+        );
         expect(said).not.toMatch(/e2b|boat|boxd|koyeb/i);
     });
 

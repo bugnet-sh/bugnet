@@ -44,7 +44,7 @@ const notFetching =
 
 const byHand = "so the choices left are cloning it by hand with bugnet_exec or stopping";
 
-// Bootstrap.failure_reason, the only way a fetch's failure arrives
+// Bootstrap.failure_reason, and TOOL_MISSING also as FetchSource's own refusal
 const failureWords: Record<string, string> = {
     ATTEMPTS_SPENT: `the fetch has used all its attempts, ${byHand}`,
     BUDGET_SPENT: `the sandbox's network allowance for the fetch is spent, ${byHand}`,
@@ -91,10 +91,13 @@ export function sourceView(b: Bootstrap | undefined): SourceView | null {
     };
 }
 
-// A token the repo needs is a state for the agent to act on, the fetch's failures come as states
+// These refusals are states for the agent to act on, as the same reasons are in Bootstrap
 function refusalView(err: unknown): SourceView | null {
-    if (reasonOf(err) === "SECRET_REQUIRED")
-        return { state: "needs_secret", note: needsSecretNote };
+    const reason = reasonOf(err);
+    if (reason === "SECRET_REQUIRED") return { state: "needs_secret", note: needsSecretNote };
+    if (reason === "TOOL_MISSING") {
+        return { state: "failed", failure: reason, note: failedNote(reason) };
+    }
     return null;
 }
 
