@@ -43,6 +43,10 @@ describe("tokenFromPath", () => {
             `/l/${token}/x`,
             `/x/${token}`,
             "/l/bnsp_AAAAAAAAAAAAAAAAAAAAAA",
+            `/l/${token}A`,
+            `/l/${token}AAAA`,
+            `/l/${token.slice(0, -2)}==`,
+            `/l/${token.slice(0, -1)}+`,
             "/l/%E0%A4%A",
             `/l/${token.slice(0, -1)}%2F`,
         ]) {

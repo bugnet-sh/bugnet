@@ -35,7 +35,7 @@ import type { KeychainAnswer, SourceDeps } from "../secrets/sources.ts";
 export { testHandle, testNow };
 
 export const testGrant = "bnsp_" + "Q".repeat(54);
-export const testBinding = "mfrggzdfmztwq2lknnwg23tpobyxe43uov3ho6dzpiydcmrtgq2tmnzyhe";
+export const testBinding = "OBXJLGDEAIOSVKA3MUGPJH7GA3JWFK6REMWM2ZV5VCAXW2GLGUIQ";
 
 async function listen(server: HttpServer): Promise<string> {
     await new Promise<void>((resolve, reject) => {

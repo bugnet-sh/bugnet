@@ -50,7 +50,8 @@ import {
 export const secretFromEnvName = "bugnet_secret_from_env";
 export const putGrantToolName = "bugnet_secret_put_grant";
 
-const grantPattern = /^bnsp_[A-Za-z0-9_-]{16,200}$/;
+// Data-plane 4.4, 40 bytes of placement, expiry and MAC in base64url without padding
+const grantPattern = /^bnsp_[A-Za-z0-9_-]{54}$/;
 // A refinement, since \p classes in a JSON Schema pattern read differently without the u flag
 const isPrintable = (s: string) => /^[^\p{Cc}\p{Cf}]+$/u.test(s);
 const confirmTtlMs = 10 * 60_000;

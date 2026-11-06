@@ -19,7 +19,7 @@ import { findLauncher } from "../src/testing/browser.ts";
 import { startFakeRoute, type FakeLink, type FakeRoute, type Put } from "../src/testing/route.ts";
 
 const dist = join(dirname(fileURLToPath(import.meta.url)), "..", "dist");
-const binding = "MFRGGZDFMZTWQ2LKNNWG23TPOBYXE43UOV3HO6DZPIYDCMRTGQ2TMNZY";
+const binding = "D6CXU3RKY3CNWOHCPSG7I5LFQQSFQLLBABMQB7JFP5YGLL4OCDMQ";
 const devKey: SealingKey = {
     keyId: developmentKey.keyId,
     publicKey: developmentKey.publicKey,

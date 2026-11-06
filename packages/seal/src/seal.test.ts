@@ -12,7 +12,7 @@ import {
 import { pinnedKeys } from "./pinned.ts";
 import { developmentKey, developmentPinned, openSealed } from "./testing/development-key.ts";
 
-const binding = "mfrggzdfmztwq2lknnwg23tpobyxe43uov3ho6dzpiydcmrtgq2tmnzyhe";
+const binding = "MPWS27XG3CK76UZOFV4I5DOU4WQCYDYKMCFEWBHFDJ7OOR4OI4DQ";
 const listed: SealingKey = {
     keyId: developmentKey.keyId,
     publicKey: developmentKey.publicKey,
@@ -52,6 +52,22 @@ describe("chooseKey", () => {
             /no listed sealing key is one this build pins \(listed dev-only-1\)/,
         );
         expect(chooseKey([swapped, listed], developmentPinned)).toBe(listed);
+    });
+
+    it("takes only a binding of 52 upper-case base32 characters, as data-plane 4.4 makes it", () => {
+        for (const bad of [
+            binding.toLowerCase(),
+            binding.slice(0, -1),
+            `${binding}A`,
+            `${binding.slice(0, -4)}====`,
+            `${binding.slice(0, -1)}1`,
+            "",
+        ]) {
+            expect(() => chooseKey([{ ...listed, binding: bad }], developmentPinned), bad).toThrow(
+                SealError,
+            );
+        }
+        expect(chooseKey([{ ...listed, binding }], developmentPinned).binding).toBe(binding);
     });
 
     it("refuses when nothing listed is pinned", () => {

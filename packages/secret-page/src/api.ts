@@ -19,8 +19,8 @@ export class RouteFailure extends Error {
     }
 }
 
-// Data-plane 4.4, bnsl_ and base64url, with room for a longer token later
-const tokenPattern = /^bnsl_[A-Za-z0-9_-]{16,128}$/;
+// Data-plane 4.4, bnsl_ and 16 bytes in base64url without padding
+const tokenPattern = /^bnsl_[A-Za-z0-9_-]{22}$/;
 
 export function tokenFromPath(pathname: string): string | null {
     const m = /^\/l\/([^/]+)\/?$/.exec(pathname);

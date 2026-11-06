@@ -678,6 +678,34 @@ describe("the confirmation binds the shown arguments", () => {
         expect(calls).toHaveLength(1);
     });
 
+    it("takes only a put grant of bnsp_ and 54 base64url characters", async () => {
+        const answers: string[] = [];
+        for (const grant of [
+            `${testGrant}A`,
+            testGrant.slice(0, -1),
+            `${testGrant.slice(0, -2)}==`,
+            `${testGrant.slice(0, -1)}+`,
+            testGrant,
+        ]) {
+            const d = deps([]);
+            d.remote.callTool = async () => ({
+                content: [{ type: "text", text: "ok" }],
+                structuredContent: { putGrant: grant },
+            });
+            const first = await secretFromEnv(hf(), ctx(), d);
+            const state = (first as { requestState: string }).requestState;
+            const res = (await secretFromEnv(hf(), ctx(accepted, state), d)) as {
+                content: { text: string }[];
+            };
+            answers.push(res.content[0]?.text ?? "");
+        }
+        expect(answers.slice(0, 4)).toEqual(
+            Array(4).fill("secret: the gateway gave no put grant."),
+        );
+        // The valid grant goes on to the route, which nothing serves here
+        expect(answers[4]).toMatch(/^secret: the secrets route did not answer/);
+    });
+
     it("asks again once a confirmation is older than 10 minutes", async () => {
         const calls: unknown[] = [];
         const d = deps(calls);
