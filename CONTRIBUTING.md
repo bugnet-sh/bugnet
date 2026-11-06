@@ -104,7 +104,7 @@ denies shell commands, and allows only the free Bugnet tools. `--arms mcp`, `--l
 
 ### The README's tools table
 
-`packages/gateway/test/readme.test.ts` checks that the README's tools table names every tool the
+`packages/gateway/src/readme.test.ts` checks that the README's tools table names every tool the
 gateway serves, once each, and marks as paid exactly the tools whose title says paid. Adding,
 removing or renaming a tool means updating that table in the same pull request.
 
