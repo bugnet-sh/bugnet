@@ -95,7 +95,7 @@ describe("bugnet_preview", () => {
             `Preview of port 5173 is at ${url} until 2026-11-05T12:10:00.000Z, time left 10 ` +
                 "min. Anyone holding the url or token reaches the app until it expires. A " +
                 `browser may first see a Bugnet notice page, curl -H 'Bugnet-Token: ${token}' ` +
-                `https://${host}/path skips it. Each preview is one origin, so a frontend ` +
+                `'https://${host}/path' skips it. Each preview is one origin, so a frontend ` +
                 "reaches an API on another port through its dev server's proxy, not a second " +
                 "preview. webpack-dev-server needs allowedHosts: 'all', Django needs " +
                 `${host} in ALLOWED_HOSTS, and Vite works as is.`,
@@ -317,8 +317,8 @@ describe("bugnet_preview", () => {
 describe("previewLink", () => {
     it("keeps an https link under Bugnet's domain and refuses anything else", () => {
         const deps = testDeps();
-        expect(previewLink(deps, url).host).toBe(host);
-        expect(previewLink(deps, `${host}/`).href).toBe(`https://${host}/`);
+        expect(previewLink(deps, url, token).host).toBe(host);
+        expect(previewLink(deps, `${host}/`, token).href).toBe(`https://${host}/`);
         for (const bad of [
             "http://x.preview.bugnet.sh/",
             "",
@@ -327,8 +327,18 @@ describe("previewLink", () => {
             "https://bugnet.sh.evil.example/",
             "https://user:pw@x.preview.bugnet.sh/",
             "file:///etc/passwd",
+            `https://a;id;b.preview.bugnet.sh/?bugnet_token=${token}`,
+            "https://x$(id)`id`.preview.bugnet.sh/",
+            "https://abcdefghijklmno.preview.bugnet.sh/",
+            "https://x.abcdefghijklmnop.preview.bugnet.sh/",
+            "https://abcdefghijklmnop.transfer.bugnet.sh/",
+            "https://transfer.bugnet.sh/",
+            "https://preview.bugnet.sh/",
+            `https://${host}/?bugnet_token=bnp_${"B".repeat(43)}`,
+            `https://${host}/?bugnet_token=${token}&x=1`,
+            `https://${host}/?x=1`,
         ]) {
-            expect(() => previewLink(deps, bad)).toThrow(/no usable link/);
+            expect(() => previewLink(deps, bad, token), bad).toThrow(/no usable link/);
         }
     });
 

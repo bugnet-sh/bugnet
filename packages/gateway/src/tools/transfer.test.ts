@@ -294,6 +294,10 @@ describe("bugnet_transfer downloads", () => {
             "https://transfer.bugnet.sh/bnx_short",
             `${url}?x=1`,
             "",
+            url.replace("transfer.bugnet.sh", "abcdefghijklmnop.preview.bugnet.sh"),
+            url.replace("transfer.bugnet.sh", "x.transfer.bugnet.sh"),
+            url.replace("transfer.bugnet.sh", "secrets.bugnet.sh"),
+            url.replace("transfer.bugnet.sh", "bugnet.sh"),
         ]) {
             const { client } = await setup(() => ({ url: bad, expiresAt: expires, size: 6n }));
             const r = await callTool(client, "bugnet_transfer", download);

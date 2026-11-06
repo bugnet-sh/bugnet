@@ -157,7 +157,7 @@ export const registerSecretTools: Register = (server, deps) => {
                 const res = await withFreshKey(key, (requestId) =>
                     deps.router.createSecretLink({ handle: args.handle, name, hosts, requestId }),
                 );
-                const link = routerLink(deps, res.url, linkPath);
+                const link = routerLink(deps, res.url, "secrets", linkPath);
                 if (!link || !pairingShape.test(res.pairingCode)) {
                     throw new GatewayError(
                         "internal",

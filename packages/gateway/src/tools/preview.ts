@@ -7,6 +7,7 @@ import {
     ok,
     routerLink,
     sandboxFailure,
+    shellQuoted,
     timeLeft,
     type Deps,
     type Register,
@@ -39,8 +40,8 @@ function previewRefusal(err: unknown): unknown {
 }
 
 // The router's link may leave out the scheme, and every preview is served over https
-export function previewLink(deps: Deps, raw: string): URL {
-    const url = routerLink(deps, raw, /^\/$/, true);
+export function previewLink(deps: Deps, raw: string, token: string): URL {
+    const url = routerLink(deps, raw, "preview", /^\/$/, `?bugnet_token=${token}`);
     if (!url) throw new GatewayError("internal", "preview: the router gave no usable link");
     return url;
 }
@@ -51,7 +52,8 @@ const tokenShape = /^bnp_[A-Za-z0-9_-]{43}$/;
 function note(port: number, host: string, token: string, listening: boolean): string {
     const reach =
         "Anyone holding the url or token reaches the app until it expires. A browser may first " +
-        `see a Bugnet notice page, curl -H 'Bugnet-Token: ${token}' https://${host}/path ` +
+        `see a Bugnet notice page, curl -H 'Bugnet-Token: ${token}' ` +
+        `${shellQuoted(`https://${host}/path`)} ` +
         "skips it. Each preview is one origin, so a frontend reaches an API on another port " +
         "through its dev server's proxy, not a second preview. webpack-dev-server needs " +
         `allowedHosts: 'all', Django needs ${host} in ALLOWED_HOSTS, and Vite works as is.`;
@@ -98,7 +100,7 @@ export const registerPreviewTool: Register = (server, deps) => {
                 if (!tokenShape.test(res.token)) {
                     throw new GatewayError("internal", "preview: the router gave no usable token");
                 }
-                const url = previewLink(deps, res.url);
+                const url = previewLink(deps, res.url, res.token);
                 const expires = res.expiresAt ? timestampDate(res.expiresAt) : undefined;
                 const left = timeLeft(expires, deps.now());
                 deps.log.info("preview created", {

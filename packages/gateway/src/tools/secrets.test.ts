@@ -197,6 +197,15 @@ describe("bugnet_secret_link", () => {
             },
             { url: linkUrl, pairingCode: "\u001b[8mK3F9X2" },
             { url: linkUrl, pairingCode: "K3F9XI" },
+            {
+                url: linkUrl.replace("secrets.bugnet.sh", "abcdefghijklmnop.preview.bugnet.sh"),
+                pairingCode: "K3F9X2",
+            },
+            {
+                url: linkUrl.replace("secrets.bugnet.sh", "transfer.bugnet.sh"),
+                pairingCode: "K3F9X2",
+            },
+            { url: linkUrl.replace("secrets.bugnet.sh", "bugnet.sh"), pairingCode: "K3F9X2" },
         ];
         for (const answer of answers) {
             const { client } = await connect({ createSecretLink: () => answer });

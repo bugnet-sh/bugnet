@@ -191,8 +191,24 @@ export function underDomain(deps: Deps, host: string): boolean {
     return host === domain || host.endsWith(`.${domain}`);
 }
 
+export type LinkKind = "preview" | "transfer" | "secrets";
+
+// Data-plane 8.2.1, 8.3.1 and 10.3 give each link one host, so a preview never serves a secret link
+function linkHost(deps: Deps, kind: LinkKind, host: string): boolean {
+    const domain = deps.config.router.links_domain;
+    if (kind !== "preview") return host === `${kind}.${domain}`;
+    const suffix = `.preview.${domain}`;
+    return host.endsWith(suffix) && /^[a-z2-7]{16}$/.test(host.slice(0, -suffix.length));
+}
+
 // Router links reach the user's shell only in the shape the contract gives them
-export function routerLink(deps: Deps, raw: string, path: RegExp, query = false): URL | null {
+export function routerLink(
+    deps: Deps,
+    raw: string,
+    kind: LinkKind,
+    path: RegExp,
+    query = "",
+): URL | null {
     const href = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`;
     let url: URL;
     try {
@@ -205,8 +221,13 @@ export function routerLink(deps: Deps, raw: string, path: RegExp, query = false)
         !url.username &&
         !url.password &&
         url.hash === "" &&
-        (query || url.search === "");
-    return plain && underDomain(deps, url.hostname) && path.test(url.pathname) ? url : null;
+        (url.search === "" || (query !== "" && url.search === query));
+    return plain && linkHost(deps, kind, url.hostname) && path.test(url.pathname) ? url : null;
+}
+
+// One shell word, so no character of s can end the word or run a command
+export function shellQuoted(s: string): string {
+    return `'${s.replaceAll("'", `'\\''`)}'`;
 }
 
 // Sends progress every few seconds while work runs, so clients keep the call alive

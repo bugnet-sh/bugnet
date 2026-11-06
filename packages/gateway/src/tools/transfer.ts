@@ -15,6 +15,7 @@ import {
     idempotencyKey,
     okBody,
     routerLink,
+    shellQuoted,
     sandboxFailure,
     withFreshKey,
     withProgress,
@@ -84,15 +85,11 @@ export const transferDescription =
 
 /* Commands */
 
-function quoted(s: string): string {
-    return `'${s.replaceAll("'", `'\\''`)}'`;
-}
-
 // Leaves plain words bare and quotes the rest, keeping a leading ~/ unquoted so it still expands
 export function shellWord(s: string): string {
     if (s === "-") return "./-";
     if (s.startsWith("~/") && s.length > 2) return `~/${shellWord(s.slice(2))}`;
-    return /^[\w.+@%=:,/-]+$/.test(s) ? s : quoted(s);
+    return /^[\w.+@%=:,/-]+$/.test(s) ? s : shellQuoted(s);
 }
 
 // The sandbox file's own name, a dotfile made visible
@@ -271,7 +268,7 @@ function errorLine(codes: Record<string, string>): string {
 function uploadResult(args: Args, link: Link): CallToolResult {
     const named = args.localFile !== undefined;
     const file = named ? shellWord(args.localFile as string) : "<file>";
-    const command = `curl -fsS -T ${file} ${quoted(link.url)}`;
+    const command = `curl -fsS -T ${file} ${shellQuoted(link.url)}`;
     const lines = [
         `Upload link for ${link.path}, ${bytes(link.size)}${until(link)}.`,
         named ? `command sends ${file}.` : "command has <file> where the local file's path goes.",
@@ -292,7 +289,7 @@ function uploadResult(args: Args, link: Link): CallToolResult {
 function downloadResult(args: Args, link: Link, res: CreateTransferResponse): CallToolResult {
     const named = args.localFile !== undefined;
     const file = shellWord(args.localFile ?? `${downloadDir}/${downloadName(args.path)}`);
-    const url = quoted(link.url);
+    const url = shellQuoted(link.url);
     const modifiedAt = iso(res.modifiedAt);
     const sha256 = res.sha256.length === 32 ? Buffer.from(res.sha256).toString("hex") : null;
     const modified = modifiedAt ? `, modified ${modifiedAt}` : "";
@@ -358,7 +355,7 @@ export const registerTransferTool: Register = (server, deps) => {
                 const res = await withProgress(ctx, "making the transfer link", () =>
                     createTransfer(deps, req, ctx.mcpReq.signal),
                 );
-                const url = routerLink(deps, res.url, transferPath);
+                const url = routerLink(deps, res.url, "transfer", transferPath);
                 if (!url) {
                     throw new GatewayError(
                         "internal",
