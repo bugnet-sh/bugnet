@@ -13,6 +13,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
 import type { PinnedKey } from "@bugnet/seal";
+// Build time only, the bundle never imports it
+import { isDevelopmentKey } from "@bugnet/seal/testing";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pageDir = join(here, "page");
@@ -48,7 +50,7 @@ function checkPinned(opts: BuildOptions): void {
                     "X25519 key",
             );
         }
-        if (!opts.development && key.keyId.startsWith("dev-")) {
+        if (!opts.development && (key.keyId.startsWith("dev-") || isDevelopmentKey(key))) {
             throw new Error(`pinned key ${key.keyId} is a development key, which no release pins`);
         }
     }

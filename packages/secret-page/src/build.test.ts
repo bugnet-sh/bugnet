@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { developmentPinned } from "@bugnet/seal/testing";
+import { developmentKey, developmentPinned } from "@bugnet/seal/testing";
 import { buildPage } from "./build.ts";
 import { readHeadersFile } from "./testing/route.ts";
 
@@ -71,6 +71,17 @@ describe("pinned keys", () => {
         await expect(
             buildPage({ outdir: join(root, "bad"), pinned: developmentPinned }),
         ).rejects.toThrow(/development key, which no release pins/);
+    });
+
+    it("refuses the development public key under any id or spelling", async () => {
+        const last = developmentKey.publicKey.slice(-1);
+        const respelt = developmentKey.publicKey.slice(0, -1) + (last === "k" ? "l" : "k");
+        for (const publicKey of [developmentKey.publicKey, respelt]) {
+            await expect(
+                buildPage({ outdir: join(root, "bad"), pinned: [{ keyId: "k1", publicKey }] }),
+                publicKey,
+            ).rejects.toThrow(/development key, which no release pins/);
+        }
     });
 
     it("refuses a key that is not a base64url X25519 key", async () => {

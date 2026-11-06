@@ -12,7 +12,12 @@ import {
     type SealingKey,
 } from "./seal.ts";
 import { pinnedKeys } from "./pinned.ts";
-import { developmentKey, developmentPinned, openSealed } from "./testing/development-key.ts";
+import {
+    developmentKey,
+    developmentPinned,
+    isDevelopmentKey,
+    openSealed,
+} from "./testing/development-key.ts";
 
 const binding = "MPWS27XG3CK76UZOFV4I5DOU4WQCYDYKMCFEWBHFDJ7OOR4OI4DQ";
 const listed: SealingKey = {
@@ -78,7 +83,7 @@ describe("chooseKey", () => {
     });
 
     it("never pins the development key in a release", () => {
-        expect(pinnedKeys.map((k) => k.publicKey)).not.toContain(developmentKey.publicKey);
+        expect(pinnedKeys.filter(isDevelopmentKey)).toEqual([]);
         expect(() => chooseKey([listed], pinnedKeys)).toThrow(SealError);
     });
 });
