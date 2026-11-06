@@ -2,12 +2,14 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { create } from "@bufbuild/protobuf";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+    ExtendPlacementResponseSchema,
     GetPlacementResponseSchema,
     PlacementState,
     WatchJobResponseSchema,
 } from "./gen/bugnet/router/v1/router_pb.ts";
 import { checkSettings, parseSettings } from "./config.ts";
 import { createRouterClient, type RouterClient } from "./router.ts";
+import { withToolCall } from "./request.ts";
 import {
     callTool,
     connectTools,
@@ -158,6 +160,39 @@ describe("router client cancellation", () => {
         stop.abort();
         await call;
         await expect.poll(() => cancelled, { timeout: 1000 }).toEqual(["createPreview"]);
+    });
+});
+
+describe("router calls after the tool call ended", () => {
+    it.each([true, false])("never reach the router, first call %s", async (first) => {
+        let ran = 0;
+        const router = await routerAt(
+            {
+                extendPlacement: () => {
+                    ran += 1;
+                    return create(ExtendPlacementResponseSchema, { placement: placement() });
+                },
+            },
+            "5s",
+        );
+        const limit = new AbortController();
+        const errors: Code[] = [];
+        await withToolCall(limit.signal, async () => {
+            if (!first) await router.extendPlacement({ handle: testHandle, orderToken: "t" });
+            limit.abort(new ConnectError("tool time limit", Code.DeadlineExceeded));
+            for (let i = 0; i < 3; i++) {
+                await router
+                    .extendPlacement({ handle: testHandle, orderToken: "t" })
+                    .catch((e: unknown) => errors.push(ConnectError.from(e).code));
+            }
+        });
+        await new Promise((r) => setTimeout(r, 200));
+        expect(ran).toBe(first ? 0 : 1);
+        expect(errors).toEqual([
+            Code.DeadlineExceeded,
+            Code.DeadlineExceeded,
+            Code.DeadlineExceeded,
+        ]);
     });
 });
 

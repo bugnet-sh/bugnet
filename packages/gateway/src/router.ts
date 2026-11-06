@@ -17,9 +17,12 @@ export type RouterClient = Client<typeof SandboxRouterService>;
 export const waitMargin = 5_000;
 
 // A cancelled tool call cancels the router calls it made, so no tool passes its signal by hand
-const followToolCall: Interceptor = (next) => (req) => {
+const followToolCall: Interceptor = (next) => async (req) => {
     const tool = toolCallSignal();
-    return next(tool ? { ...req, signal: AbortSignal.any([req.signal, tool]) } : req);
+    if (!tool) return next(req);
+    // A write sent after the tool call ended would take effect while the tool reports it failed
+    if (tool.aborted) throw ConnectError.from(tool.reason, Code.Canceled);
+    return next({ ...req, signal: AbortSignal.any([req.signal, tool]) });
 };
 
 // Calls without a deadline of their own end at router.timeout, long polls set wait plus a margin
