@@ -36,6 +36,18 @@ import {
     type TextContext,
 } from "./scan.ts";
 
+// This thread's CPU time, so a busy machine does not count against a budget meant for the regexes
+function cpuMs(f: () => unknown): number {
+    const usage = (prev?: NodeJS.CpuUsage) =>
+        typeof process.threadCpuUsage === "function"
+            ? process.threadCpuUsage(prev)
+            : process.cpuUsage(prev);
+    const before = usage();
+    f();
+    const used = usage(before);
+    return (used.user + used.system) / 1000;
+}
+
 const docs: TextContext = { path: "README.md", kind: "docs", trust: "normal" };
 const code: TextContext = { path: "install.sh", kind: "code", trust: "normal" };
 
@@ -628,9 +640,7 @@ describe("whole repos", () => {
         ];
         for (const text of inputs) {
             for (const path of ["setup.py", "README.md", "install.sh", "package.json"]) {
-                const started = performance.now();
-                scanFile(file(path, text), "normal");
-                expect(performance.now() - started).toBeLessThan(1500);
+                expect(cpuMs(() => scanFile(file(path, text), "normal"))).toBeLessThan(1500);
             }
         }
     });
@@ -650,10 +660,11 @@ describe("whole repos", () => {
         ];
         for (const text of inputs) {
             for (const path of paths) {
-                const started = performance.now();
-                scanFile(file(path, text), "normal");
-                repoNeeds([file(path, text)]);
-                expect(performance.now() - started).toBeLessThan(500);
+                const used = cpuMs(() => {
+                    scanFile(file(path, text), "normal");
+                    repoNeeds([file(path, text)]);
+                });
+                expect(used).toBeLessThan(500);
             }
         }
     });

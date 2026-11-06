@@ -33,10 +33,15 @@ function mixed(n: number): void {
     }
 }
 
+// This thread's CPU time, so neither other threads such as the GC's nor a busy machine count
 function cpuMs(f: () => unknown): number {
-    const before = process.cpuUsage();
+    const usage = (prev?: NodeJS.CpuUsage) =>
+        typeof process.threadCpuUsage === "function"
+            ? process.threadCpuUsage(prev)
+            : process.cpuUsage(prev);
+    const before = usage();
     f();
-    const used = process.cpuUsage(before);
+    const used = usage(before);
     return (used.user + used.system) / 1000;
 }
 
