@@ -45,6 +45,16 @@ describe("routeProblem", () => {
         ]);
     });
 
+    // Data-plane 10.3 gives it only on writes, so the sealed value has already gone out
+    it("says Bugnet stored nothing on feature_unavailable, not that nothing was sent", () => {
+        const p = routeProblem(409, body("feature_unavailable"), null);
+        expect(p.message).not.toMatch(/nothing was sent/);
+        expect(p.message).toBe(
+            "This sandbox cannot hold secrets, so Bugnet stored nothing. Your agent can start " +
+                "one that can.",
+        );
+    });
+
     it("never shows the route's own message", () => {
         const p = routeProblem(
             400,

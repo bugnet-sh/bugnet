@@ -48,8 +48,8 @@ const reasons: Record<string, Known> = {
     },
     feature_unavailable: {
         message:
-            "This sandbox cannot hold secrets. Your agent can start one that can, and nothing " +
-            "was sent.",
+            "This sandbox cannot hold secrets, so Bugnet stored nothing. Your agent can start " +
+            "one that can.",
         final: true,
     },
     name_reserved: {
