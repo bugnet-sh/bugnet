@@ -211,7 +211,8 @@ Save the file and press the refresh button in the MCP panel.
 | Sign-in   | None, no headers and no API key     |
 | Stdio     | `npx -y @bugnet/mcp`, needs Node 20 |
 
-Most clients take one of these two shapes:
+Most clients take one of these two shapes. The second runs the [bridge](#the-bridge-npx-bugnetmcp).
+<!-- PENDING: @bugnet/mcp is not published on npm yet -->
 
 ```json
 {
@@ -359,6 +360,8 @@ read.
 
 ### Secrets
 
+<!-- PENDING: the secret page's service and the backend's secret calls are still being built -->
+
 Never paste a token into the chat. Bugnet has two ways to get one into a sandbox, and neither
 lets the value pass through the chat or your agent.
 
@@ -435,10 +438,12 @@ Found a security problem? See [SECURITY.md](SECURITY.md).
   `bugnet_read_file`.
 - `bugnet_read_file` and `bugnet_write_file` move up to 256 KiB per call. For bigger files,
   `bugnet_transfer` gives a one-use `curl` link.
+  <!-- PENDING: transfers are still being built -->
 - A quote is valid for 10 minutes, and so is a secret page link.
 - `bugnet_assess` and `bugnet_quote` allow 12 calls a minute per IP address, in bursts of up to 10.
 - Everything is deleted at the deadline. Unused time is not refunded when you stop early.
 - A private GitHub repo needs a GitHub token, added through the secret page or the bridge.
+  <!-- PENDING: fetching a repo and adding secrets are still being built -->
 - In Claude Code, paid tools need a person to approve them, so unattended runs cannot start a
   sandbox.
 
@@ -448,27 +453,28 @@ Found a security problem? See [SECURITY.md](SECURITY.md).
 x402.
 
 **Does Bugnet use AI or read my code?** No AI runs on Bugnet's side. Bugnet sees only what your
-agent sends to the sandbox, as the [table above](#what-bugnet-can-and-cannot-see) lists.
+agent sends to the sandbox, as the [list above](#what-bugnet-can-and-cannot-see) shows.
 
 **Which agents work?** Any MCP client that speaks Streamable HTTP, and any that runs local stdio
 servers through the bridge.
 
-**Will my agent offer Bugnet for everything?** No. It offers a sandbox once, for things like AI
-models, code you have not checked, or tools your machine lacks. It does not offer it for work on
-your own project, and if you say no it does not ask again for that task.
+**Will my agent offer Bugnet for everything?** No. Bugnet tells your agent to offer a sandbox
+once, for things like AI models, code you have not checked, or tools your machine lacks. It tells
+it not to offer one for work on your own project, and not to ask again for a task once you say
+no.
 
 **What does a run cost?** You see the price before you pay. See [Paying](#paying).
 
 **How do I get files out?** Your agent reads small files with `bugnet_read_file`. For big ones,
 `bugnet_transfer` gives a `curl` link, and downloads land in `./bugnet-downloads/`, never over one
-of your files.
+of your files. <!-- PENDING: transfers are still being built -->
 
 **Can I open a web app running in the sandbox?** Yes, if the agent asked for previews in the
 quote. `bugnet_preview` gives an HTTPS link. Anyone with that link can reach the app until the
-deadline, so share it with care.
+deadline, so share it with care. <!-- PENDING: previews are still being built -->
 
 **Can I SSH in?** Yes, if the agent asked for SSH in the quote. `bugnet_ssh` adds your public key
-and gives you the command.
+and gives you the command. <!-- PENDING: SSH is still being built -->
 
 **Can I run it in CI?** Free tools, yes. Paid tools need a person to approve them in Claude Code.
 
