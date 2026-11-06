@@ -4,15 +4,22 @@ import {
     boundPayload,
     chooseKey,
     fromBase64Url,
+    maxBoxBytes,
     maxValueBytes,
     sealSecret,
+    sealedBytes,
     toBase64Url,
     type SealingKey,
 } from "./seal.ts";
 import { pinnedKeys } from "./pinned.ts";
-import { developmentKey, developmentPinned, openSealed } from "./testing/development-key.ts";
+import {
+    developmentKey,
+    developmentPinned,
+    isDevelopmentKey,
+    openSealed,
+} from "./testing/development-key.ts";
 
-const binding = "mfrggzdfmztwq2lknnwg23tpobyxe43uov3ho6dzpiydcmrtgq2tmnzyhe";
+const binding = "MPWS27XG3CK76UZOFV4I5DOU4WQCYDYKMCFEWBHFDJ7OOR4OI4DQ";
 const listed: SealingKey = {
     keyId: developmentKey.keyId,
     publicKey: developmentKey.publicKey,
@@ -54,14 +61,47 @@ describe("chooseKey", () => {
         expect(chooseKey([swapped, listed], developmentPinned)).toBe(listed);
     });
 
+    it("takes only a binding of 52 upper-case base32 characters, as data-plane 4.4 says", () => {
+        for (const bad of [
+            binding.toLowerCase(),
+            binding.slice(0, -1),
+            `${binding}A`,
+            `${binding.slice(0, -4)}====`,
+            `${binding.slice(0, -1)}1`,
+            "",
+        ]) {
+            expect(() => chooseKey([{ ...listed, binding: bad }], developmentPinned), bad).toThrow(
+                SealError,
+            );
+        }
+        expect(chooseKey([{ ...listed, binding }], developmentPinned).binding).toBe(binding);
+    });
+
     it("refuses when nothing listed is pinned", () => {
         expect(() => chooseKey([other], developmentPinned)).toThrow(SealError);
         expect(() => chooseKey([], developmentPinned)).toThrow(/listed none/);
     });
 
     it("never pins the development key in a release", () => {
-        expect(pinnedKeys.map((k) => k.publicKey)).not.toContain(developmentKey.publicKey);
+        expect(pinnedKeys.filter(isDevelopmentKey)).toEqual([]);
         expect(() => chooseKey([listed], pinnedKeys)).toThrow(SealError);
+    });
+});
+
+describe("sealedBytes", () => {
+    it("is exactly the size of the box sealSecret makes", async () => {
+        for (const value of ["hf_secret", '"'.repeat(1000), "\u0001é\\".repeat(300)]) {
+            const sealed = await sealSecret(spec, value, listed);
+            expect(sealedBytes(spec, value), value.slice(0, 10)).toBe(
+                fromBase64Url(sealed.value.box).length,
+            );
+        }
+    });
+
+    it("tells a value that cannot fit the box, which sealSecret refuses", async () => {
+        const value = '"'.repeat(maxValueBytes);
+        expect(sealedBytes(spec, value)).toBeGreaterThan(maxBoxBytes);
+        await expect(sealSecret(spec, value, listed)).rejects.toThrow(/over 70 KiB/);
     });
 });
 

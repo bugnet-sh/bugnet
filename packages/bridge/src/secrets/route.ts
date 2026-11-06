@@ -6,7 +6,7 @@
  * sentences so nothing from the response body reaches the agent verbatim.
  */
 import { z } from "zod";
-import type { SealedValue, SealingKey, SecretSpec } from "@bugnet/seal";
+import { failureCode, type SealedValue, type SealingKey, type SecretSpec } from "@bugnet/seal";
 
 export interface RouteOptions {
     baseUrl: string;
@@ -44,7 +44,7 @@ const secretSchema = z.object({
     }),
     state: z.enum(["APPLYING", "ACTIVE", "FAILED"]),
     updatedAt: z.string().optional(),
-    failureReason: z.string().default(""),
+    failureReason: z.string().default("").transform(failureCode),
 });
 
 const putAnswerSchema = z.object({ secret: secretSchema, replaced: z.boolean().default(false) });

@@ -1,5 +1,5 @@
 import sodium from "libsodium-wrappers";
-import { fromBase64Url } from "../seal.ts";
+import { fromBase64Url, type PinnedKey } from "../seal.ts";
 
 // DEVELOPMENT ONLY. Its private half is public in this repository, so no release ever pins it
 export const developmentKey = {
@@ -11,6 +11,19 @@ export const developmentKey = {
 export const developmentPinned = [
     { keyId: developmentKey.keyId, publicKey: developmentKey.publicKey },
 ] as const;
+
+// By its bytes, since the last base64url character of a 32-byte key has two spare bits
+export function isDevelopmentKey(key: PinnedKey): boolean {
+    if (key.keyId === developmentKey.keyId) return true;
+    let bytes: Uint8Array;
+    try {
+        bytes = fromBase64Url(key.publicKey);
+    } catch {
+        return false;
+    }
+    const dev = fromBase64Url(developmentKey.publicKey);
+    return bytes.length === dev.length && bytes.every((b, i) => b === dev[i]);
+}
 
 // Opens a box as the egress proxy does, for fake secrets routes in tests
 export async function openSealed(

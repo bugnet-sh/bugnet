@@ -4,10 +4,13 @@
  * It reads a secret on this machine and stores it sealed for the sandbox's egress proxy, so the
  * value never passes through the agent. The user confirms the name, the source and the hosts on
  * every call (data-plane 19, question 6). A client that cannot ask the user gets only the preset
- * hosts of the named secret. The value is read after that, and appears in no argument, result,
- * log line or error.
+ * hosts of the named secret, read from the environment variable or .env key of that name, for a
+ * sandbox this bridge process started. Otherwise an injected agent could hand any local secret
+ * to a sandbox of its own. The value is read after that, and appears in no argument, result, log
+ * line or error.
  */
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { basename } from "node:path";
 import {
     inputRequired,
     inputResponse,
@@ -24,15 +27,19 @@ import {
     canonicalHeaderNames,
     canonicalHosts,
     chooseKey,
+    failureWhy,
+    maxBoxBytes,
     namePattern,
+    presetFor,
     sealSecret,
+    sealedBytes,
+    withinPreset,
     type PinnedKey,
     type Sealed,
     type SecretSpec,
 } from "@bugnet/seal";
 import { handleTag, type Log } from "../log.ts";
 import type { RemoteTools } from "../remote.ts";
-import { presetFor, withinPreset } from "./presets.ts";
 import { RouteError, getSealingKeys, putSecret, type RouteOptions } from "./route.ts";
 import {
     SourceError,
@@ -45,7 +52,8 @@ import {
 export const secretFromEnvName = "bugnet_secret_from_env";
 export const putGrantToolName = "bugnet_secret_put_grant";
 
-const grantPattern = /^bnsp_[A-Za-z0-9_-]{16,200}$/;
+// Data-plane 4.4, 40 bytes of placement, expiry and MAC in base64url without padding
+const grantPattern = /^bnsp_[A-Za-z0-9_-]{54}$/;
 // A refinement, since \p classes in a JSON Schema pattern read differently without the u flag
 const isPrintable = (s: string) => /^[^\p{Cc}\p{Cf}]+$/u.test(s);
 const confirmTtlMs = 10 * 60_000;
@@ -142,6 +150,8 @@ export interface SecretToolDeps {
     sources: SourceDeps;
     log: Log;
     now: () => number;
+    // Handles of the sandboxes that bugnet_start results relayed by this bridge process named
+    started: ReadonlySet<string>;
     clientCapabilities: (ctx: ServerContext) => ClientCapabilities | undefined;
 }
 
@@ -203,13 +213,14 @@ function plain(s: string): string {
 }
 
 // The handle's end lets the user match the sandbox with the chat's, against an injected handle
-function prompt(handle: string, spec: SecretSpec, checked: CheckedSource): string {
+function prompt(handle: string, spec: SecretSpec, checked: CheckedSource, known: boolean): string {
     const preset = presetFor(spec.name);
     const headers = ["Authorization", ...spec.headerNames].join(", ");
+    const unknown = known ? "" : ", which this bridge did not start, so check it is yours";
     const lines = [
         "Add a secret to your Bugnet sandbox?",
         "",
-        `Sandbox: handle ending ${handle.slice(-6)}`,
+        `Sandbox: handle ending ${handle.slice(-6)}${unknown}`,
         `Name: ${spec.name}`,
         `Read from: ${plain(checked.label)}`,
         `Sent only to: ${spec.hosts.join(", ")}`,
@@ -230,15 +241,55 @@ function prompt(handle: string, spec: SecretSpec, checked: CheckedSource): strin
     return lines.join("\n");
 }
 
-function presetRefusal(spec: SecretSpec): string {
-    const preset = presetFor(spec.name);
-    const usual = preset
-        ? `sends ${spec.name} only to ${preset.hosts.join(", ")}`
-        : "sends only known secrets to their usual hosts, such as HF_TOKEN to huggingface.co";
+function unconfirmed(rule: string): string {
     return (
-        `this client cannot ask the user to confirm, so the bridge ${usual}. ` +
+        `this client cannot ask the user to confirm, so the bridge ${rule}. ` +
         "bugnet_secret_link gives the user a page to add it instead"
     );
+}
+
+// A preset's own names, so GH_TOKEN may come from GITHUB_TOKEN but never from an unrelated key
+function ownSource(spec: SecretSpec, checked: CheckedSource): boolean {
+    const names = presetFor(spec.name)?.names ?? [];
+    const source = checked.source;
+    switch (source.type) {
+        case "env":
+            return names.includes(source.variable);
+        case "dotenv":
+            return names.includes(source.key) && basename(source.path).startsWith(".env");
+        case "keychain":
+            return false;
+    }
+}
+
+// Without a human in the loop the bridge decides alone, so it takes only what is plainly the user's
+function unconfirmedRefusal(
+    args: Args,
+    spec: SecretSpec,
+    checked: CheckedSource,
+    deps: SecretToolDeps,
+): string | null {
+    const preset = presetFor(spec.name);
+    if (!withinPreset(spec.name, spec.hosts, spec.headerNames)) {
+        return unconfirmed(
+            preset
+                ? `sends ${spec.name} only to ${preset.hosts.join(", ")}`
+                : "sends only known secrets to their usual hosts, such as HF_TOKEN to " +
+                      "huggingface.co",
+        );
+    }
+    if (checked.source.type === "keychain") return unconfirmed("reads no keychain item");
+    if (!ownSource(spec, checked)) {
+        return unconfirmed(
+            `reads ${spec.name} only from the environment variable or .env key of that name`,
+        );
+    }
+    if (!deps.started.has(args.handle)) {
+        return unconfirmed(
+            "adds secrets only to sandboxes it started itself, and it did not start that one",
+        );
+    }
+    return null;
 }
 
 function idempotencyKey(ctx: ServerContext): string {
@@ -261,7 +312,7 @@ async function putGrant(remote: RemoteTools, handle: string, signal: AbortSignal
         const text = blocks
             .map((b) => b.text ?? "")
             .join(" ")
-            .replace(/^secret grant: /, "")
+            .replace(/^put grant: /, "")
             .replace(/\.$/, "");
         throw new Refusal(text || "the gateway gave no put grant");
     }
@@ -270,6 +321,23 @@ async function putGrant(remote: RemoteTools, handle: string, signal: AbortSignal
         throw new Refusal("the gateway gave no put grant");
     }
     return grant;
+}
+
+// Data-plane 10.3, a later secret change applies the whole set again
+const failureNext: Record<string, string> = {
+    PORT_443_TAKEN:
+        "Stop what listens on port 443 in the sandbox, then call bugnet_secret_from_env again " +
+        "to set it up",
+    SOURCE_UNKNOWN: "Start a new sandbox to use secrets",
+};
+
+function failedText(name: string, reason: string): string {
+    const code = reason || "UNKNOWN";
+    const why = failureWhy(code) ?? "the sandbox could not take it";
+    const next = Object.hasOwn(failureNext, code)
+        ? failureNext[code]
+        : "bugnet_secrets shows its state, and a new sandbox may be needed for secrets";
+    return `${name} is stored but not active in the sandbox, because ${why} (${code}). ${next}`;
 }
 
 function routeRefusal(e: RouteError): Refusal {
@@ -345,19 +413,26 @@ export async function secretFromEnv(
             return inputRequired({
                 inputRequests: {
                     confirm: inputRequired.elicit({
-                        message: prompt(args.handle, spec, checked),
+                        message: prompt(args.handle, spec, checked, deps.started.has(args.handle)),
                         requestedSchema: { type: "object", properties: {} },
                     }),
                 },
                 requestState: confirmState(shown, deps.now()),
             });
         }
-    } else if (!withinPreset(spec.name, spec.hosts, spec.headerNames)) {
-        return failure(presetRefusal(spec));
+    } else {
+        const refusal = unconfirmedRefusal(args, spec, checked, deps);
+        if (refusal) return failure(refusal);
     }
     const signal = ctx.mcpReq.signal;
     try {
         const value = await readSource(checked, deps.sources, signal);
+        if (sealedBytes(spec, value) > maxBoxBytes) {
+            throw new Refusal(
+                `${spec.name} is too large once sealed, because quotes, backslashes and ` +
+                    "control characters take more room. Up to 64 KiB of plain text fit",
+            );
+        }
         const grant = await putGrant(deps.remote, args.handle, signal);
         const answer = await store(deps, spec, value, grant, idempotencyKey(ctx), signal);
         const s = answer.secret;
@@ -369,9 +444,7 @@ export async function secretFromEnv(
         });
         const text =
             s.state === "FAILED"
-                ? `${spec.name} was stored but could not be applied to the sandbox` +
-                  (s.failureReason ? ` (${s.failureReason})` : "") +
-                  ". A new sandbox may be needed for secrets"
+                ? failedText(spec.name, s.failureReason)
                 : `${spec.name} is stored for ${spec.hosts.join(", ")}, state ${s.state}. In ` +
                   `the sandbox $${spec.name} holds a placeholder that Bugnet's egress proxy ` +
                   "swaps for the value only on HTTPS requests to those hosts";

@@ -33,6 +33,7 @@ async function main(): Promise<number> {
         callTimeoutMs: s.call_timeout,
         log,
     });
+    const started = new Set<string>();
     // The instructions come from the gateway, so the bridge connects before it answers anything
     await remote.connect().catch((e: unknown) => {
         log.warn("gateway not reachable yet", { gateway: s.gateway_url, err: String(e) });
@@ -52,6 +53,7 @@ async function main(): Promise<number> {
                 },
                 log,
                 now: Date.now,
+                started,
             }),
         { onerror: (e) => log.warn("mcp error", { err: e.message }) },
     );

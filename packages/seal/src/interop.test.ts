@@ -7,7 +7,7 @@ import { developmentKey } from "./testing/development-key.ts";
 const dir = fileURLToPath(new URL("../interop/", import.meta.url));
 const hasGo = spawnSync("go", ["version"], { encoding: "utf8" }).status === 0;
 
-const binding = "kqrmzv4ztqjwgk4rfwopgmn7q6ygkwqdcx2b3h3bqzqcdquxcz5a";
+const binding = "KQRMZV4ZTQJWGK4RFWOPGMN7Q6YGKWQDCX2B3H3BQZQCDQUXCZ5A";
 const key: SealingKey = { keyId: "dev-only-1", publicKey: developmentKey.publicKey, binding };
 
 const specs = [

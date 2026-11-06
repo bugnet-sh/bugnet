@@ -8,6 +8,7 @@ export interface SealingKey {
     keyId: string;
     // X25519, base64url without padding
     publicKey: string;
+    // 52 characters of A-Z2-7
     binding: string;
 }
 
@@ -26,7 +27,11 @@ export const maxValueBytes = 64 * 1024;
 export const maxBoxBytes = 70 * 1024;
 
 const keyBytes = 32;
-const bindingPattern = /^[A-Za-z0-9=_-]{1,128}$/;
+// crypto_box_SEALBYTES, an ephemeral public key and a MAC
+const sealOverhead = 48;
+// Data-plane 4.4, RFC 4648 base32 of a SHA-256, upper case and unpadded
+const bindingLength = 52;
+const bindingPattern = new RegExp(`^[A-Z2-7]{${bindingLength}}$`);
 
 export function toBase64Url(bytes: Uint8Array): string {
     let binary = "";
@@ -88,6 +93,12 @@ export function boundPayload(binding: string, spec: SecretSpec, value: string): 
 
 export function valueBytes(value: string): number {
     return new TextEncoder().encode(value).length;
+}
+
+// Every binding has the same length, so the box's size is known before any key is fetched
+export function sealedBytes(spec: SecretSpec, value: string): number {
+    const payload = boundPayload("A".repeat(bindingLength), canonicalSpec(spec), value);
+    return sealOverhead + valueBytes(payload);
 }
 
 export interface Sealed {

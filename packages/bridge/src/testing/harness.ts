@@ -35,7 +35,7 @@ import type { KeychainAnswer, SourceDeps } from "../secrets/sources.ts";
 export { testHandle, testNow };
 
 export const testGrant = "bnsp_" + "Q".repeat(54);
-export const testBinding = "mfrggzdfmztwq2lknnwg23tpobyxe43uov3ho6dzpiydcmrtgq2tmnzyhe";
+export const testBinding = "OBXJLGDEAIOSVKA3MUGPJH7GA3JWFK6REMWM2ZV5VCAXW2GLGUIQ";
 
 async function listen(server: HttpServer): Promise<string> {
     await new Promise<void>((resolve, reject) => {
@@ -111,6 +111,8 @@ export interface FakeSecretsRoute {
     keys: SealingKey[];
     // Answers queued for the next requests, before any check runs
     canned: Canned[];
+    // What a PUT that passes every check answers
+    outcome: { state: "APPLYING" | "ACTIVE" | "FAILED"; failureReason: string };
     close(): Promise<void>;
 }
 
@@ -174,6 +176,7 @@ export async function fakeSecretsRoute(grant = testGrant): Promise<FakeSecretsRo
         opened: [] as OpenedSecret[],
         keys: [devListed],
         canned: [] as Canned[],
+        outcome: { state: "ACTIVE", failureReason: "" } as FakeSecretsRoute["outcome"],
     };
     const http = createServer((req, res) => {
         let body = "";
@@ -218,9 +221,8 @@ export async function fakeSecretsRoute(grant = testGrant): Promise<FakeSecretsRo
                     return answer(200, {
                         secret: {
                             spec: checked.body.spec,
-                            state: "ACTIVE",
                             updatedAt: "2026-11-05T12:00:01Z",
-                            failureReason: "",
+                            ...state.outcome,
                         },
                         replaced,
                     });
@@ -297,6 +299,7 @@ export async function connectBridge(setup: BridgeSetup): Promise<ConnectedBridge
         sources: setup.sources ?? testSources(),
         log,
         now: () => testNow,
+        started: new Set(),
         ...setup.deps,
     };
     const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
