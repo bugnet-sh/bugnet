@@ -470,6 +470,16 @@ describe.runIf(launcher !== null)(`in a headless browser (${launcher?.label ?? "
         // Below 16px, iOS zooms into a field on focus
         expect(layout.input).toBeGreaterThanOrEqual(16);
         expect(layout.button).toBeGreaterThanOrEqual(44);
+
+        // Field errors quote what was typed, and a pasted token has nowhere to break
+        await page.locator("#hosts").fill(`ghp_${"Ab1".repeat(30)}`);
+        await page.locator("#headers").fill(`X-${"Long".repeat(30)}@`);
+        await page.locator("#submit").click();
+        await visible(page, "#hosts-error");
+        await visible(page, "#headers-error");
+        expect(
+            await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+        ).toBeLessThanOrEqual(0);
     });
 });
 

@@ -172,6 +172,13 @@ label {
     color: var(--text);
 }
 
+.error,
+.note,
+.problem-inline,
+.problem p {
+    overflow-wrap: anywhere;
+}
+
 .error {
     color: var(--bad);
     font-weight: 600;
