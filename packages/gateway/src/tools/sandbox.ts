@@ -168,7 +168,7 @@ class Budget {
     }
 }
 
-// After the payment, a failure that does not prove the router recorded nothing leaves the order open
+// After the payment, a failure that does not prove the router recorded nothing leaves it open
 function afterPayment(err: GatewayError, orderId: string): GatewayError {
     const unsure = ["timeout", "unavailable", "internal"].includes(err.kind);
     if (!unsure) return err;
@@ -425,7 +425,7 @@ export const registerSandboxTools: Register = (server, deps) => {
                 }
                 const view = placementView(p, deps.now());
                 const ready = p?.state === PlacementState.READY;
-                // A start that saw the sandbox still starting left the fetch to the first look at it ready
+                // A start that saw the sandbox still starting left the fetch to this look
                 if (ready && p?.bootstrap?.state === BootstrapState.PENDING) {
                     view.source = await fetchAfterStart(deps, args.handle, fetchMs);
                 }

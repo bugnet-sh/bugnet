@@ -158,7 +158,7 @@ export const registerJobTools: Register = (server, deps) => {
                 if (args.timeoutSeconds) {
                     argv = ["timeout", "-k", "5", String(args.timeoutSeconds), ...argv];
                 }
-                // A requestId repeats only with the same command, so a reused one never returns another run
+                // A requestId repeats a run only with the same command, never returning another one
                 const key = args.requestId
                     ? hashKey([
                           args.requestId,

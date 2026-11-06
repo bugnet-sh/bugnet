@@ -66,7 +66,7 @@ export function ok(
     };
 }
 
-// Bulk output already sits in a structured field, so the message is its summary and each byte goes once
+// The body sits in a structured field, so the message only sums it up and no byte goes twice
 export function okBody(
     text: string,
     summary: string,

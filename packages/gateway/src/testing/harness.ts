@@ -1,10 +1,4 @@
-/**
- * Test harness for the gateway's tools.
- *
- * Tests build Deps with testDeps, give it a router from fakeRouter and call the tools through
- * connectTools, the MCP path a real client takes. Only tests import this file, which ESLint
- * enforces for everything else under src.
- */
+// Tests reach the tools through connectTools, the MCP path a real client takes
 import { create } from "@bufbuild/protobuf";
 import { timestampFromMs } from "@bufbuild/protobuf/wkt";
 import { BinaryWriter, WireType } from "@bufbuild/protobuf/wire";
