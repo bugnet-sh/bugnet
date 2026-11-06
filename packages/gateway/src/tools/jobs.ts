@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { JobState } from "../gen/bugnet/router/v1/router_pb.ts";
-import { GatewayError } from "../router.ts";
+import { GatewayError, waitMargin } from "../router.ts";
 import { tail, untrustedLabel } from "../sanitize.ts";
 import {
     sandboxFailure,
@@ -205,7 +205,7 @@ export const registerJobTools: Register = (server, deps) => {
                                 cursor,
                                 until: { exit: true },
                             },
-                            { signal: stop },
+                            { signal: stop, timeoutMs: wait + waitMargin },
                         );
                         for await (const f of stream) {
                             if (f.cursor) cursor = f.cursor;

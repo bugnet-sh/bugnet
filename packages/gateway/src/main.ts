@@ -27,7 +27,7 @@ try {
     const config = loadConfig(configPath(process.argv.slice(2)));
     const deps = {
         config,
-        router: createRouterClient(config.router.url, config.secrets.internalToken),
+        router: createRouterClient(config),
         payments: payments(config),
         assessor: createAssessor(config),
         log,

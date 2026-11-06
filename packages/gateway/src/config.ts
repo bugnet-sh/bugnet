@@ -25,7 +25,7 @@ const settingsSchema = z
         router: z
             .object({
                 url: z.url().default("http://127.0.0.1:8080"),
-                timeout: duration.prefault("50s"),
+                timeout: duration.prefault("20s"),
             })
             .strict()
             .prefault({}),
@@ -269,6 +269,9 @@ export function checkSettings(s: Settings): void {
     checkFront(s);
     if (s.payments.mode === "http" && !s.payments.url) {
         throw new ConfigError("payments.mode http needs payments.url");
+    }
+    if (s.router.timeout < 1000 || s.router.timeout >= 45_000) {
+        throw new ConfigError("router.timeout must be 1s or more and under 45s, the tool limit");
     }
     if (s.limits.default_wait_seconds > s.limits.max_wait_seconds) {
         throw new ConfigError("limits.default_wait_seconds is over limits.max_wait_seconds");
