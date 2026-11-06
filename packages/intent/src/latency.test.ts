@@ -121,16 +121,16 @@ describe("latency", () => {
         expect(cpuMs(() => mixed(10_000))).toBeLessThan(1000);
     });
 
-    // Efficiency cores take twice the CPU time of performance cores, a catastrophic regex takes seconds
-    it.each(families)("keeps 50 KB of repeated %s tokens under 100 ms each", (_name, words) => {
+    // A loaded efficiency core takes over 100 ms here, while a catastrophic regex takes seconds
+    it.each(families)("keeps 50 KB of repeated %s tokens under 250 ms each", (_name, words) => {
         mixed(50);
         const ctx = { os: "macos", arch: "arm64" } as const;
         for (const sep of [" ", "\n", "", "-", "."]) {
             const text = repeated(words.join(sep) + sep);
-            expect(cpuMs(() => classifyPrompt(text, ctx))).toBeLessThan(100);
-            expect(cpuMs(() => classifyCommand(text, ctx))).toBeLessThan(100);
-            expect(cpuMs(() => classifyFailure("x", text, ctx))).toBeLessThan(100);
-            expect(cpuMs(() => clonedDirs(text, "/w"))).toBeLessThan(100);
+            expect(cpuMs(() => classifyPrompt(text, ctx))).toBeLessThan(250);
+            expect(cpuMs(() => classifyCommand(text, ctx))).toBeLessThan(250);
+            expect(cpuMs(() => classifyFailure("x", text, ctx))).toBeLessThan(250);
+            expect(cpuMs(() => clonedDirs(text, "/w"))).toBeLessThan(250);
         }
     });
 
