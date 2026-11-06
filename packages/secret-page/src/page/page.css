@@ -1,0 +1,370 @@
+:root {
+    color-scheme: light dark;
+    --bg: #f6f6f3;
+    --panel: #ffffff;
+    --text: #1c1e21;
+    --muted: #4f565e;
+    --line: #d3d6d9;
+    --field: #8a9199;
+    --accent: #1d4f91;
+    --accent-text: #ffffff;
+    --focus: #1d4f91;
+    --caution-bg: #fbf4e2;
+    --caution-line: #a46a00;
+    --bad: #a3221a;
+    --bad-bg: #fcebe9;
+    --good: #1c6238;
+    --good-bg: #e6f3eb;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #16181b;
+        --panel: #1f2226;
+        --text: #e8eaed;
+        --muted: #b0b6bd;
+        --line: #3a3f45;
+        --field: #7d858e;
+        --accent: #8ab4f8;
+        --accent-text: #0d1b2e;
+        --focus: #8ab4f8;
+        --caution-bg: #2b2414;
+        --caution-line: #d8a842;
+        --bad: #f4a39b;
+        --bad-bg: #33201e;
+        --good: #8fd3a8;
+        --good-bg: #17291e;
+    }
+}
+
+[hidden] {
+    display: none !important;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family:
+        system-ui,
+        -apple-system,
+        "Segoe UI",
+        Roboto,
+        "Helvetica Neue",
+        Arial,
+        sans-serif;
+    font-size: 1rem;
+    line-height: 1.55;
+}
+
+main {
+    max-width: 38rem;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 3rem;
+}
+
+h1 {
+    font-size: 1.6rem;
+    line-height: 1.25;
+    margin: 0 0 1.25rem;
+}
+
+h2 {
+    font-size: 1.2rem;
+    line-height: 1.3;
+    margin: 0 0 0.75rem;
+}
+
+h3 {
+    font-size: 1rem;
+    margin: 0 0 0.25rem;
+}
+
+p {
+    margin: 0 0 0.75rem;
+}
+
+.brand {
+    color: var(--muted);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.25rem;
+}
+
+.quiet {
+    color: var(--muted);
+}
+
+.panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1.25rem;
+    margin: 0 0 1.25rem;
+}
+
+.banner {
+    border-left: 4px solid var(--bad);
+    background: var(--bad-bg);
+    padding: 0.75rem 1rem;
+    border-radius: 4px;
+}
+
+.pairing {
+    font-family: var(--mono);
+    font-size: clamp(2.25rem, 12vw, 3.25rem);
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    line-height: 1.1;
+    margin: 0.25rem 0 0.75rem;
+    overflow-wrap: anywhere;
+}
+
+.facts {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.facts li {
+    margin: 0 0 0.25rem;
+    overflow-wrap: anywhere;
+}
+
+.data {
+    font-family: var(--mono);
+    font-size: 0.95em;
+    unicode-bidi: isolate;
+    direction: ltr;
+    overflow-wrap: anywhere;
+}
+
+.field {
+    margin: 0 0 1.25rem;
+}
+
+label {
+    display: block;
+    font-weight: 600;
+    margin: 0 0 0.25rem;
+}
+
+.hint,
+.note {
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin: 0 0 0.5rem;
+}
+
+.note {
+    color: var(--text);
+}
+
+.error,
+.note,
+.problem-inline,
+.problem p {
+    overflow-wrap: anywhere;
+}
+
+.error {
+    color: var(--bad);
+    font-weight: 600;
+    margin: 0.5rem 0 0;
+}
+
+input[type="text"],
+textarea {
+    display: block;
+    width: 100%;
+    min-height: 2.75rem;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--field);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--text);
+    font: inherit;
+    font-family: var(--mono);
+}
+
+textarea {
+    resize: vertical;
+}
+
+input[aria-invalid="true"],
+textarea[aria-invalid="true"] {
+    border-color: var(--bad);
+    border-width: 2px;
+}
+
+.value-row {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.value-row input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* Masks without type=password, so no password manager takes the value for a login */
+.masked {
+    -webkit-text-security: disc;
+}
+
+.tick {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+}
+
+.tick input {
+    width: 1.25rem;
+    height: 1.25rem;
+    margin: 0.15rem 0 0;
+    flex: none;
+    accent-color: var(--accent);
+}
+
+.tick label {
+    font-weight: 500;
+}
+
+.host-list {
+    margin: 0.75rem 0 0;
+    font-size: 0.95rem;
+}
+
+.host-list p {
+    margin: 0 0 0.25rem;
+    color: var(--muted);
+}
+
+.host-list ul {
+    margin: 0;
+    padding-left: 1.25rem;
+}
+
+.host-list .custom {
+    color: var(--caution-line);
+    font-weight: 500;
+}
+
+.caution {
+    border-left: 4px solid var(--caution-line);
+    background: var(--caution-bg);
+    padding: 0.75rem 1rem;
+    border-radius: 4px;
+    margin: 0 0 1.25rem;
+}
+
+.caution ul {
+    margin: 0;
+    padding-left: 1.1rem;
+}
+
+.caution li + li {
+    margin-top: 0.4rem;
+}
+
+.problem h2 {
+    color: var(--bad);
+}
+
+.problem,
+.problem-inline {
+    border-left: 4px solid var(--bad);
+}
+
+.problem-inline {
+    background: var(--bad-bg);
+    padding: 0.75rem 1rem;
+    border-radius: 4px;
+    margin: 0 0 1rem;
+}
+
+.facts + .problem-inline {
+    margin: 0.75rem 0 0;
+}
+
+.code-line {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+.done {
+    border-left: 4px solid var(--good);
+}
+
+.done h2 {
+    color: var(--good);
+}
+
+button {
+    font: inherit;
+    font-weight: 600;
+    min-height: 2.75rem;
+    padding: 0.6rem 1.25rem;
+    border-radius: 6px;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: var(--accent-text);
+    cursor: pointer;
+}
+
+button.secondary {
+    background: transparent;
+    color: var(--accent);
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: progress;
+}
+
+#submit {
+    width: 100%;
+}
+
+:focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+}
+
+/* Panels take focus from script only, so screen readers start there, and need no ring */
+[tabindex="-1"]:focus {
+    outline: none;
+}
+
+.nowrap {
+    white-space: nowrap;
+}
+
+.foot {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-top: 2rem;
+}
+
+@media (min-width: 40rem) {
+    main {
+        padding-top: 3rem;
+    }
+
+    #submit {
+        width: auto;
+    }
+}

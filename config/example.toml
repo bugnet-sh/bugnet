@@ -4,10 +4,12 @@
 listen_addr = "127.0.0.1:8787"          # host:port the MCP endpoint /mcp listens on
 public_url = "http://127.0.0.1:8787"    # base URL clients reach, used for links and Host checks
 allowed_hosts = []                      # Host header values to accept, public_url's host when empty
+allowed_origins = ["https://claude.ai"] # Origins of hosted MCP clients /mcp accepts beside its own, https only
 
 [router]
 url = "http://127.0.0.1:8080"           # Router API base URL, Connect over h2c
-timeout = "50s"                         # upper bound on one router call
+timeout = "20s"                         # deadline of a router call that sets none, 1s to under 45s, long polls add their wait
+links_domain = "bugnet.sh"              # every preview, transfer, secret and SSH host the router names is under it
 
 [payments]
 mode = "http"                           # "http" calls the Payments service, "dev" settles free on loopback only
@@ -15,15 +17,23 @@ url = ""                                # Payments service base URL, required fo
 order_token_ttl = "10m"                 # lifetime of order tokens dev mode signs
 
 [limits]
-max_wait_seconds = 45                   # longest any tool waits, 1 to 45
+tool_budget = "44s"                     # every tool call ends by then, 25s to 45s, router calls included
+max_wait_seconds = 38                   # longest any tool waits, plus 6 s it must fit tool_budget
 default_wait_seconds = 25               # wait when a tool call gives none
 output_tail_bytes = 8192                # stdout and stderr kept per stream per call
 read_file_max_bytes = 262144            # bugnet_read_file chunk limit, router maximum 256 KiB
 write_file_max_bytes = 262144           # bugnet_write_file limit, router maximum 256 KiB
 quote_ttl = "10m"                       # how long a quoteId can start a sandbox
+quotes_per_minute = 12                  # quotes and assessments per client address a minute
+quote_burst = 10                        # quotes and assessments one address may ask for at once
+shared_ranges = ["160.79.104.0/21"]     # CIDR ranges many users share, claude.ai's by default
+shared_quotes_per_minute = 120          # the per-minute rate for each address in shared_ranges
+shared_quote_burst = 40                 # the burst for each address in shared_ranges
+quote_v6_block_multiple = 4             # an IPv6 /48 gets this multiple of one address's rate and burst, shared by all its /64s
 
 [tools]
 require_user_approval = true            # paid tools ask the client for a person's approval, off only for unattended test gateways
+confirm_transfers = true                # bugnet_transfer asks too, if require_user_approval is on
 
 [assess]
 github_api = "https://api.github.com"
@@ -33,3 +43,29 @@ fetch_timeout = "4s"                    # per upstream request
 cache_ttl = "10m"                       # how long one replica reuses an assessment
 max_file_bytes = 262144                 # largest file read for scanning
 scan_urls = true                        # fetch and scan script URLs agents pass to bugnet_assess
+
+[telemetry]
+traces = false                          # export spans over OTLP and send traceparent to the router, nothing is built or sent while false
+otlp_endpoint = ""                      # the full traces URL, https, or http to a loopback host only
+sample_ratio = 1.0                      # 0 to 1, share of orders and other new traces kept, the router's value
+environment = "main"                    # deployment.environment.name on every span
+export_timeout = "10s"                  # one export request
+batch_timeout = "5s"                    # the longest a finished span waits before export
+batch_size = 512                        # spans per export request, 1 to queue_size
+queue_size = 2048                       # finished spans waiting for export, more are dropped
+
+[front]
+tls_addr = ""                           # host:port of the TLS front, such as 127.0.0.1:8444 behind HAProxy, empty turns it off
+proxy_protocol = true                   # every TLS front connection opens with a PROXY v2 header, as HAProxy send-proxy-v2 sends
+proxy_protocol_from = ["127.0.0.1/32", "::1/128"] # peers trusted to send that header, every other connection closes unread
+proxy_timeout = "3s"                    # deadline for that header, the spec asks for 3 s or more
+proxy_max_bytes = 536                   # largest PROXY header accepted, TLVs included, 52 to 65551
+handshake_timeout = "10s"               # deadline for the TLS handshake after the header
+cert_file = ""                          # PEM certificate chain, reread on SIGHUP, or leave empty and use ACME
+key_file = ""                           # PEM private key of cert_file
+acme_directory = ""                     # ACME directory URL, empty turns ACME off, such as https://acme-v02.api.letsencrypt.org/directory
+acme_accept_terms = false               # true accepts the CA's subscriber agreement, which ACME needs
+acme_email = ""                         # contact address for the ACME account, optional
+acme_domains = []                       # names on the certificate, public_url's host when empty
+acme_dir = ""                           # directory for the account key and the certificate, kept across restarts
+acme_renew_before = "720h"              # renew this long before the certificate expires

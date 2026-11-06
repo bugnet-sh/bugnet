@@ -1,11 +1,17 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { describe, expect, it } from "vitest";
-import { ConfigError, checkSettings, parseDuration, parseSettings, readSecrets } from "./config.ts";
-import { signQuote, verifyQuote, type QuoteClaims } from "./quote.ts";
+import {
+    ConfigError,
+    checkSettings,
+    isLoopback,
+    parseDuration,
+    parseSettings,
+    readSecrets,
+} from "./config.ts";
 import { fromRouter, safeMessage } from "./router.ts";
 import { cleanText, looksLikeText, tail } from "./sanitize.ts";
 import { secretLooking } from "./tools/jobs.ts";
-import { recommend } from "./tools/sandbox.ts";
+import { recommend } from "./tools/quote.ts";
 import type { QuotedPackage } from "./quote.ts";
 
 describe("sanitize", () => {
@@ -26,34 +32,6 @@ describe("sanitize", () => {
     });
 });
 
-describe("quote tokens", () => {
-    const key = Buffer.alloc(32, 7);
-    const claims: QuoteClaims = {
-        requirements: { ssh: false, preview: false, gpu: true },
-        expiresAt: 2_000_000,
-    };
-
-    it("round-trips, stays short enough to copy and expires", () => {
-        const tok = signQuote(key, claims);
-        expect(tok).toMatch(/^q2\.[0-9a-z]+\.g\.[A-Za-z0-9_-]{16}$/);
-        expect(tok.length).toBeLessThan(40);
-        expect(verifyQuote(key, ` ${tok} `, 1_000_000)).toEqual(claims);
-        expect(() => verifyQuote(key, tok, 2_000_000)).toThrow(/expired/);
-    });
-
-    it("refuses another key, changed needs, a changed expiry and typos", () => {
-        const tok = signQuote(key, claims);
-        expect(() => verifyQuote(Buffer.alloc(32, 8), tok, 1_000)).toThrow(/verify/);
-        const [p, exp, , sig] = tok.split(".");
-        expect(() => verifyQuote(key, `${p}.${exp}.-.${sig}`, 1_000)).toThrow(/verify/);
-        expect(() => verifyQuote(key, `${p}.zzzzzz.g.${sig}`, 1_000)).toThrow(/verify/);
-        const typo = tok.slice(0, -1) + (tok.endsWith("A") ? "B" : "A");
-        expect(() => verifyQuote(key, typo, 1_000)).toThrow(/copy it in full/);
-        expect(() => verifyQuote(key, `${p}.${exp}.x.${sig}`, 1_000)).toThrow(/malformed/);
-        expect(() => verifyQuote(key, "q1.abc.def", 1_000)).toThrow(/not a quote id/);
-    });
-});
-
 describe("config", () => {
     it("rejects unknown keys by name", () => {
         expect(() => parseSettings('listen_adr = "x"')).toThrow(/unknown key listen_adr/);
@@ -64,7 +42,7 @@ describe("config", () => {
         expect(parseDuration("10m")).toBe(600_000);
         const s = parseSettings("");
         expect(s.limits.quote_ttl).toBe(600_000);
-        expect(s.router.timeout).toBe(50_000);
+        expect(s.router.timeout).toBe(20_000);
     });
 
     it("keeps dev payments on loopback", () => {
@@ -72,6 +50,19 @@ describe("config", () => {
         expect(() => checkSettings(s)).toThrow(ConfigError);
         const ok = parseSettings('[payments]\nmode = "dev"');
         expect(() => checkSettings(ok)).not.toThrow();
+    });
+
+    it("counts only real loopback literals as loopback", () => {
+        for (const url of ["http://localhost:8787", "http://[::1]:8787", "http://127.0.0.2:8787"]) {
+            expect(isLoopback(url), url).toBe(true);
+        }
+        for (const url of ["http://127.attacker.example", "http://127.0.0.1.nip.io:8787"]) {
+            expect(isLoopback(url), url).toBe(false);
+        }
+        const s = parseSettings(
+            'public_url = "http://127.0.0.1.nip.io:8787"\n[payments]\nmode = "dev"',
+        );
+        expect(() => checkSettings(s)).toThrow(ConfigError);
     });
 
     it("needs the secrets each mode uses", () => {

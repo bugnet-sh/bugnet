@@ -1,10 +1,12 @@
 import { ConfigError, loadConfig, type Config } from "./config.ts";
+import { startTlsFront } from "./front/index.ts";
 import { jsonLog } from "./log.ts";
 import { DevPayments } from "./payments/dev.ts";
 import { HttpPayments } from "./payments/http.ts";
 import type { Payments } from "./payments/port.ts";
 import { createRouterClient } from "./router.ts";
-import { startHttp } from "./server.ts";
+import { startHttp, version } from "./server.ts";
+import { createTracing } from "./trace.ts";
 import { createAssessor } from "./assess/index.ts";
 
 function configPath(argv: string[]): string {
@@ -24,21 +26,32 @@ function payments(cfg: Config): Payments {
 const log = jsonLog("gateway");
 try {
     const config = loadConfig(configPath(process.argv.slice(2)));
+    const tracing = createTracing(config, log, { version });
     const deps = {
         config,
-        router: createRouterClient(config.router.url, config.secrets.internalToken),
+        router: createRouterClient(config, tracing ? [tracing.interceptor] : []),
         payments: payments(config),
         assessor: createAssessor(config),
         log,
         now: Date.now,
+        tracing,
     };
     const http = await startHttp(deps);
+    const front = config.front.tls_addr ? await startTlsFront(config, http, log) : undefined;
     log.info("listening", {
         addr: config.listen_addr,
+        tls: config.front.tls_addr || undefined,
         payments: config.payments.mode,
         router: config.router.url,
+        traces: config.telemetry.traces,
     });
-    const stop = () => http.close(() => process.exit(0));
+    if (front) process.on("SIGHUP", () => front.reload());
+    const stop = () => {
+        const closing = [new Promise((r) => http.close(r)), front?.close()];
+        void Promise.all(closing)
+            .then(() => tracing?.shutdown())
+            .then(() => process.exit(0));
+    };
     process.on("SIGTERM", stop);
     process.on("SIGINT", stop);
 } catch (e) {

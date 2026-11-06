@@ -1,11 +1,15 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import { timestampDate, type Timestamp } from "@bufbuild/protobuf/wkt";
+import { Code, ConnectError } from "@connectrpc/connect";
 import type { CallToolResult, McpServer, ServerContext } from "@modelcontextprotocol/server";
+import { z } from "zod";
 import type { Config } from "../config.ts";
 import type { Payments } from "../payments/port.ts";
 import { PlacementState } from "../gen/bugnet/router/v1/router_pb.ts";
-import { GatewayError, fromRouter, type RouterClient } from "../router.ts";
+import { GatewayError, errorReason, fromRouter, type RouterClient } from "../router.ts";
 import type { Assessor } from "../assess/assessor.ts";
 import type { Log } from "../log.ts";
+import type { Tracing } from "../trace.ts";
 
 export interface Deps {
     config: Config;
@@ -14,11 +18,18 @@ export interface Deps {
     assessor: Assessor;
     log: Log;
     now: () => number;
+    tracing?: Tracing;
 }
 
 export type Register = (server: McpServer, deps: Deps) => void;
 
 export const handlePattern = /^sbx_[a-z2-7]{26}$/;
+
+export const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
+
+export function iso(t: Timestamp | undefined): string | null {
+    return t ? timestampDate(t).toISOString() : null;
+}
 
 // Claude Code refuses tools marked this way in every unattended mode, so test gateways can drop it
 export function approvalMeta(deps: Deps): Record<string, unknown> | undefined {
@@ -36,21 +47,43 @@ export function handleTag(handle: string): string {
     return `h:${handleHash(handle).slice(0, 12)}`;
 }
 
+// Exact to the micro, since bugnet_start and bugnet_extend accept only the exact price back
 export function usd(micros: number | bigint): string {
-    const n = Number(micros) / 1e6;
-    return `$${n.toFixed(n < 1 ? 3 : 2).replace(/0$/, "")}`;
+    const m = typeof micros === "bigint" ? micros : BigInt(Math.round(micros));
+    const abs = m < 0n ? -m : m;
+    const frac = (abs % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+    return `${m < 0n ? "-" : ""}$${abs / 1_000_000n}.${frac.padEnd(2, "0")}`;
 }
 
+// Claude Code shows the model only structuredContent, so the text leads it as message
 export function ok(
     text: string,
-    structuredContent: Record<string, unknown>,
+    structuredContent: Record<string, unknown> & { message?: never },
     meta?: Record<string, unknown>,
 ): CallToolResult {
     return {
         content: [{ type: "text", text }],
-        structuredContent,
+        structuredContent: { message: text, ...structuredContent },
         ...(meta ? { _meta: meta } : {}),
     };
+}
+
+// The body sits in a structured field, so the message only sums it up and no byte goes twice
+export function okBody(
+    text: string,
+    summary: string,
+    structuredContent: Record<string, unknown> & { message?: never },
+): CallToolResult {
+    return {
+        content: [{ type: "text", text }],
+        structuredContent: { message: summary, ...structuredContent },
+    };
+}
+
+// The router resolves a relative path from the exec user's home and reads ~ as a folder name
+export function homePath(path: string): string {
+    if (path === "~") return ".";
+    return path.startsWith("~/") ? path.slice(2) || "." : path;
 }
 
 export function failure(err: unknown, what: string): CallToolResult {
@@ -60,14 +93,34 @@ export function failure(err: unknown, what: string): CallToolResult {
     return { content: [{ type: "text", text: `${e.message}.${retry}` }], isError: true };
 }
 
+// A bare NotFound is a missing thing on a live sandbox, or an unknown handle on older routers
+async function notFound(
+    deps: Deps,
+    handle: string,
+    e: GatewayError,
+    what: string,
+    missing: string,
+): Promise<CallToolResult> {
+    try {
+        await deps.router.getPlacement({ handle });
+    } catch {
+        return failure(e, what);
+    }
+    return failure(new GatewayError("not_found", `${what}: this sandbox has ${missing}`), what);
+}
+
 // The router answers NOT_READY for both a starting and an ended sandbox, the placement tells which
 export async function sandboxFailure(
     deps: Deps,
     handle: string,
     err: unknown,
     what: string,
+    missing?: string,
 ): Promise<CallToolResult> {
     const e = err instanceof GatewayError ? err : fromRouter(err, what);
+    if (e.kind === "not_found" && e.reason === null && missing !== undefined) {
+        return notFound(deps, handle, e, what, missing);
+    }
     if (e.kind !== "not_ready") return failure(e, what);
     try {
         const p = (await deps.router.getPlacement({ handle })).placement;
@@ -101,6 +154,82 @@ export function toolUseId(ctx: ServerContext): string | undefined {
     return typeof v === "string" && v.length <= 200 ? v : undefined;
 }
 
+// The router keeps keys starting with _ for its own jobs and refuses them from callers
+export function callKey(ctx: ServerContext): string | undefined {
+    const id = toolUseId(ctx);
+    return id && !id.startsWith("_") ? id : undefined;
+}
+
+export function hashKey(parts: readonly string[]): string {
+    return "k1" + createHash("sha256").update(parts.join("\0")).digest("hex").slice(0, 32);
+}
+
+// Stable across a client's retries of one call, for tools whose same arguments mean the same thing
+export function idempotencyKey(ctx: ServerContext, parts: readonly string[]): string {
+    return callKey(ctx) ?? hashKey(parts);
+}
+
+const spentReasons = new Set(["TOKEN_USED", "TOKEN_EXPIRED", "LINK_LOCKED"]);
+
+// A repeated key names a link that is already spent, so one retry under a new key makes a live one
+export async function withFreshKey<T>(key: string, call: (key: string) => Promise<T>): Promise<T> {
+    try {
+        return await call(key);
+    } catch (e) {
+        const spent =
+            e instanceof ConnectError &&
+            e.code === Code.FailedPrecondition &&
+            spentReasons.has(errorReason(e) ?? "");
+        if (!spent) throw e;
+        return call(`k1${randomBytes(16).toString("hex")}`);
+    }
+}
+
+// The domain every host a router link names sits under, so a link never sends a file elsewhere
+export function underDomain(deps: Deps, host: string): boolean {
+    const domain = deps.config.router.links_domain;
+    return host === domain || host.endsWith(`.${domain}`);
+}
+
+export type LinkKind = "preview" | "transfer" | "secrets";
+
+// Data-plane 8.2.1, 8.3.1 and 10.3 give each link one host, so a preview never serves a secret link
+function linkHost(deps: Deps, kind: LinkKind, host: string): boolean {
+    const domain = deps.config.router.links_domain;
+    if (kind !== "preview") return host === `${kind}.${domain}`;
+    const suffix = `.preview.${domain}`;
+    return host.endsWith(suffix) && /^[a-z2-7]{16}$/.test(host.slice(0, -suffix.length));
+}
+
+// Router links reach the user's shell only in the shape the contract gives them
+export function routerLink(
+    deps: Deps,
+    raw: string,
+    kind: LinkKind,
+    path: RegExp,
+    query = "",
+): URL | null {
+    const href = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`;
+    let url: URL;
+    try {
+        url = new URL(href);
+    } catch {
+        return null;
+    }
+    const plain =
+        url.protocol === "https:" &&
+        !url.username &&
+        !url.password &&
+        url.hash === "" &&
+        (url.search === "" || (query !== "" && url.search === query));
+    return plain && linkHost(deps, kind, url.hostname) && path.test(url.pathname) ? url : null;
+}
+
+// One shell word, so no character of s can end the word or run a command
+export function shellQuoted(s: string): string {
+    return `'${s.replaceAll("'", `'\\''`)}'`;
+}
+
 // Sends progress every few seconds while work runs, so clients keep the call alive
 export async function withProgress<T>(
     ctx: ServerContext,
@@ -127,6 +256,31 @@ export async function withProgress<T>(
     } finally {
         if (timer) clearInterval(timer);
         stop.abort();
+    }
+}
+
+// What a tool call keeps after its plan to answer before limits.tool_budget cuts it off
+export const answerReserveMs = 4_000;
+
+// A tool call's plan on the gateway's clock, ending answerReserveMs before limits.tool_budget
+export class Budget {
+    private readonly until: number;
+    constructor(private readonly deps: Pick<Deps, "config" | "now">) {
+        this.until = deps.now() + deps.config.limits.tool_budget - answerReserveMs;
+    }
+    left(): number {
+        return Math.max(0, this.until - this.deps.now());
+    }
+    // One step's time, cut to its own cap and to what the plan has left after keepMs
+    ms(capMs: number, keepMs = 0): number {
+        return Math.max(1, Math.min(capMs, this.left() - keepMs));
+    }
+    signal(capMs: number, keepMs = 0): AbortSignal {
+        return AbortSignal.timeout(this.ms(capMs, keepMs));
+    }
+    // A refund must not be skipped, so it may use all but a second of the answer's reserve
+    lastSignal(capMs: number): AbortSignal {
+        return AbortSignal.timeout(this.ms(capMs, 1_000 - answerReserveMs));
     }
 }
 

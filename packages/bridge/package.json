@@ -1,0 +1,32 @@
+{
+    "name": "@bugnet/mcp",
+    "version": "0.1.0",
+    "description": "Local Bugnet bridge: the remote Bugnet MCP gateway over stdio, plus secrets from this machine",
+    "type": "module",
+    "bin": {
+        "bugnet-mcp": "dist/main.js"
+    },
+    "files": [
+        "dist",
+        "config/example.toml"
+    ],
+    "engines": {
+        "node": ">=20"
+    },
+    "scripts": {
+        "typecheck": "tsc -p .",
+        "build": "tsx src/build-main.ts",
+        "prepack": "pnpm run build"
+    },
+    "devDependencies": {
+        "@bufbuild/protobuf": "2.16.0",
+        "@bugnet/gateway": "workspace:*",
+        "@bugnet/seal": "workspace:*",
+        "@connectrpc/connect": "2.3.0",
+        "@modelcontextprotocol/client": "2.4.0",
+        "@modelcontextprotocol/server": "2.4.0",
+        "libsodium-wrappers": "0.8.4",
+        "smol-toml": "1.9.1",
+        "zod": "4.6.7"
+    }
+}

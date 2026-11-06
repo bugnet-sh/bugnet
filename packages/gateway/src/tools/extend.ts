@@ -1,12 +1,14 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { z } from "zod";
 import type { PackageOption, Placement } from "../gen/bugnet/router/v1/router_pb.ts";
+import { toolCallSignal } from "../request.ts";
 import { GatewayError, errorReason, fromRouter } from "../router.ts";
 import {
     approvalMeta,
+    Budget,
     handleHash,
-    handlePattern,
     handleTag,
     ok,
     sandboxFailure,
@@ -15,10 +17,9 @@ import {
     usd,
     type Deps,
     type Register,
+    handleInput,
 } from "./common.ts";
 import { describeSize, paymentRequiredResult } from "./sandbox.ts";
-
-const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
 
 // A first refusal with these codes means the router recorded nothing, so the order is refunded
 const notApplied = new Set([
@@ -56,13 +57,34 @@ export async function extensionsFor(deps: Deps, handle: string): Promise<Extensi
     }
 }
 
-type Applied = { placement: Placement | undefined } | { ambiguous: true } | { refused: Error };
+// What ExtendPlacement and its retries need after the payment
+const applyReserveMs = 8_000;
+// Less than this left sends no further ExtendPlacement
+const attemptMs = 1_000;
+
+type Applied =
+    | { placement: Placement | undefined }
+    | { ambiguous: true }
+    | { refused: Error }
+    | { unsent: true };
 
 // Retries an extension whose answer was lost, since the same order token applies at most once
-async function applyExtension(deps: Deps, handle: string, orderToken: string): Promise<Applied> {
+async function applyExtension(
+    deps: Deps,
+    handle: string,
+    orderToken: string,
+    budget: Budget,
+): Promise<Applied> {
+    const tool = toolCallSignal();
     for (let attempt = 0; attempt < 3; attempt++) {
+        if (tool?.aborted || budget.left() < attemptMs) {
+            return attempt === 0 ? { unsent: true } : { ambiguous: true };
+        }
         try {
-            const res = await deps.router.extendPlacement({ handle, orderToken });
+            const res = await deps.router.extendPlacement(
+                { handle, orderToken },
+                { timeoutMs: budget.ms(deps.config.router.timeout) },
+            );
             return { placement: res.placement };
         } catch (e) {
             const code = e instanceof ConnectError ? e.code : null;
@@ -72,7 +94,13 @@ async function applyExtension(deps: Deps, handle: string, orderToken: string): P
             if (attempt > 0 && code !== null && notApplied.has(code)) {
                 return { refused: e as Error };
             }
-            await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+            const pause = 1000 * (attempt + 1);
+            if (attempt === 2 || budget.left() < pause + attemptMs) break;
+            try {
+                await sleep(pause, undefined, tool ? { signal: tool } : {});
+            } catch {
+                break;
+            }
         }
     }
     return { ambiguous: true };
@@ -109,12 +137,13 @@ export const registerExtendTool: Register = (server, deps) => {
         },
         async (args, ctx) => {
             try {
+                const budget = new Budget(deps);
                 let check;
                 try {
-                    check = await deps.router.checkExtendPlacement({
-                        handle: args.handle,
-                        packageId: args.packageId,
-                    });
+                    check = await deps.router.checkExtendPlacement(
+                        { handle: args.handle, packageId: args.packageId },
+                        { timeoutMs: budget.ms(15_000, applyReserveMs + 5_000) },
+                    );
                 } catch (e) {
                     if (e instanceof ConnectError && e.code === Code.InvalidArgument) {
                         const options = await extensionsFor(deps, args.handle);
@@ -147,6 +176,13 @@ export const registerExtendTool: Register = (server, deps) => {
                             "and pass it as confirmPriceUsd",
                     );
                 }
+                if (budget.left() < applyReserveMs + 5_000) {
+                    throw new GatewayError(
+                        "timeout",
+                        "extend: Bugnet answered slowly, so nothing was charged. Calling " +
+                            "bugnet_extend again extends it",
+                    );
+                }
                 const payment = ctx.mcpReq._meta?.["x402/payment"] ?? args.payment;
                 const key = toolUseId(ctx);
                 const order = await deps.payments.order(
@@ -162,16 +198,17 @@ export const registerExtendTool: Register = (server, deps) => {
                         ...(payment !== undefined ? { payment } : {}),
                         ...(key ? { idempotencyKey: key } : {}),
                     },
-                    AbortSignal.timeout(30_000),
+                    budget.signal(30_000, applyReserveMs),
                 );
                 if (order.status === "payment_required") return paymentRequiredResult(order);
                 if (order.status === "refused") {
                     throw new GatewayError("denied", `payment refused: ${order.reason}`);
                 }
-                const applied = await applyExtension(deps, args.handle, order.orderToken);
+                const applied = await applyExtension(deps, args.handle, order.orderToken, budget);
+                const retry = `bugnet_extend with orderId "${order.orderId}"`;
                 if ("refused" in applied) {
                     await deps.payments
-                        .abandon(order.orderId, "not_applied", AbortSignal.timeout(10_000))
+                        .abandon(order.orderId, "not_applied", budget.lastSignal(10_000))
                         .catch((x) => deps.log.error("abandon failed", { err: String(x) }));
                     const err = fromRouter(applied.refused, "extend");
                     throw new GatewayError(
@@ -179,11 +216,19 @@ export const registerExtendTool: Register = (server, deps) => {
                         `${err.message}. The extension was not applied and the payment is refunded`,
                     );
                 }
+                if ("unsent" in applied) {
+                    throw new GatewayError(
+                        "timeout",
+                        `extend: order ${order.orderId} is paid, but too little time was left to ` +
+                            `apply it. ${retry} applies it`,
+                    );
+                }
                 if ("ambiguous" in applied) {
                     throw new GatewayError(
                         "unavailable",
                         "extend: the sandbox service did not confirm the extension. Check the " +
-                            "deadline with bugnet_status before paying again",
+                            "deadline with bugnet_status before paying again, and if it did not " +
+                            `move, ${retry} applies the paid order`,
                     );
                 }
                 const p = applied.placement;
