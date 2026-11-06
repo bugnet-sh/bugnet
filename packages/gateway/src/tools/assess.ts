@@ -121,7 +121,7 @@ function quoteLines(quote: BuiltQuote | null, opts: RenderOptions): string[] {
         const why = q.largeEnough ? "fits these needs" : "is large enough";
         lines.push(`No package ${why}, ${open.length} others are in the quote.`);
     } else {
-        lines.push("No package can start right now. Try again in a minute.");
+        lines.push(quote.headline);
     }
     for (const w of q.warnings) lines.push(`Warning: ${w}.`);
     if (open.length > 0) lines.push(`quoteId (valid ${opts.ttlMinutes ?? 10} min): ${q.quoteId}`);

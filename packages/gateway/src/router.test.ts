@@ -164,8 +164,8 @@ describe("fromRouter", () => {
         const e = fromRouter(new ConnectError("x", Code.Unimplemented), "preview");
         expect(e.kind).toBe("unsupported");
         expect(e.message).toBe(
-            "preview: Bugnet has not opened this yet, so a retry now or later gets the same " +
-                "answer. The other Bugnet tools work as usual",
+            "preview: Bugnet has not opened this yet, so a retry now or later, or a new sandbox " +
+                "from any quote, gets the same answer. The other Bugnet tools work as usual",
         );
         const f = fromRouter(routerError(Code.FailedPrecondition, "FEATURE_UNAVAILABLE"), "ssh");
         expect(f.message).toMatch(/^ssh: not open on this sandbox yet/);

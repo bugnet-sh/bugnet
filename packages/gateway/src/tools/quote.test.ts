@@ -614,8 +614,8 @@ describe("bugnet_quote errors", () => {
         err = routerError(Code.Unimplemented);
         const old = await callTool(client, "bugnet_quote", {});
         expect(old.text).toBe(
-            "quote: Bugnet has not opened this yet, so a retry now or later gets the same " +
-                "answer. The other Bugnet tools work as usual.",
+            "quote: Bugnet has not opened this yet, so a retry now or later, or a new sandbox " +
+                "from any quote, gets the same answer. The other Bugnet tools work as usual.",
         );
     });
 });

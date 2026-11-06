@@ -184,8 +184,9 @@ describe("bugnet_fetch_source", () => {
         const r = await fetch(await connect({}));
         expect(r.isError).toBe(true);
         expect(r.text).toBe(
-            "fetch source: Bugnet does not fetch repos yet, so a retry now or later gets the " +
-                "same answer. Cloning by hand with bugnet_exec works.",
+            "fetch source: Bugnet does not fetch repos yet, so a retry now or later, or a new " +
+                "sandbox from any quote, gets the same answer. Cloning by hand with bugnet_exec " +
+                "works.",
         );
     });
 

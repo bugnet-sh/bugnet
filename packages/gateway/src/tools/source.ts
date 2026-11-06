@@ -39,8 +39,8 @@ export const needsSecretNote =
     "name GITHUB_TOKEN adds one, then bugnet_fetch_source fetches it";
 
 const notFetching =
-    "Bugnet does not fetch repos yet, so a retry now or later gets the same answer. Cloning by " +
-    "hand with bugnet_exec works";
+    "Bugnet does not fetch repos yet, so a retry now or later, or a new sandbox from any quote, " +
+    "gets the same answer. Cloning by hand with bugnet_exec works";
 
 const byHand = "so the choices left are cloning it by hand with bugnet_exec or stopping";
 

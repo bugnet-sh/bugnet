@@ -88,8 +88,9 @@ function describeSecret(s: SecretView): string {
 }
 
 const secretsNotOpen =
-    "Bugnet has not opened secrets yet, so a retry now or later gets the same answer. Work " +
-    "that needs a secret goes without it here, and a value never goes in a command, env or file";
+    "Bugnet has not opened secrets yet, so a retry now or later, or a new sandbox from any " +
+    "quote, gets the same answer. Work that needs a secret goes without it here, and a value " +
+    "never goes in a command, env or file";
 
 // Both a missing secret path and a closed one answer FEATURE_UNAVAILABLE, and the cure is the same
 async function secretFailure(

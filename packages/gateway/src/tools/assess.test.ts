@@ -513,6 +513,39 @@ describe("bugnet_assess with the router's estimator", () => {
         expect(r.structuredContent?.assessment.summary).toBe(assessment.summary);
     });
 
+    it("names the closed need when no package starts for it, and a short wait otherwise", async () => {
+        const closed = (id: string, unavailableReason: string) => ({
+            ...option(id, 50_000n, 0, 4096),
+            available: false,
+            unavailableReason,
+        });
+        const cpuOnly: Assessment = {
+            ...assessment,
+            needs: { gpu: false, minMemoryGiB: null, minDiskGiB: null, workload: "serve" },
+            fit: { level: "unknown", findings: [] },
+        };
+        const assessWith = async (reason: string) => {
+            const { client } = await connect(
+                { estimate: () => ({ options: [closed("a", reason), closed("b", reason)] }) },
+                {},
+                cpuOnly,
+            );
+            return callTool(client, "bugnet_assess", {
+                task: "Run a tiny HTTP server and give me a link to it",
+                needs: ["preview"],
+            });
+        };
+        const shut = await assessWith("feature_unavailable");
+        expect(shut.isError).toBe(false);
+        expect(shut.text).toMatch(
+            /^No package can start with the need preview, which is not open yet\. A quote without it may list packages that start\.$/m,
+        );
+        expect(shut.text).not.toMatch(/^No package can start right now/m);
+        expect(shut.text).not.toMatch(/quoteId/);
+        const busy = await assessWith("no_candidate");
+        expect(busy.text).toMatch(/^No package can start right now\. Try again in a minute\.$/m);
+    });
+
     it("is limited per client address before any source is read", async () => {
         const seen: { input?: unknown } = {};
         const assessor: Assessor = {

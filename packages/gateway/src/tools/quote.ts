@@ -279,6 +279,8 @@ export interface Recommended {
 
 export interface BuiltQuote {
     text: string;
+    // The first line of text, which tells closed needs from a short wait when no package starts
+    headline: string;
     structured: {
         quoteId: string;
         expiresAt: string;
@@ -461,8 +463,9 @@ export async function buildQuote(
     const ttl = Math.round(deps.config.limits.quote_ttl / 60_000);
     const wants = needs.filter((n) => args.needs?.includes(n));
     const startable = available.length > 0;
+    const first = headline(available.length, views, wants);
     const text = [
-        headline(available.length, views, wants),
+        first,
         ...available.map((p) => packageLine(p, rec)),
         unavailable.length > 0
             ? `Unavailable now: ${unavailable.map((v) => `${v.id} (${v.unavailable})`).join(", ")}.`
@@ -479,6 +482,7 @@ export async function buildQuote(
         .join("\n");
     return {
         text,
+        headline: first,
         structured: {
             quoteId,
             expiresAt: new Date(expiresAt).toISOString(),
