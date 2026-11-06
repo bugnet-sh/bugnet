@@ -388,7 +388,8 @@ export const registerSandboxTools: Register = (server, deps) => {
                 "State, deadline, time left and extension prices of a sandbox, why it ended, " +
                 "its SSH alias and where its repo is. Everything is deleted at the deadline, " +
                 "so download results first, or extend with bugnet_extend once the user agrees. " +
-                "waitSeconds waits for the state to change, for example while it is starting.",
+                "waitSeconds waits for the state to change, for example while it is starting. " +
+                "When a start left the repo's fetch pending, it starts that fetch.",
             inputSchema: z.object({
                 handle: handleInput,
                 waitSeconds: z.number().int().min(0).max(45).optional(),

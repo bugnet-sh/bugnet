@@ -1045,6 +1045,15 @@ describe("bugnet_status shows why a sandbox ended, its repo and its SSH alias", 
         expect(r.text).toMatch(`ssh-keygen -t ed25519 -N "" -f ~/.ssh/bugnet_${alias}`);
     });
 
+    it("says in its description that it starts a repo fetch a start left pending", async () => {
+        const { client } = await setup({});
+        const { tools } = await client.listTools();
+        const status = tools.find((t) => t.name === "bugnet_status");
+        expect(status?.description).toContain(
+            "When a start left the repo's fetch pending, it starts that fetch.",
+        );
+    });
+
     it("fetches a repo no one has fetched once the sandbox is ready", async () => {
         let fetches = 0;
         const { client } = await setup({
