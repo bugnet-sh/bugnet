@@ -70,6 +70,14 @@ const tools = [
     "read_file",
     "write_file",
     "stop",
+    "preview",
+    "transfer",
+    "ssh",
+    "ssh_remove",
+    "secret_link",
+    "secrets",
+    "secret_delete",
+    "fetch_source",
 ].map((t) => `mcp__bugnet__bugnet_${t}`);
 
 const handlePattern = /sbx_[a-z2-7]{26}/g;
