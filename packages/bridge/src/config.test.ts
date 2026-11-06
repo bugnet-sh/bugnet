@@ -48,6 +48,31 @@ describe("bridge settings", () => {
             "http://[::1]:8787/mcp",
         );
     });
+
+    it("counts only localhost, ::1 and 127.0.0.0/8 literals as loopback", () => {
+        for (const url of [
+            "http://localhost:9/mcp",
+            "http://127.0.0.1/mcp",
+            "http://127.255.0.9/mcp",
+            "http://127.1/mcp",
+            "http://[::1]/mcp",
+        ]) {
+            expect(parseSettings(`gateway_url = "${url}"`).gateway_url, url).toBe(url);
+        }
+        for (const url of [
+            "http://127.attacker.example/mcp",
+            "http://127.0.0.1.nip.io/mcp",
+            "http://127-0-0-1.example/mcp",
+            "http://localhost.example/mcp",
+            "http://128.0.0.1/mcp",
+        ]) {
+            expect(() => parseSettings(`secrets_url = "${url}"`), url).toThrow(/http on loopback/);
+            expect(
+                () => loadCommand(["--gateway", url, "--config", "/dev/null"], env()),
+                url,
+            ).toThrow(/http on loopback/);
+        }
+    });
 });
 
 describe("command line", () => {

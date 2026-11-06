@@ -6,6 +6,7 @@
  * config/example.toml lists every setting with its default.
  */
 import { readFileSync } from "node:fs";
+import { isIPv4 } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
@@ -26,9 +27,10 @@ const duration = z
     .regex(/^\d+(ms|s|m|h)$/, "a duration such as 500ms, 30s, 10m or 1h")
     .transform(parseDuration);
 
+// The URL parser has already turned forms such as 127.1 into dotted quads
 function isLoopback(url: URL): boolean {
     const host = url.hostname;
-    return host === "localhost" || host === "[::1]" || /^127\./.test(host);
+    return host === "localhost" || host === "[::1]" || (isIPv4(host) && host.startsWith("127."));
 }
 
 // A handle or a put grant over plain HTTP would cross the network readable, loopback aside
