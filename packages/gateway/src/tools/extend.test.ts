@@ -333,9 +333,9 @@ describe("bugnet_extend", () => {
                 throw routerError(Code.Unavailable);
             },
         });
-        const started = Date.now();
+        const started = performance.now();
         const r = await callTool(client, "bugnet_extend", args());
-        const took = Date.now() - started;
+        const took = performance.now() - started;
         expect(calls).toBe(3);
         expect(took).toBeGreaterThanOrEqual(2_900);
         expect(took).toBeLessThan(4_500);
