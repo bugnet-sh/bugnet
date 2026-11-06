@@ -2,7 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { timestampFromMs } from "@bufbuild/protobuf/wkt";
 import { Code } from "@connectrpc/connect";
 import type { Client } from "@modelcontextprotocol/client";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
     BootstrapSchema,
     BootstrapState,
@@ -19,6 +19,7 @@ import {
     packageOption,
     placement,
     routerError,
+    testConfig,
     testDeps,
     testHandle,
     testNow,
@@ -65,6 +66,22 @@ function signed(deps: Deps, claims: Partial<QuoteClaims> = {}): string {
         ...claims,
     });
 }
+
+// The time each AbortSignal.timeout signal was given, read back where a step receives it
+function recordTimeouts(): WeakMap<AbortSignal, number> {
+    const real = AbortSignal.timeout.bind(AbortSignal);
+    const given = new WeakMap<AbortSignal, number>();
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((ms: number) => {
+        const signal = real(ms);
+        given.set(signal, ms);
+        return signal;
+    });
+    return given;
+}
+
+afterEach(() => {
+    vi.restoreAllMocks();
+});
 
 const startArgs = (id: string, price = "0.05") => ({
     quoteId: id,
@@ -709,6 +726,141 @@ describe("bugnet_start on a router with PricePackage", () => {
         );
         expect(clock.now - started).toBeLessThanOrEqual(40_000);
         expect(waits.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(40_000 - 18_000 - 6_000);
+    });
+
+    it.each([
+        [0, 28_000],
+        [10_000, 18_000],
+    ])(
+        "after a %i ms price check gives the payment %i ms and CreatePlacement the rest",
+        async (priceMs, payMs) => {
+            const given = recordTimeouts();
+            const clock = { now: testNow };
+            const caps: (number | undefined)[] = [];
+            let createMs: number | undefined;
+            const payments = testPayments();
+            const order = payments.order.bind(payments);
+            payments.order = (req, signal) => {
+                caps.push(given.get(signal));
+                clock.now += 6_000;
+                return order(req, signal);
+            };
+            const { client, deps } = await setup(
+                priced(fresh(), {
+                    pricePackage: (req) => {
+                        clock.now += priceMs;
+                        return { option: packageOption(req.packageId, 50_000n) };
+                    },
+                    createPlacement: (_req, ctx) => {
+                        createMs = ctx.timeoutMs();
+                        return { handle: testHandle, placement: placement(PlacementState.READY) };
+                    },
+                }),
+                payments,
+            );
+            deps.now = () => clock.now;
+            const r = await callTool<{ handle: string }>(
+                client,
+                "bugnet_start",
+                startArgs(signed(deps)),
+            );
+            expect(r.structured.handle).toBe(testHandle);
+            expect(caps).toEqual([payMs]);
+            const left = 40_000 - priceMs - 6_000;
+            expect(createMs).toBeGreaterThan(left - 1_000);
+            expect(createMs).toBeLessThanOrEqual(left);
+        },
+    );
+
+    it("plans the start inside a smaller tool_budget, which then never cuts it", async () => {
+        const given = recordTimeouts();
+        const caps: (number | undefined)[] = [];
+        let createMs: number | undefined;
+        const payments = testPayments();
+        const order = payments.order.bind(payments);
+        payments.order = (req, signal) => {
+            caps.push(given.get(signal));
+            return order(req, signal);
+        };
+        const deps = testDeps({
+            config: testConfig('[limits]\ntool_budget = "25s"\nmax_wait_seconds = 19'),
+            payments,
+            router: fakeRouter(
+                priced(fresh(), {
+                    createPlacement: (_req, ctx) => {
+                        createMs = ctx.timeoutMs();
+                        return { handle: testHandle, placement: placement(PlacementState.READY) };
+                    },
+                }),
+            ),
+        });
+        const client = await connectTools(deps);
+        const r = await callTool<{ handle: string }>(
+            client,
+            "bugnet_start",
+            startArgs(signed(deps)),
+        );
+        expect(r.structured.handle).toBe(testHandle);
+        expect(caps).toEqual([25_000 - 4_000 - 12_000]);
+        expect(createMs).toBeLessThanOrEqual(21_000);
+    });
+
+    it("gives a price check only what the plan leaves before the payment", async () => {
+        const clock = { now: testNow };
+        const asked: (number | undefined)[] = [];
+        const { client, deps } = await setup(
+            priced(fresh(), {
+                pricePackage: (_req, ctx) => {
+                    asked.push(ctx.timeoutMs());
+                    clock.now += 20_000;
+                    throw routerError(Code.Unimplemented);
+                },
+                estimate: (_req, ctx) => {
+                    asked.push(ctx.timeoutMs());
+                    return { options };
+                },
+            }),
+        );
+        deps.now = () => clock.now;
+        const r = await callTool<{ handle: string }>(
+            client,
+            "bugnet_start",
+            startArgs(signed(deps)),
+        );
+        expect(r.structured.handle).toBe(testHandle);
+        expect(asked).toHaveLength(2);
+        expect(asked[0]).toBeGreaterThan(14_000);
+        expect(asked[0]).toBeLessThanOrEqual(15_000);
+        expect(asked[1]).toBeGreaterThan(7_000);
+        expect(asked[1]).toBeLessThanOrEqual(8_000);
+    });
+
+    it("skips the repo fetch when under 5 s remain and still returns the handle", async () => {
+        const seen = fresh();
+        const clock = { now: testNow };
+        const { client, deps } = await setup(
+            priced(seen, {
+                createPlacement: () => ({
+                    handle: testHandle,
+                    placement: placement(PlacementState.PLACING),
+                }),
+                getPlacement: (req) => {
+                    clock.now += req.waitMs + 12_000;
+                    return { placement: placement(PlacementState.READY) };
+                },
+            }),
+        );
+        deps.now = () => clock.now;
+        const r = await callTool<{ handle: string; state: string }>(
+            client,
+            "bugnet_start",
+            startArgs(signed(deps, { github: true, estimateId })),
+        );
+        expect(r.isError).toBe(false);
+        expect(r.structured).toEqual(
+            expect.objectContaining({ handle: testHandle, state: "ready" }),
+        );
+        expect(seen.fetches).toBe(0);
     });
 
     it("returns the paid sandbox's handle when the wait for ready fails", async () => {

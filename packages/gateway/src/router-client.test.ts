@@ -205,3 +205,26 @@ describe("router.timeout setting", () => {
         for (const bad of ["45s", "50s", "500ms"]) expect(at(bad)).toThrow(/router\.timeout/);
     });
 });
+
+describe("limits.tool_budget setting", () => {
+    const at = (budget: string, wait: number) => () =>
+        checkSettings(
+            parseSettings(
+                `[payments]\nmode = "dev"\n[limits]\ntool_budget = "${budget}"\n` +
+                    `max_wait_seconds = ${wait}\ndefault_wait_seconds = 1`,
+            ),
+        );
+
+    it("accepts the time bugnet_start's plan needs, up to the 45 s tool limit", () => {
+        expect(at("25s", 19)).not.toThrow();
+        expect(at("45s", 38)).not.toThrow();
+        for (const [budget, wait] of [
+            ["5s", 1],
+            ["7s", 1],
+            ["24999ms", 1],
+            ["46s", 38],
+        ] as const) {
+            expect(at(budget, wait), budget).toThrow(/limits\.tool_budget must be 25s to 45s/);
+        }
+    });
+});

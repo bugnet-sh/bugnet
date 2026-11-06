@@ -304,6 +304,9 @@ function checkTelemetry(t: Settings["telemetry"]): void {
     }
 }
 
+// bugnet_start keeps 12 s to place a paid sandbox, 5 s to pay, a price check and 4 s to answer
+const minToolBudgetMs = 25_000;
+
 export function checkSettings(s: Settings): void {
     const listenHost = s.listen_addr.slice(0, s.listen_addr.lastIndexOf(":"));
     if (s.payments.mode === "dev") {
@@ -321,8 +324,10 @@ export function checkSettings(s: Settings): void {
     if (s.router.timeout < 1000 || s.router.timeout >= 45_000) {
         throw new ConfigError("router.timeout must be 1s or more and under 45s, the tool limit");
     }
-    if (s.limits.tool_budget < 5000 || s.limits.tool_budget > 45_000) {
-        throw new ConfigError("limits.tool_budget must be 5s to 45s, the tool limit");
+    if (s.limits.tool_budget < minToolBudgetMs || s.limits.tool_budget > 45_000) {
+        throw new ConfigError(
+            "limits.tool_budget must be 25s to 45s, from what bugnet_start needs to the tool limit",
+        );
     }
     // A wait plus the 5 s stall margin and a second of slack must end inside the tool budget
     if (s.limits.max_wait_seconds * 1000 + 6000 > s.limits.tool_budget) {

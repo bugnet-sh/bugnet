@@ -14,6 +14,7 @@ import { GatewayError, errorReason, fromRouter, waitMargin } from "../router.ts"
 import type { OrderResult } from "../payments/port.ts";
 import {
     approvalMeta,
+    Budget,
     failure,
     handleTag,
     ok,
@@ -147,26 +148,10 @@ export function paymentRequiredResult(r: Extract<OrderResult, { status: "payment
     return result;
 }
 
-// Requirements 12 gives every tool 45 s, and Codex aborts at 60 s, so a start plans within 40 s
-export const startBudgetMs = 40_000;
 // What CreatePlacement and a first look at the sandbox need after the payment
 const placeReserveMs = 12_000;
 // The repo fetch's own cap, left out when less than this remains
 const fetchMs = 5_000;
-
-class Budget {
-    private readonly until: number;
-    constructor(private readonly now: () => number) {
-        this.until = now() + startBudgetMs;
-    }
-    left(): number {
-        return Math.max(0, this.until - this.now());
-    }
-    // A signal for one step, cut to its own cap and to what the call has left
-    signal(capMs: number, keepMs = 0): AbortSignal {
-        return AbortSignal.timeout(Math.max(1, Math.min(capMs, this.left() - keepMs)));
-    }
-}
 
 // After the payment, a failure that does not prove the router recorded nothing leaves it open
 function afterPayment(err: GatewayError, orderId: string): GatewayError {
@@ -212,14 +197,14 @@ async function priceForStart(
     deps: Deps,
     packageId: string,
     claims: QuoteClaims,
-    signal: () => AbortSignal,
+    timeoutMs: () => number,
 ): Promise<PackageOption> {
     const requirements = claims.requirements;
     let option: PackageOption | undefined;
     try {
         const res = await deps.router.pricePackage(
             { packageId, requirements },
-            { signal: signal() },
+            { timeoutMs: timeoutMs() },
         );
         option = res.option;
     } catch (e) {
@@ -239,7 +224,7 @@ async function priceForStart(
             );
         }
         if (e.code !== Code.Unimplemented) throw e;
-        const est = await deps.router.estimate({ requirements }, { signal: signal() });
+        const est = await deps.router.estimate({ requirements }, { timeoutMs: timeoutMs() });
         option = est.options.find((o) => o.packageId === packageId);
         if (option && !option.available) {
             const open = est.options.filter((o) => o.available).map((o) => o.packageId);
@@ -284,10 +269,10 @@ export const registerSandboxTools: Register = (server, deps) => {
                     if (e instanceof QuoteError) throw new GatewayError("invalid", e.message);
                     throw e;
                 }
-                const budget = new Budget(deps.now);
+                const budget = new Budget(deps);
                 const pkg = quoted(
                     await priceForStart(deps, args.packageId, claims, () =>
-                        budget.signal(15_000, placeReserveMs),
+                        budget.ms(15_000, placeReserveMs),
                     ),
                 );
                 const priced = Number.parseFloat(args.confirmPriceUsd.replace(/^\$/, ""));
@@ -330,7 +315,7 @@ export const registerSandboxTools: Register = (server, deps) => {
                             requirements: claims.requirements,
                             estimateId: claims.estimateId ?? "",
                         },
-                        { signal: AbortSignal.timeout(Math.max(budget.left(), placeReserveMs)) },
+                        { timeoutMs: Math.max(budget.left(), placeReserveMs) },
                     );
                 } catch (e) {
                     const err = fromRouter(e, "start");
@@ -340,7 +325,7 @@ export const registerSandboxTools: Register = (server, deps) => {
                         (e.code === Code.PermissionDenied || e.code === Code.InvalidArgument);
                     if (outright) {
                         await deps.payments
-                            .abandon(order.orderId, err.kind, AbortSignal.timeout(10_000))
+                            .abandon(order.orderId, err.kind, budget.lastSignal(10_000))
                             .catch((x) => deps.log.error("abandon failed", { err: String(x) }));
                     }
                     throw afterPayment(err, order.orderId);

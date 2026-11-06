@@ -238,6 +238,31 @@ export async function withProgress<T>(
     }
 }
 
+// What a tool call keeps after its plan to answer before limits.tool_budget cuts it off
+export const answerReserveMs = 4_000;
+
+// A tool call's plan on the gateway's clock, ending answerReserveMs before limits.tool_budget
+export class Budget {
+    private readonly until: number;
+    constructor(private readonly deps: Pick<Deps, "config" | "now">) {
+        this.until = deps.now() + deps.config.limits.tool_budget - answerReserveMs;
+    }
+    left(): number {
+        return Math.max(0, this.until - this.deps.now());
+    }
+    // One step's time, cut to its own cap and to what the plan has left after keepMs
+    ms(capMs: number, keepMs = 0): number {
+        return Math.max(1, Math.min(capMs, this.left() - keepMs));
+    }
+    signal(capMs: number, keepMs = 0): AbortSignal {
+        return AbortSignal.timeout(this.ms(capMs, keepMs));
+    }
+    // A refund must not be skipped, so it may use all but a second of the answer's reserve
+    lastSignal(capMs: number): AbortSignal {
+        return AbortSignal.timeout(this.ms(capMs, 1_000 - answerReserveMs));
+    }
+}
+
 export function waitMs(deps: Deps, waitSeconds: number | undefined): number {
     const { default_wait_seconds, max_wait_seconds } = deps.config.limits;
     const s = waitSeconds ?? default_wait_seconds;
