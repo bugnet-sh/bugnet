@@ -375,7 +375,7 @@ export const registerTransferTool: Register = (server, deps) => {
                     : downloadResult(args, link, res);
             } catch (e) {
                 const err = explain(e, args.direction, inlineKib);
-                return sandboxFailure(deps, args.handle, err, "transfer");
+                return sandboxFailure(deps, args.handle, err, "transfer", "no file at that path");
             }
         },
     );

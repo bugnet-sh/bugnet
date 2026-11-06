@@ -1,8 +1,9 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { z } from "zod";
 import { BootstrapState, type Bootstrap } from "../gen/bugnet/router/v1/router_pb.ts";
-import { reasonOf } from "../router.ts";
+import { GatewayError, reasonOf } from "../router.ts";
 import {
+    failure,
     handlePattern,
     handleTag,
     ok,
@@ -36,6 +37,10 @@ const revisionShape = /^[0-9a-f]{4,64}$/;
 export const needsSecretNote =
     "the repo is private or missing, so the fetch needs a GitHub token. bugnet_secret_link adds " +
     "one, then bugnet_fetch_source fetches it";
+
+const notFetching =
+    "Bugnet does not fetch repos yet, so a retry now or later gets the same answer. Cloning by " +
+    "hand with bugnet_exec works";
 
 const byHand = "so the choices left are cloning it by hand with bugnet_exec or stopping";
 
@@ -112,10 +117,7 @@ export async function fetchAfterStart(deps: Deps, handle: string): Promise<Sourc
             reason: reasonOf(e),
         });
         if (e instanceof ConnectError && e.code === Code.Unimplemented) {
-            return {
-                state: "not_fetched",
-                note: "Bugnet does not fetch repos yet, cloning by hand with bugnet_exec works",
-            };
+            return { state: "not_fetched", note: notFetching };
         }
         if (reasonOf(e) === "NO_SOURCE") {
             return {
@@ -167,6 +169,12 @@ export const registerSourceTool: Register = (server, deps) => {
             } catch (e) {
                 const refusal = refusalView(e);
                 if (refusal) return ok(sentence(refusal.note), { source: refusal });
+                if (e instanceof ConnectError && e.code === Code.Unimplemented) {
+                    return failure(
+                        new GatewayError("unsupported", `fetch source: ${notFetching}`),
+                        "",
+                    );
+                }
                 return sandboxFailure(deps, args.handle, e, "fetch source");
             }
         },

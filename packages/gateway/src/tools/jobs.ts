@@ -43,6 +43,8 @@ export function secretLooking(env: Record<string, string>): string | null {
     return null;
 }
 
+const noJob = "no job with that id, bugnet_exec gives the jobId of each command";
+
 export const oomText = "The command ran out of memory, quote again for a larger package";
 
 function oomLine(oomKilled: boolean, peakMemoryMib: number): string {
@@ -263,7 +265,7 @@ export const registerJobTools: Register = (server, deps) => {
                         : {}),
                 });
             } catch (e) {
-                return sandboxFailure(deps, args.handle, e, "job");
+                return sandboxFailure(deps, args.handle, e, "job", noJob);
             }
         },
     );
@@ -287,7 +289,7 @@ export const registerJobTools: Register = (server, deps) => {
                 const state = jobStateName[res.state];
                 return ok(`Job ${args.jobId} is ${state}.`, { jobId: args.jobId, state });
             } catch (e) {
-                return sandboxFailure(deps, args.handle, e, "cancel");
+                return sandboxFailure(deps, args.handle, e, "cancel", noJob);
             }
         },
     );

@@ -86,6 +86,10 @@ function describeSecret(s: SecretView): string {
     return `- ${s.name}: ${s.state}${why}, hosts ${s.hosts.join(", ") || "none"}${headers}${fetch}`;
 }
 
+const secretsNotOpen =
+    "Bugnet has not opened secrets yet, so a retry now or later gets the same answer. Work " +
+    "that needs a secret goes without it here, and a value never goes in a command, env or file";
+
 // Both a missing secret path and a closed one answer FEATURE_UNAVAILABLE, and the cure is the same
 async function secretFailure(
     deps: Deps,
@@ -96,6 +100,9 @@ async function secretFailure(
 ): Promise<CallToolResult> {
     if (err instanceof GatewayError) return failure(err, what);
     const e = fromRouter(err, what);
+    if (e.kind === "unsupported" && e.reason === null) {
+        return failure(new GatewayError(e.kind, `${what}: ${secretsNotOpen}`), what);
+    }
     if (e.kind === "unsupported" && e.reason === "FEATURE_UNAVAILABLE") {
         return failure(
             new GatewayError(
@@ -109,23 +116,9 @@ async function secretFailure(
             what,
         );
     }
-    // A bare NotFound is an unknown handle, or for a delete an unknown secret name
-    if (e.kind === "not_found" && e.reason === null) {
-        if (name === undefined) return failure(e, what);
-        try {
-            await deps.router.getPlacement({ handle });
-        } catch {
-            return failure(e, what);
-        }
-        return failure(
-            new GatewayError(
-                "not_found",
-                `${what}: this sandbox has no secret named ${name}, bugnet_secrets lists them`,
-            ),
-            what,
-        );
-    }
-    return sandboxFailure(deps, handle, err, what);
+    const missing =
+        name === undefined ? undefined : `no secret named ${name}, bugnet_secrets lists them`;
+    return sandboxFailure(deps, handle, e, what, missing);
 }
 
 /* Tools */

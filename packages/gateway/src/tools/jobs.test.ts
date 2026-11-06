@@ -241,7 +241,10 @@ describe("bugnet_job", () => {
         });
         const r = await callTool(client, "bugnet_job", { handle: testHandle, jobId: "nope" });
         expect(r.isError).toBe(true);
-        expect(r.text).toBe("job: the sandbox has no job or file by that name.");
+        expect(r.text).toBe(
+            "job: this sandbox has no job with that id, bugnet_exec gives the jobId of each " +
+                "command.",
+        );
     });
 });
 

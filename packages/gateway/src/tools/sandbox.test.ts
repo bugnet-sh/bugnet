@@ -492,7 +492,7 @@ describe("bugnet_start on a router with PricePackage", () => {
             "Unimplemented",
             routerError(Code.Unimplemented),
             "not_fetched",
-            /Bugnet does not fetch repos yet, cloning by hand with bugnet_exec works/,
+            /Bugnet does not fetch repos yet, so a retry now or later gets the same answer/,
         ],
         [
             "NO_SOURCE",

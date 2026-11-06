@@ -520,7 +520,10 @@ describe("bugnet_quote errors", () => {
         expect(closed.text).toBe("quote: not open yet for these needs.");
         err = routerError(Code.Unimplemented);
         const old = await callTool(client, "bugnet_quote", {});
-        expect(old.text).toBe("quote: not open yet, the other Bugnet tools work as usual.");
+        expect(old.text).toBe(
+            "quote: Bugnet has not opened this yet, so a retry now or later gets the same " +
+                "answer. The other Bugnet tools work as usual.",
+        );
     });
 });
 

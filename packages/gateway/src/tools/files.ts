@@ -7,6 +7,9 @@ import { handlePattern, ok, sandboxFailure, type Register } from "./common.ts";
 const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
 const pathInput = z.string().min(1).max(4096);
 
+const noPath = "no file or directory at that path";
+const noFolder = "no folder for that path yet, mkdir -p through bugnet_exec makes it";
+
 export const registerFileTools: Register = (server, deps) => {
     const { read_file_max_bytes: readMax, write_file_max_bytes: writeMax } = deps.config.limits;
 
@@ -48,7 +51,7 @@ export const registerFileTools: Register = (server, deps) => {
                     .join("\n");
                 return ok(text, { entries, truncated: res.truncated || more > 0 });
             } catch (e) {
-                return sandboxFailure(deps, args.handle, e, "list files");
+                return sandboxFailure(deps, args.handle, e, "list files", noPath);
             }
         },
     );
@@ -95,7 +98,7 @@ export const registerFileTools: Register = (server, deps) => {
                     nextOffset: res.eof ? null : next,
                 });
             } catch (e) {
-                return sandboxFailure(deps, args.handle, e, "read file");
+                return sandboxFailure(deps, args.handle, e, "read file", noPath);
             }
         },
     );
@@ -139,7 +142,7 @@ export const registerFileTools: Register = (server, deps) => {
                 const size = Number(res.size);
                 return ok(`Wrote ${size} bytes to ${args.path}.`, { path: args.path, size });
             } catch (e) {
-                return sandboxFailure(deps, args.handle, e, "write file");
+                return sandboxFailure(deps, args.handle, e, "write file", noFolder);
             }
         },
     );

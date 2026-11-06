@@ -61,22 +61,20 @@ export function failure(err: unknown, what: string): CallToolResult {
     return { content: [{ type: "text", text: `${e.message}.${retry}` }], isError: true };
 }
 
-// An unknown job id also gets a bare NotFound, which must not read as a lost sandbox
+// A bare NotFound is a missing thing on a live sandbox, or an unknown handle on older routers
 async function notFound(
     deps: Deps,
     handle: string,
     e: GatewayError,
     what: string,
+    missing: string,
 ): Promise<CallToolResult> {
     try {
         await deps.router.getPlacement({ handle });
     } catch {
         return failure(e, what);
     }
-    return failure(
-        new GatewayError("not_found", `${what}: the sandbox has no job or file by that name`),
-        what,
-    );
+    return failure(new GatewayError("not_found", `${what}: this sandbox has ${missing}`), what);
 }
 
 // The router answers NOT_READY for both a starting and an ended sandbox, the placement tells which
@@ -85,11 +83,11 @@ export async function sandboxFailure(
     handle: string,
     err: unknown,
     what: string,
+    missing?: string,
 ): Promise<CallToolResult> {
-    const fromTool = err instanceof GatewayError;
-    const e = fromTool ? err : fromRouter(err, what);
-    if (!fromTool && e.kind === "not_found" && e.reason === null) {
-        return notFound(deps, handle, e, what);
+    const e = err instanceof GatewayError ? err : fromRouter(err, what);
+    if (e.kind === "not_found" && e.reason === null && missing !== undefined) {
+        return notFound(deps, handle, e, what, missing);
     }
     if (e.kind !== "not_ready") return failure(e, what);
     try {

@@ -188,8 +188,8 @@ describe("bugnet_preview", () => {
         const r = await call(client);
         expect(r.isError).toBe(true);
         expect(r.text).toBe(
-            "preview: web previews are not open yet, the other Bugnet tools work as usual. " +
-                'Once open, previews need a sandbox started from bugnet_quote with needs ["preview"].',
+            "preview: Bugnet has not opened web previews yet, so a retry now or later gets the " +
+                "same answer. The other Bugnet tools work as usual.",
         );
     });
 

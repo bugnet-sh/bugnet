@@ -8,14 +8,14 @@ const handleInput = z.string().regex(handlePattern, "a sandbox handle starting w
 
 const quoteHint = 'bugnet_quote with needs ["preview"]';
 
-// The shared wording for these two refusals cannot name the quote need previews depend on
+// The shared wording for these two refusals cannot name previews or the quote need they depend on
 function previewRefusal(err: unknown): unknown {
     if (!(err instanceof ConnectError)) return err;
     if (err.code === Code.Unimplemented) {
         return new GatewayError(
             "unsupported",
-            "preview: web previews are not open yet, the other Bugnet tools work as usual. " +
-                `Once open, previews need a sandbox started from ${quoteHint}`,
+            "preview: Bugnet has not opened web previews yet, so a retry now or later gets the " +
+                "same answer. The other Bugnet tools work as usual",
         );
     }
     const reason = errorReason(err);

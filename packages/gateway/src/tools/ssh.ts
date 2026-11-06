@@ -1,17 +1,8 @@
 import { timestampDate } from "@bufbuild/protobuf/wkt";
-import type { CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { GatewayError, fromRouter } from "../router.ts";
 import { KeyError, parsePublicKey } from "../sshkey.ts";
-import {
-    failure,
-    handlePattern,
-    handleTag,
-    ok,
-    sandboxFailure,
-    type Deps,
-    type Register,
-} from "./common.ts";
+import { handlePattern, handleTag, ok, sandboxFailure, type Register } from "./common.ts";
 
 const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
 
@@ -30,7 +21,9 @@ const fingerprintInput = z
 
 export const defaultKnownHostsFile = "~/.ssh/bugnet_known_hosts";
 
-const notOpenYet = "SSH is not open yet, bugnet_exec and the file tools work as usual";
+const notOpenYet =
+    "Bugnet has not opened SSH yet, so a retry now or later gets the same answer. " +
+    "bugnet_exec and the file tools work as usual";
 const notOnSandbox =
     "SSH is not open on this sandbox yet, bugnet_exec and the file tools work as usual";
 
@@ -50,24 +43,6 @@ function sshError(err: unknown, what: string): GatewayError {
         );
     }
     return e;
-}
-
-// A bare NotFound on a sandbox that exists can only mean the fingerprint is unknown
-async function removeFailure(deps: Deps, handle: string, err: unknown): Promise<CallToolResult> {
-    const what = "ssh remove";
-    const e = sshError(err, what);
-    if (e.kind === "not_found" && e.reason === null) {
-        try {
-            await deps.router.getPlacement({ handle });
-        } catch {
-            return failure(e, what);
-        }
-        return failure(
-            new GatewayError("not_found", `${what}: this sandbox has no key with that fingerprint`),
-            what,
-        );
-    }
-    return sandboxFailure(deps, handle, e, what);
 }
 
 function knownHostsFileOf(command: string, given: string | undefined): string {
@@ -197,7 +172,9 @@ export const registerSshTools: Register = (server, deps) => {
                     { fingerprint: args.fingerprint, removed: true },
                 );
             } catch (e) {
-                return removeFailure(deps, args.handle, e);
+                const what = "ssh remove";
+                const missing = "no key with that fingerprint";
+                return sandboxFailure(deps, args.handle, sshError(e, what), what, missing);
             }
         },
     );

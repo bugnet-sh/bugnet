@@ -425,11 +425,15 @@ describe.each(tools)("$tool refusals", ({ tool, method, what, args }) => {
         });
     }
 
-    it("says the feature is not open yet when the router lacks it", async () => {
+    it("says the feature is not open yet when the router lacks it, and that a retry cannot help", async () => {
         const { client } = await connect({});
         const r = await callTool(client, tool, args);
         expect(r.isError).toBe(true);
-        expect(r.text).toBe(`${what}: not open yet, the other Bugnet tools work as usual.`);
+        expect(r.text).toBe(
+            `${what}: Bugnet has not opened secrets yet, so a retry now or later gets the same ` +
+                "answer. Work that needs a secret goes without it here, and a value never goes in " +
+                "a command, env or file.",
+        );
     });
 
     it("says a sandbox needs the secrets need on FEATURE_UNAVAILABLE", async () => {
