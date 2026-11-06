@@ -25,7 +25,12 @@ import {
 import { silentLog } from "../log.ts";
 import type { RemoteTools } from "../remote.ts";
 import type { SourceDeps } from "./sources.ts";
-import { secretFromEnv, secretFromEnvName, type SecretToolDeps } from "./tool.ts";
+import {
+    secretFromEnv,
+    secretFromEnvName,
+    secretFromEnvTool,
+    type SecretToolDeps,
+} from "./tool.ts";
 
 const value = "hf_TopSecretValue_0123456789abcdef";
 const accept = (): ElicitResult => ({ action: "accept", content: {} });
@@ -141,6 +146,14 @@ function neverLeaks(r: Rig, ...also: string[]) {
     }
 }
 
+describe("bugnet_secret_from_env's description", () => {
+    it("says the egress proxy decrypts all traffic to the secret's hosts", () => {
+        expect(secretFromEnvTool.description).toContain(
+            "The proxy decrypts all traffic to those hosts, bodies included.",
+        );
+    });
+});
+
 describe.each(["legacy", "modern"] as const)("bugnet_secret_from_env, %s client", (era) => {
     it("asks the user, then stores the sealed value for the canonical hosts", async () => {
         const r = await rig({ era, elicit: accept }, startRouter);
@@ -150,7 +163,7 @@ describe.each(["legacy", "modern"] as const)("bugnet_secret_from_env, %s client"
         const message =
             "HF_TOKEN is stored for huggingface.co, state ACTIVE. In the sandbox $HF_TOKEN holds " +
             "a placeholder that Bugnet's egress proxy swaps for the value only on HTTPS requests " +
-            "to those hosts.";
+            "to those hosts. The proxy decrypts all traffic to them, bodies included.";
         expect(res.structured).toEqual({
             message,
             name: "HF_TOKEN",

@@ -133,7 +133,8 @@ export const secretFromEnvTool: Tool = {
         "it from an environment variable, a .env file in the working or home folder, or a macOS " +
         "keychain item, asks the user to confirm the name, source and hosts, and seals it for " +
         "Bugnet's egress proxy. In the sandbox the variable holds a placeholder that the proxy " +
-        "swaps for the value only on HTTPS requests to those hosts.",
+        "swaps for the value only on HTTPS requests to those hosts. The proxy decrypts all " +
+        "traffic to those hosts, bodies included.",
     inputSchema: jsonSchemaOf(argsSchema),
     annotations: {
         readOnlyHint: false,
@@ -447,7 +448,8 @@ export async function secretFromEnv(
                 ? failedText(spec.name, s.failureReason)
                 : `${spec.name} is stored for ${spec.hosts.join(", ")}, state ${s.state}. In ` +
                   `the sandbox $${spec.name} holds a placeholder that Bugnet's egress proxy ` +
-                  "swaps for the value only on HTTPS requests to those hosts";
+                  "swaps for the value only on HTTPS requests to those hosts. The proxy " +
+                  "decrypts all traffic to them, bodies included";
         return {
             content: [{ type: "text", text: `${text}.` }],
             structuredContent: {
