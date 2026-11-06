@@ -4,6 +4,7 @@
 listen_addr = "127.0.0.1:8787"          # host:port the MCP endpoint /mcp listens on
 public_url = "http://127.0.0.1:8787"    # base URL clients reach, used for links and Host checks
 allowed_hosts = []                      # Host header values to accept, public_url's host when empty
+allowed_origins = ["https://claude.ai"] # Origins of hosted MCP clients /mcp accepts beside its own, https only
 
 [router]
 url = "http://127.0.0.1:8080"           # Router API base URL, Connect over h2c

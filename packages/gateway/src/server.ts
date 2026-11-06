@@ -72,11 +72,11 @@ export function buildMcpServer(deps: Deps, extra: Register[] = []): McpServer {
 }
 
 // Previews are same-site with the gateway until the PSL entry ships, so same-site counts as foreign
-export function foreignRequest(req: IncomingMessage, publicOrigin: string): boolean {
-    const origin = req.headers.origin;
-    if (origin !== undefined && origin !== publicOrigin) return true;
+export function foreignRequest(req: IncomingMessage, origins: ReadonlySet<string>): boolean {
     const site = req.headers["sec-fetch-site"];
-    return site === "same-site" || site === "cross-site";
+    if (site === "same-site" || site === "cross-site") return true;
+    const origin = req.headers.origin;
+    return origin !== undefined && !origins.has(origin.replace(/\/$/, ""));
 }
 
 export function startHttp(deps: Deps, extra: Register[] = []): Promise<Server> {
@@ -86,7 +86,11 @@ export function startHttp(deps: Deps, extra: Register[] = []): Promise<Server> {
     });
     const mcp = toNodeHandler(handler);
     const validHost = hostHeaderValidation(allowedHosts(deps.config));
-    const publicOrigin = new URL(deps.config.public_url).origin;
+    // Hosted clients such as claude.ai send their own Origin, and the gateway reads no cookie
+    const origins = new Set([
+        new URL(deps.config.public_url).origin,
+        ...deps.config.allowed_origins.map((o) => o.replace(/\/$/, "")),
+    ]);
     // A preview can fill the bugnet.sh cookie jar, which must never stop the gateway answering
     const http = createServer({ maxHeaderSize: 64 * 1024 }, (req, res: ServerResponse) => {
         res.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
@@ -101,7 +105,7 @@ export function startHttp(deps: Deps, extra: Register[] = []): Promise<Server> {
             return;
         }
         if (!validHost(req, res)) return;
-        if (foreignRequest(req, publicOrigin)) {
+        if (foreignRequest(req, origins)) {
             res.writeHead(403, { "content-type": "text/plain" }).end("forbidden origin\n");
             return;
         }

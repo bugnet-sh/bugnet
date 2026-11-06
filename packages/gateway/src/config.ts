@@ -23,6 +23,10 @@ const settingsSchema = z
         listen_addr: z.string().default("127.0.0.1:8787"),
         public_url: z.url().default("http://127.0.0.1:8787"),
         allowed_hosts: z.array(z.string()).default([]),
+        allowed_origins: z
+            .array(z.string().regex(/^https:\/\/[a-z0-9.-]+(:\d{1,5})?\/?$/, "an https origin"))
+            .max(20)
+            .default(["https://claude.ai"]),
         router: z
             .object({
                 url: z.url().default("http://127.0.0.1:8080"),
@@ -318,6 +322,14 @@ export function checkSettings(s: Settings): void {
     }
     checkFront(s);
     checkTelemetry(s.telemetry);
+    // A preview shares the links domain, so its pages must never count as a hosted client
+    const domain = s.router.links_domain;
+    for (const o of s.allowed_origins) {
+        const host = new URL(o).hostname;
+        if (host === domain || host.endsWith(`.${domain}`)) {
+            throw new ConfigError(`allowed_origins: ${o} is under router.links_domain`);
+        }
+    }
     if (s.payments.mode === "http" && !s.payments.url) {
         throw new ConfigError("payments.mode http needs payments.url");
     }
