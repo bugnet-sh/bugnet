@@ -13,7 +13,10 @@ const limits = {
     normal: { perMinute: 6, burst: 2 },
     shared: { perMinute: 60, burst: 5 },
     sharedRanges: ["160.79.104.0/21", "2001:db8:aa::/48"],
+    v6BlockMultiple: 3,
 };
+
+const tenAddress = (i: number) => `10.${(i >> 16) & 255}.${(i >> 8) & 255}.${i & 255}`;
 
 function drain(l: AddressLimiter, address: string, now: number): number {
     let taken = 0;
@@ -70,14 +73,43 @@ describe("AddressLimiter", () => {
         expect(l.tracked).toBe(0);
     });
 
-    it("forgets the least recently seen address past its limit", () => {
+    it("bounds a whole IPv6 /48 however many /64s it uses", () => {
+        const l = new AddressLimiter(limits);
+        let taken = 0;
+        for (let i = 0; i < 1000; i++) taken += drain(l, `2001:db8:1234:${i.toString(16)}::1`, 0);
+        expect(taken).toBe(limits.v6BlockMultiple * limits.normal.burst);
+        expect(drain(l, "2001:db8:1235::1", 0)).toBe(limits.normal.burst);
+    });
+
+    it("refills a /48 at its multiple of the normal rate", () => {
+        const l = new AddressLimiter(limits);
+        for (let i = 0; i < 100; i++) drain(l, `2001:db8:1234:${i.toString(16)}::1`, 0);
+        expect(drain(l, "2001:db8:1234:ffff::1", 3_000)).toBe(0);
+        expect(drain(l, "2001:db8:1234:ffff::1", 4_000)).toBe(1);
+    });
+
+    it("keeps a drained bucket however many addresses pass through", () => {
         const l = new AddressLimiter(limits);
         drain(l, "198.51.100.1", 0);
-        for (let i = 0; i < maxTrackedAddresses; i++) {
-            l.take(`10.${(i >> 16) & 255}.${(i >> 8) & 255}.${i & 255}`, 0);
-        }
+        for (let i = 0; i < maxTrackedAddresses; i++) l.take(tenAddress(i), 1);
+        expect(l.tracked).toBeLessThanOrEqual(maxTrackedAddresses + 1);
+        expect(l.take("198.51.100.1", 2)).not.toBeNull();
+    });
+
+    it("sends new addresses to one overflow bucket while no bucket has refilled", () => {
+        const l = new AddressLimiter(limits);
+        for (let i = 0; i < maxTrackedAddresses; i++) l.take(tenAddress(i), 0);
+        expect(drain(l, "198.51.100.1", 1)).toBe(limits.normal.burst);
+        expect(l.take("198.51.100.2", 1)).not.toBeNull();
+        expect(l.take("2001:db8:77::1", 1)).not.toBeNull();
+    });
+
+    it("forgets the least recently seen address once it has refilled", () => {
+        const l = new AddressLimiter(limits);
+        for (let i = 0; i < maxTrackedAddresses; i++) l.take(tenAddress(i), 0);
+        expect(drain(l, "198.51.100.1", 20_000)).toBe(limits.normal.burst);
+        expect(drain(l, "198.51.100.2", 20_000)).toBe(limits.normal.burst);
         expect(l.tracked).toBe(maxTrackedAddresses);
-        expect(l.take("198.51.100.1", 0)).toBeNull();
     });
 });
 

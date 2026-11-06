@@ -26,6 +26,7 @@ quote_burst = 10                        # quotes and assessments one address may
 shared_ranges = ["160.79.104.0/21"]     # CIDR ranges many users share, claude.ai's by default
 shared_quotes_per_minute = 120          # the per-minute rate for each address in shared_ranges
 shared_quote_burst = 40                 # the burst for each address in shared_ranges
+quote_v6_block_multiple = 4             # an IPv6 /48 gets this multiple of one address's rate and burst, shared by all its /64s
 
 [tools]
 require_user_approval = true            # paid tools ask the client for a person's approval, off only for unattended test gateways

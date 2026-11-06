@@ -50,6 +50,7 @@ const settingsSchema = z
                 shared_ranges: z.array(cidr).max(100).default(["160.79.104.0/21"]),
                 shared_quotes_per_minute: z.int().min(1).max(1_000_000).default(120),
                 shared_quote_burst: z.int().min(1).max(1_000_000).default(40),
+                quote_v6_block_multiple: z.int().min(1).max(65536).default(4),
             })
             .strict()
             .prefault({}),
