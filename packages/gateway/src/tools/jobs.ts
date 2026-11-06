@@ -37,6 +37,8 @@ const secretShapes = [
     /^AKIA[0-9A-Z]{16}$/,
     /^glpat-[A-Za-z0-9_-]{20,}$/,
     /^r8_[A-Za-z0-9]{30,}$/,
+    // A session page key, which opens that sandbox's logs to anyone holding it
+    /^bnk_[A-Za-z0-9_-]{22,}$/,
 ];
 
 export function secretLooking(env: Record<string, string>): string | null {
