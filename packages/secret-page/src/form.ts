@@ -14,7 +14,6 @@ import {
     presetFor,
     presets,
     valueBytes,
-    type Preset,
     type SecretSpec,
 } from "@bugnet/seal";
 
@@ -42,8 +41,6 @@ export const maxHeaderNames = 8;
 export const largeValueBytes = 8 * 1024;
 
 export const knownNames: readonly string[] = presets.flatMap((p) => p.names);
-
-const github = presets.find((p) => p.service === "GitHub") as Preset;
 
 export interface Prefill {
     name: string;
@@ -139,9 +136,12 @@ export function hostViews(hosts: readonly string[]): HostView[] {
     }));
 }
 
-// Data-plane 10.7, a GitHub token is fetch only unless the user lets the sandbox use it
-export function isGitHub(name: string, hosts: readonly string[]): boolean {
-    return github.names.includes(name) || hosts.some((h) => github.hosts.includes(h));
+// Data-plane 10.7, FetchSource uses only a secret whose hosts include api.github.com
+export const fetchHost = "api.github.com";
+
+// Such a secret is fetch only unless the user lets the sandbox use it too
+export function canFetchSource(hosts: readonly string[]): boolean {
+    return hosts.includes(fetchHost);
 }
 
 function sortedUnique(values: string[]): string[] {
@@ -248,7 +248,7 @@ export function check(draft: Draft): Checked {
             name,
             hosts: hosts.hosts,
             headerNames: headers.names,
-            fetchOnly: isGitHub(name, hosts.hosts) && !draft.sandboxUse,
+            fetchOnly: canFetchSource(hosts.hosts) && !draft.sandboxUse,
         },
     };
 }

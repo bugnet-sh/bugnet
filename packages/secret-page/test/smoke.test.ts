@@ -392,6 +392,20 @@ describe.runIf(launcher !== null)(`in a headless browser (${launcher?.label ?? "
         expect(await opened(put)).toMatchObject({ fetchOnly: true, value: "github_pat_x" });
     });
 
+    it("treats a GitHub token without api.github.com like any other secret", async () => {
+        const t = token();
+        links[t] = link({ suggested: { name: "GH_TOKEN", hosts: ["github.com"] } });
+        const { page } = await open(`/l/${t}`);
+        expect(await page.inputValue("#hosts")).toBe("github.com");
+        expect(await page.isHidden("#sandbox-use-field")).toBe(true);
+        await page.locator("#value").fill("github_pat_y");
+        await page.locator("#submit").click();
+        await visible(page, "#done");
+        expect(await page.textContent("#done-text")).toMatch(/^It is active\./);
+        const put = route.puts.find((p) => p.token === t);
+        expect(put?.body.spec).toMatchObject({ hosts: ["github.com"], fetchOnly: false });
+    });
+
     it("checks fields before sending and names the problem beside each", async () => {
         const t = token();
         links[t] = link({ suggested: {} });

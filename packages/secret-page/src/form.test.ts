@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+    canFetchSource,
     check,
     hostViews,
-    isGitHub,
     knownNames,
     prefill,
     readHosts,
@@ -220,10 +220,22 @@ describe("check", () => {
         });
     });
 
-    it("counts any secret bound to a GitHub host as a GitHub token", () => {
-        expect(isGitHub("MY_TOKEN", ["github.com"])).toBe(true);
-        expect(isGitHub("GITHUB_TOKEN", [])).toBe(true);
-        expect(isGitHub("HF_TOKEN", ["huggingface.co"])).toBe(false);
+    // Data-plane 10.7, FetchSource needs an active secret whose hosts include api.github.com
+    it("offers fetch only when the hosts include api.github.com", () => {
+        expect(canFetchSource(["api.github.com", "github.com"])).toBe(true);
+        expect(canFetchSource(["github.com"])).toBe(false);
+        expect(canFetchSource(["ghe.corp.example"])).toBe(false);
+        expect(canFetchSource(["huggingface.co"])).toBe(false);
+        for (const hosts of ["github.com", "ghe.corp.example", "uploads.github.com"]) {
+            expect(check(draft({ name: "GH_TOKEN", hosts })), hosts).toMatchObject({
+                ok: true,
+                spec: { fetchOnly: false },
+            });
+        }
+        expect(check(draft({ name: "MY_TOKEN", hosts: "api.github.com" }))).toMatchObject({
+            ok: true,
+            spec: { fetchOnly: true },
+        });
     });
 });
 

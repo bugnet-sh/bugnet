@@ -24,9 +24,9 @@ import {
     type PageProblem,
 } from "./errors.ts";
 import {
+    canFetchSource,
     check,
     hostViews,
-    isGitHub,
     knownNames,
     prefill,
     readHosts,
@@ -182,9 +182,9 @@ export async function startPage(env: PageEnv): Promise<void> {
             }),
         );
         byId("host-list").hidden = read.hosts.length === 0;
-        const github = isGitHub(name.value.trim(), read.hosts);
-        sandboxUseField.hidden = !github;
-        if (!github) sandboxUse.checked = false;
+        const fetchable = canFetchSource(read.hosts);
+        sandboxUseField.hidden = !fetchable;
+        if (!fetchable) sandboxUse.checked = false;
     }
 
     function refreshValue(): void {
