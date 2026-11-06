@@ -38,7 +38,8 @@ function openInGo(cases: unknown[]) {
         cwd: dir,
         input,
         encoding: "utf8",
-        env: { ...process.env, GOFLAGS: "-mod=readonly" },
+        // A go.work above the checkout, as in the Bugnet folder, would claim this module otherwise
+        env: { ...process.env, GOFLAGS: "-mod=readonly", GOWORK: "off" },
         timeout: 110_000,
     });
 }
