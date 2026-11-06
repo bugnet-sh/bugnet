@@ -1,6 +1,13 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { describe, expect, it } from "vitest";
-import { ConfigError, checkSettings, parseDuration, parseSettings, readSecrets } from "./config.ts";
+import {
+    ConfigError,
+    checkSettings,
+    isLoopback,
+    parseDuration,
+    parseSettings,
+    readSecrets,
+} from "./config.ts";
 import { fromRouter, safeMessage } from "./router.ts";
 import { cleanText, looksLikeText, tail } from "./sanitize.ts";
 import { secretLooking } from "./tools/jobs.ts";
@@ -43,6 +50,19 @@ describe("config", () => {
         expect(() => checkSettings(s)).toThrow(ConfigError);
         const ok = parseSettings('[payments]\nmode = "dev"');
         expect(() => checkSettings(ok)).not.toThrow();
+    });
+
+    it("counts only real loopback literals as loopback", () => {
+        for (const url of ["http://localhost:8787", "http://[::1]:8787", "http://127.0.0.2:8787"]) {
+            expect(isLoopback(url), url).toBe(true);
+        }
+        for (const url of ["http://127.attacker.example", "http://127.0.0.1.nip.io:8787"]) {
+            expect(isLoopback(url), url).toBe(false);
+        }
+        const s = parseSettings(
+            'public_url = "http://127.0.0.1.nip.io:8787"\n[payments]\nmode = "dev"',
+        );
+        expect(() => checkSettings(s)).toThrow(ConfigError);
     });
 
     it("needs the secrets each mode uses", () => {

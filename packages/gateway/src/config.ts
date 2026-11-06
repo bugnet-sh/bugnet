@@ -6,6 +6,7 @@
  * config/example.toml lists every setting with its default.
  */
 import { readFileSync } from "node:fs";
+import { isIP } from "node:net";
 import { parse } from "smol-toml";
 import { z } from "zod";
 import { isLoopbackRange, parseCidr } from "./ratelimit.ts";
@@ -43,7 +44,8 @@ const settingsSchema = z
             .prefault({}),
         limits: z
             .object({
-                max_wait_seconds: z.int().min(1).max(45).default(45),
+                tool_budget: duration.prefault("44s"),
+                max_wait_seconds: z.int().min(1).max(45).default(38),
                 default_wait_seconds: z.int().min(0).max(45).default(25),
                 output_tail_bytes: z.int().min(256).max(65536).default(8192),
                 read_file_max_bytes: z.int().min(1).max(262144).default(262144),
@@ -201,9 +203,11 @@ export function readSecrets(env: NodeJS.ProcessEnv, settings: Settings): Secrets
     };
 }
 
-function isLoopback(url: string): boolean {
-    const host = new URL(url).hostname;
-    return host === "localhost" || host === "::1" || host === "[::1]" || /^127\./.test(host);
+// Only a real 127.0.0.0/8 literal counts, a name such as 127.0.0.1.nip.io resolves anywhere
+export function isLoopback(url: string): boolean {
+    const host = new URL(url).hostname.replace(/^\[|\]$/g, "");
+    if (host === "localhost" || host === "::1") return true;
+    return isIP(host) === 4 && host.startsWith("127.");
 }
 
 export function hostPort(addr: string, setting: string): { host: string; port: number } {
@@ -313,6 +317,13 @@ export function checkSettings(s: Settings): void {
     }
     if (s.router.timeout < 1000 || s.router.timeout >= 45_000) {
         throw new ConfigError("router.timeout must be 1s or more and under 45s, the tool limit");
+    }
+    if (s.limits.tool_budget < 5000 || s.limits.tool_budget > 45_000) {
+        throw new ConfigError("limits.tool_budget must be 5s to 45s, the tool limit");
+    }
+    // A wait plus the 5 s stall margin and a second of slack must end inside the tool budget
+    if (s.limits.max_wait_seconds * 1000 + 6000 > s.limits.tool_budget) {
+        throw new ConfigError("limits.max_wait_seconds plus 6 s is over limits.tool_budget");
     }
     if (s.limits.default_wait_seconds > s.limits.max_wait_seconds) {
         throw new ConfigError("limits.default_wait_seconds is over limits.max_wait_seconds");
