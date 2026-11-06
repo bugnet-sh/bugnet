@@ -10,6 +10,6 @@ describe("the gateway's systemd unit", () => {
         expect(unit).toMatch(/^User=bugnet-gateway$/m);
         expect(unit).toMatch(/^ProtectSystem=strict$/m);
         expect(unit).not.toMatch(/^MemoryDenyWriteExecute=/m);
-        expect(read("README.md")).toContain('GATEWAY_USERS="bugnet-gateway"');
+        expect(read("CONTRIBUTING.md")).toContain('GATEWAY_USERS="bugnet-gateway"');
     });
 });

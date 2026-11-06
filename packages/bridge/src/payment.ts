@@ -1,4 +1,4 @@
-// The x402 signer port the Payments team implements, which the README's bridge section describes
+// The x402 signer port the Payments team implements, which CONTRIBUTING's bridge section describes
 import type { CallToolResult } from "@modelcontextprotocol/server";
 
 export interface X402PaymentRequired {

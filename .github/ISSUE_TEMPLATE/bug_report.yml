@@ -1,0 +1,85 @@
+name: Bug report
+description: Something in Bugnet does not work the way the README says
+labels: ["bug"]
+body:
+    - type: markdown
+      attributes:
+          value: |
+              Thanks for reporting. A security problem goes to [SECURITY.md](https://github.com/OWNER/REPO/blob/main/SECURITY.md), never here.
+
+              Never paste a sandbox handle (it starts with `sbx_`), a token, a wallet key or a seed phrase. A handle is the full key to a sandbox.
+    - type: textarea
+      id: what
+      attributes:
+          label: What happened
+          description: What you or your agent did, and what Bugnet answered.
+      validations:
+          required: true
+    - type: textarea
+      id: expected
+      attributes:
+          label: What you expected
+      validations:
+          required: true
+    - type: textarea
+      id: steps
+      attributes:
+          label: Steps to reproduce
+          description: The prompt you gave your agent, or the tool calls it made, as short as you can.
+          placeholder: |
+              1. Asked the agent to try https://github.com/someone/some-tool
+              2. It called bugnet_assess, then bugnet_start
+              3. bugnet_start answered ...
+      validations:
+          required: true
+    - type: dropdown
+      id: client
+      attributes:
+          label: Client
+          options:
+              - Claude Code, with the plugin
+              - Claude Code, with claude mcp add
+              - claude.ai
+              - Cursor
+              - VS Code
+              - Codex CLI
+              - Devin Desktop (formerly Windsurf)
+              - Another MCP client
+      validations:
+          required: true
+    - type: dropdown
+      id: connection
+      attributes:
+          label: How it connects
+          options:
+              - Straight to https://mcp.bugnet.sh/mcp
+              - Through the bridge, npx @bugnet/mcp
+              - A gateway I run myself
+      validations:
+          required: true
+    - type: input
+      id: versions
+      attributes:
+          label: Versions
+          description: Your client's version, and the bridge's from `npx @bugnet/mcp --version` if you use it.
+          placeholder: Claude Code 2.1.294, bridge 0.1.0
+    - type: input
+      id: os
+      attributes:
+          label: Operating system
+          placeholder: macOS 26, Ubuntu 24.04, Windows 11
+    - type: textarea
+      id: logs
+      attributes:
+          label: Tool results or logs
+          description: Copy the error text. Remove handles, tokens and anything private first.
+          render: text
+    - type: checkboxes
+      id: checks
+      attributes:
+          label: Before you send
+          options:
+              - label: I removed sandbox handles, tokens, wallet keys and anything else private.
+                required: true
+              - label: I searched the open issues for the same problem.
+                required: true
