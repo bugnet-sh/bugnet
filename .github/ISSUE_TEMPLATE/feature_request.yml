@@ -1,0 +1,58 @@
+name: Feature request
+description: An idea that would make Bugnet more useful
+labels: ["enhancement"]
+body:
+    - type: markdown
+      attributes:
+          value: |
+              Thanks for the idea. Tell us the problem first, then how you would solve it.
+    - type: textarea
+      id: problem
+      attributes:
+          label: The problem
+          description: What were you or your agent trying to do, and what got in the way?
+          placeholder: I wanted my agent to run a model that needs 40 GB of GPU memory, and ...
+      validations:
+          required: true
+    - type: textarea
+      id: proposal
+      attributes:
+          label: What you would like
+          description: How Bugnet could solve it. A new tool, a setting, a client, anything.
+      validations:
+          required: true
+    - type: textarea
+      id: alternatives
+      attributes:
+          label: What you tried instead
+          description: Other ways you solved it, or tools that do something like it.
+    - type: dropdown
+      id: area
+      attributes:
+          label: Area
+          options:
+              - Installing in a client
+              - The sandbox and its tools
+              - Paying
+              - Secrets
+              - When the agent offers Bugnet
+              - The bridge
+              - The Claude Code plugin
+              - The docs
+              - Something else
+      validations:
+          required: true
+    - type: dropdown
+      id: client
+      attributes:
+          label: Client
+          description: The client you use, if it matters for this idea.
+          options:
+              - Any client
+              - Claude Code
+              - claude.ai
+              - Cursor
+              - VS Code
+              - Codex CLI
+              - Windsurf
+              - Another MCP client
