@@ -134,9 +134,10 @@ jobs:
             - name: Download the Go modules for the seal interop test
               run: go -C packages/seal/interop mod download
 
+            # One file at a time on any runner, since parallel files inflate the CPU time budgets
             - name: Test
               run: >-
-                  pnpm test --reporter=default --reporter=json
+                  pnpm test --no-file-parallelism --reporter=default --reporter=json
                   --outputFile.json="$RUNNER_TEMP/vitest.json"
 
             # Skipped suites pass silently, so this fails when the Go or browser tests did not run
