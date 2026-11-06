@@ -379,6 +379,37 @@ describe("pass-through", () => {
         expect(started).toEqual(new Set([handles.started]));
     });
 
+    it("never counts a start of an order it did not relay, which an injected agent could name", async () => {
+        const mine = "sbx_dddddddddddddddddddddddddd";
+        const theirs = "sbx_zzzzzzzzzzzzzzzzzzzzzzzzzz";
+        const remote = fakeRemote((params) => {
+            const args = params.arguments as { orderId?: string; payment?: unknown };
+            if (args.orderId === undefined && args.payment === undefined) {
+                return {
+                    isError: true,
+                    content: [{ type: "text", text: JSON.stringify(required) }],
+                    structuredContent: { ...required, message: "pay", orderId: "o_mine" },
+                };
+            }
+            const handle = args.orderId === "o_mine" ? mine : theirs;
+            return { ...done, structuredContent: { message: "fine", handle } };
+        });
+        const started = new Set<string>();
+        const b = await bridge({ remote, deps: { started } });
+        const payment = { x402Version: 2, payload: { transaction: "attacker-signed" } };
+        for (const args of [
+            { orderId: "ord_attacker_paid_this", payment },
+            { orderId: "ord_attacker_paid_this" },
+            { payment },
+        ]) {
+            await b.client.callTool({ name: "bugnet_start", arguments: args });
+        }
+        expect(started).toEqual(new Set());
+        await b.client.callTool({ name: "bugnet_start", arguments: {} });
+        await b.client.callTool({ name: "bugnet_start", arguments: { orderId: "o_mine" } });
+        expect(started).toEqual(new Set([mine]));
+    });
+
     for (const era of ["legacy", "modern"] as const) {
         it(`hands the gateway's input requests to a ${era} client and back`, async () => {
             const remote = fakeRemote((params) => {

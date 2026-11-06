@@ -59,11 +59,25 @@ function toolError(text: string): CallToolResult {
 const handlePattern = /^sbx_[a-z2-7]{26}$/;
 
 // Only a start's result names a sandbox the user paid for, a status call echoes any handle given
-function noteStarted(name: string, result: RemoteResult, started: Set<string>): void {
-    if (name !== "bugnet_start" || isInputRequiredResult(result)) return;
+function noteStarted(
+    req: CallToolRequest,
+    result: RemoteResult,
+    started: Set<string>,
+    relayed: Set<string>,
+): void {
+    if (req.params.name !== "bugnet_start" || isInputRequiredResult(result)) return;
     const r = result as CallToolResult;
+    const due = paymentRequired(r);
+    const orderId = (r.structuredContent as { orderId?: unknown } | undefined)?.orderId;
+    if (due && typeof orderId === "string") relayed.add(orderId);
+    // The handle follows the order, so an order or payment the agent named may be anyone's sandbox
+    const args = (req.params.arguments ?? {}) as { orderId?: unknown; payment?: unknown };
+    const own =
+        typeof args.orderId === "string"
+            ? relayed.has(args.orderId)
+            : args.orderId === undefined && args.payment === undefined;
     const handle = (r.structuredContent as { handle?: unknown } | undefined)?.handle;
-    if (!r.isError && typeof handle === "string" && handlePattern.test(handle)) {
+    if (own && !r.isError && typeof handle === "string" && handlePattern.test(handle)) {
         started.add(handle);
     }
 }
@@ -116,6 +130,8 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             CLIENT_CAPABILITIES_META_KEY
         ] as ClientCapabilities | undefined) ?? server.getClientCapabilities();
     const secretDeps = { ...deps, clientCapabilities };
+    // Orders whose payment step this bridge passed on, the only ones a start may name as its own
+    const relayed = new Set<string>();
 
     let relist: NodeJS.Timeout | undefined;
     // After a listing without the gateway's tools, keep trying and tell the client once it works
@@ -202,7 +218,7 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             deps.log.warn("gateway call failed", { tool: req.params.name, err: errText(e) });
             return toolError("Bugnet's gateway did not answer, a retry may work.");
         }
-        noteStarted(req.params.name, result, deps.started);
+        noteStarted(req, result, deps.started, relayed);
         return withoutEnvelope(result) as CallToolResult | InputRequiredResult;
     };
 
