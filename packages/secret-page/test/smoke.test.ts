@@ -260,7 +260,7 @@ describe.runIf(launcher !== null)(`in a headless browser (${launcher?.label ?? "
         expect(await o.page.evaluate(() => document.cookie)).toBe("");
     });
 
-    // A password field that vanishes after a fetch reads as a login, and the browser offers to save it
+    // A password field that vanishes after a fetch reads as a login the browser offers to save
     it("gives a password manager no password field to save the value from", async () => {
         const t = token();
         links[t] = link();

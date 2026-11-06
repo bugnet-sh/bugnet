@@ -1,4 +1,4 @@
-// Codes a stored secret can fail with, data-plane 6.10 and 10.12.5.4, worded as the gateway words them
+// Codes a stored secret fails with (data-plane 6.10 and 10.12.5.4), worded like the gateway's
 export const failureReasons: Readonly<Record<string, string>> = {
     PORT_443_TAKEN: "port 443 in the sandbox is taken, and secrets need it",
     SOURCE_UNKNOWN: "this sandbox cannot use secrets, and a new sandbox can",

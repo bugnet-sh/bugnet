@@ -61,7 +61,7 @@ describe("chooseKey", () => {
         expect(chooseKey([swapped, listed], developmentPinned)).toBe(listed);
     });
 
-    it("takes only a binding of 52 upper-case base32 characters, as data-plane 4.4 makes it", () => {
+    it("takes only a binding of 52 upper-case base32 characters, as data-plane 4.4 says", () => {
         for (const bad of [
             binding.toLowerCase(),
             binding.slice(0, -1),

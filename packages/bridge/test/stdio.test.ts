@@ -101,7 +101,7 @@ describe.each(["sources", "bundle", ...(process.env.BUGNET_BRIDGE_BIN ? ["given"
                             arguments: { workload: "script" },
                         });
                         const quoteId = (q.structuredContent as { quoteId: string }).quoteId;
-                        // A client that cannot ask the user adds secrets only to sandboxes it started
+                        // Without a prompt the bridge adds secrets only to sandboxes it started
                         await client.callTool({
                             name: "bugnet_start",
                             arguments: { quoteId, packageId: "small-10m", confirmPriceUsd: "0.05" },
@@ -120,8 +120,8 @@ describe.each(["sources", "bundle", ...(process.env.BUGNET_BRIDGE_BIN ? ["given"
                             {
                                 type: "text",
                                 text:
-                                    "secret: no listed sealing key is one this build pins (listed " +
-                                    "dev-only-1). A newer Bugnet bridge may be needed.",
+                                    "secret: no listed sealing key is one this build pins " +
+                                    "(listed dev-only-1). A newer Bugnet bridge may be needed.",
                             },
                         ]);
                         expect(route.requests.map((q) => `${q.method} ${q.path}`)).toEqual([

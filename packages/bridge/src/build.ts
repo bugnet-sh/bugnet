@@ -1,9 +1,4 @@
-/**
- * Bundles the bridge into the one file that npm ships as the bugnet-mcp command.
- *
- * The stdio test builds it the same way, so the suite runs the code that ships and not only the
- * TypeScript sources.
- */
+// The stdio test bundles the bridge this same way, so the suite runs the file npm ships
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
