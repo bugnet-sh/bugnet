@@ -63,13 +63,14 @@ Settings come from the TOML file given with `-config`, decoded strictly, so an u
 error naming it. [`config/example.toml`](config/example.toml) lists every key at its default.
 Secrets come only from the environment ([`.env.example`](.env.example)):
 
-| Variable                   | Needed for                                                         |
-| -------------------------- | ------------------------------------------------------------------ |
-| `BUGNET_INTERNAL_TOKEN`    | Always, the router's bearer token                                  |
-| `BUGNET_QUOTE_KEY`         | Always, base64 of 32+ bytes signing quote ids                      |
-| `BUGNET_ORDER_PRIVATE_KEY` | `payments.mode = "dev"` only                                       |
-| `BUGNET_PAYMENTS_TOKEN`    | `payments.mode = "http"` only                                      |
-| `GITHUB_TOKEN`, `HF_TOKEN` | Optional, raise `bugnet_assess`'s API limits and read gated models |
+| Variable                    | Needed for                                                         |
+| --------------------------- | ------------------------------------------------------------------ |
+| `BUGNET_INTERNAL_TOKEN`     | Always, the router's bearer token                                  |
+| `BUGNET_QUOTE_KEY`          | Always, base64 of 32+ bytes signing quote ids                      |
+| `BUGNET_ORDER_PRIVATE_KEY`  | `payments.mode = "dev"` only                                       |
+| `BUGNET_PAYMENTS_TOKEN`     | `payments.mode = "http"` only                                      |
+| `GITHUB_TOKEN`, `HF_TOKEN`  | Optional, raise `bugnet_assess`'s API limits and read gated models |
+| `BUGNET_OTLP_AUTHORIZATION` | Optional, the trace backend's whole `Authorization` header value   |
 
 Give `GITHUB_TOKEN` and `HF_TOKEN` read access to public data only. `bugnet_assess` answers any
 caller for free and reports private repos and models as missing, and a token without private access
@@ -78,11 +79,21 @@ keeps them hidden even if that check is ever missed.
 ## Public front
 
 On the VPS, HAProxy passes `mcp.bugnet.sh`'s raw TLS to `front.tls_addr` (`127.0.0.1:8444`) with
-`send-proxy-v2`. The gateway reads the PROXY v2 header for the client's address, terminates TLS 1.2
-or 1.3 with HTTP/1.1, and serves the same `/mcp` and `/healthz` as the plain listener, which stays
-for local runs. The certificate comes either from `cert_file` and `key_file`, reread on `SIGHUP`, or
-from ACME: with `acme_directory` set, the gateway orders it by TLS-ALPN-01 through HAProxy's SNI
-split, keeps the account key and the certificate in `acme_dir`, and renews 30 days before expiry.
+`send-proxy-v2`. The gateway takes that header only from a peer in `front.proxy_protocol_from`
+(loopback by default) and closes any other connection unread. It reads the header for the client's
+address, terminates TLS 1.2 or 1.3 with HTTP/1.1, and serves the same `/mcp` and `/healthz` as the
+plain listener, which stays for local runs. The certificate comes either from `cert_file` and
+`key_file`, reread on `SIGHUP`, or from ACME: with `acme_directory` set, the gateway orders it by
+TLS-ALPN-01 through HAProxy's SNI split, keeps the account key and the certificate in `acme_dir`,
+and renews 30 days before expiry.
+
+## Traces
+
+With `telemetry.traces = true` (off by default) the gateway exports a span per tool call and per
+router call over OTLP/HTTP, and sends `traceparent` on every router call so the router continues
+the trace. A call about a sandbox joins its order's trace, whose ids every party derives from the
+handle (data-plane 20.2.1). `telemetry.sample_ratio` must equal the router's. Spans name a sandbox
+only by `bugnet.handle_hash`, and no `OTEL_` variable changes anything.
 
 ## The plugin
 

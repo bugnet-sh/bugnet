@@ -77,7 +77,7 @@ export function orderTrace(handle: string, ratio: number): OrderTrace {
     };
 }
 
-// The handle's log form without its h: prefix, the only way a span names a sandbox
+// The handle's log form without its prefix, the only way a span names a sandbox
 export function handleHashAttr(handle: string): string {
     return createHash("sha256").update(handle).digest("hex").slice(0, 12);
 }
