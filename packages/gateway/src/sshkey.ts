@@ -1,10 +1,4 @@
-/**
- * OpenSSH public key lines, checked before a key reaches the router.
- *
- * The router parses the key again with x/crypto/ssh. This check only gives the agent a clear
- * refusal early, and makes sure a private key pasted by mistake goes no further than here. No
- * message ever quotes the input.
- */
+// The router parses keys again, this gives an early refusal and stops a pasted private key here
 import { createHash, createPublicKey } from "node:crypto";
 
 export const keyTypes = [

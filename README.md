@@ -84,6 +84,15 @@ for local runs. The certificate comes either from `cert_file` and `key_file`, re
 from ACME: with `acme_directory` set, the gateway orders it by TLS-ALPN-01 through HAProxy's SNI
 split, keeps the account key and the certificate in `acme_dir`, and renews 30 days before expiry.
 
+## Deployment
+
+[`deploy/bugnet-gateway@.service`](deploy/bugnet-gateway@.service) runs the gateway as data-plane
+15.3 runs the router's services: a templated unit per versioned directory under
+`/opt/bugnet/gateway/<version>`, settings in `/etc/bugnet/gateway.toml`, secrets in
+`/etc/bugnet/gateway.env` (`root:root 0600`) and the ACME state in `/var/lib/bugnet-gateway`. It
+runs as the Unix user `bugnet-gateway` and nothing else, so the deploy check that proves no other
+user reaches Postgres, Valkey or the egress proxy takes `GATEWAY_USERS="bugnet-gateway"`.
+
 ## The plugin
 
 `plugin/` is a Claude Code plugin named `bugnet` whose MCP server is `sandbox`, so tools appear as

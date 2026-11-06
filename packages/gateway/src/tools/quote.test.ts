@@ -9,6 +9,7 @@ import {
     GpuNeed,
     Need,
     SourceKind,
+    UnreadReason,
     WarningCode,
     Workload,
     EstimateResponseSchema,
@@ -177,8 +178,10 @@ describe("bugnet_quote on a router without an estimator", () => {
         );
         const r = await callTool<Quote>(client, "bugnet_quote", { needs: ["ssh"] });
         expect(r.text.split("\n")[0]).toBe(
-            "No package can start with these needs, they are not open yet.",
+            "No package can start with the need ssh, which is not open yet. A quote without it " +
+                "may list packages that start.",
         );
+        expect(r.text).not.toMatch(/quoteId|go-ahead/);
         expect(r.text).toMatch(
             "Unavailable now: gpu-s (not open yet for these needs), gpu-m (not open yet for " +
                 "these needs).",
@@ -202,6 +205,25 @@ describe("bugnet_quote on a router without an estimator", () => {
         expect(r2.text).not.toMatch(/odd text/);
     });
 
+    it("names the needs no package can start with, and offers no start", async () => {
+        const closed = (id: string) =>
+            packageOption(id, 50_000n, {
+                available: false,
+                unavailableReason: "feature_unavailable",
+            });
+        const { client } = await setup(answer({ options: [closed("a"), closed("b")] }));
+        const r = await callTool<Quote>(client, "bugnet_quote", {
+            workload: "serve",
+            needs: ["secrets", "preview", "ssh"],
+        });
+        expect(r.text.split("\n")[0]).toBe(
+            "No package can start with the needs ssh, preview and secrets, which are not open " +
+                "yet. A quote without one of them may list packages that start.",
+        );
+        expect(r.structured.warnings).toEqual([]);
+        expect(r.text).not.toMatch(/go-ahead|quoteId|bridge/);
+    });
+
     it("adds the gateway's GPU and secrets warnings", async () => {
         const { client, deps } = await setup(answer({ options }));
         const r = await callTool<Quote>(client, "bugnet_quote", {
@@ -209,7 +231,7 @@ describe("bugnet_quote on a router without an estimator", () => {
         });
         expect(r.structured.warnings).toEqual([
             "No GPU package is available right now, GPU work cannot start",
-            "Secrets go in with bugnet_secret_link or the bridge, never in arguments",
+            "Secrets go in with bugnet_secret_link once the sandbox runs, never in arguments",
         ]);
         const claims = verifyQuote(deps.config.secrets.quoteKey, r.structured.quoteId, testNow);
         expect(claims.requirements).toEqual({
@@ -475,6 +497,45 @@ describe("bugnet_quote on a router with an estimator", () => {
     });
 });
 
+describe("bugnet_quote and a GitHub repo", () => {
+    const unread = {
+        kind: SourceKind.GITHUB,
+        canonical: "github.com/acme/secret",
+        read: false,
+        unreadReason: UnreadReason.NOT_FOUND,
+    };
+
+    it("warns that a repo it could not read needs the secrets need and a GitHub token", async () => {
+        const { client } = await setup(answer(sized({ source: unread })));
+        const plain = await callTool<Quote>(client, "bugnet_quote", {
+            source: "https://github.com/acme/secret",
+        });
+        expect(plain.structured.warnings).toContain(
+            "The repo could not be read, so it is private or missing. A private one needs a " +
+                'quote with needs ["secrets"] and a GITHUB_TOKEN added with bugnet_secret_link ' +
+                "once the sandbox runs",
+        );
+        const secrets = await callTool<Quote>(client, "bugnet_quote", {
+            source: "https://github.com/acme/secret",
+            needs: ["secrets"],
+        });
+        expect(secrets.structured.warnings).toContain(
+            "The repo could not be read, so it is private or missing. A private one needs a " +
+                "GITHUB_TOKEN added with bugnet_secret_link once the sandbox runs",
+        );
+    });
+
+    it("marks a GitHub repo it cannot place when the estimate has no id", async () => {
+        const { client, deps } = await setup(answer(sized({ estimateId: "" })));
+        const r = await callTool<Quote>(client, "bugnet_quote", {
+            source: "https://github.com/acme/app",
+        });
+        const claims = verifyQuote(deps.config.secrets.quoteKey, r.structured.quoteId, testNow);
+        expect(claims.github).toBe(false);
+        expect(claims.githubUnplaced).toBe(true);
+    });
+});
+
 describe("bugnet_quote errors", () => {
     it("tells the RetryInfo delay of a router rate limit", async () => {
         const { client } = await setup({
@@ -520,7 +581,10 @@ describe("bugnet_quote errors", () => {
         expect(closed.text).toBe("quote: not open yet for these needs.");
         err = routerError(Code.Unimplemented);
         const old = await callTool(client, "bugnet_quote", {});
-        expect(old.text).toBe("quote: not open yet, the other Bugnet tools work as usual.");
+        expect(old.text).toBe(
+            "quote: Bugnet has not opened this yet, so a retry now or later gets the same " +
+                "answer. The other Bugnet tools work as usual.",
+        );
     });
 });
 

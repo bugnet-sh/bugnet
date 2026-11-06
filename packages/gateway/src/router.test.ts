@@ -23,6 +23,10 @@ const table: [string, Code, string][] = [
     ["SECRET_IN_ARGUMENT", Code.InvalidArgument, "invalid"],
     ["IDEMPOTENCY_KEY_RESERVED", Code.InvalidArgument, "invalid"],
     ["QUOTE_INVALID", Code.InvalidArgument, "invalid"],
+    ["PACKAGE_UNKNOWN", Code.InvalidArgument, "invalid"],
+    ["NOT_START_PACKAGE", Code.InvalidArgument, "invalid"],
+    ["HANDLE_UNKNOWN", Code.NotFound, "not_found"],
+    ["JOB_UNKNOWN", Code.NotFound, "not_found"],
     ["not_found", Code.NotFound, "not_found"],
     ["FILE_NOT_FOUND", Code.NotFound, "not_found"],
     ["PREVIEW_UNKNOWN", Code.NotFound, "not_found"],
@@ -46,7 +50,6 @@ const table: [string, Code, string][] = [
     ["HOST_NOT_ALLOWED", Code.FailedPrecondition, "precondition"],
     ["NO_SOURCE", Code.FailedPrecondition, "precondition"],
     ["SECRET_REQUIRED", Code.FailedPrecondition, "precondition"],
-    ["TOOL_MISSING", Code.FailedPrecondition, "precondition"],
     ["OVER_CAP", Code.OutOfRange, "limit"],
     ["RANGE", Code.OutOfRange, "invalid"],
     ["RATE_LIMITED", Code.ResourceExhausted, "rate_limited"],
@@ -159,7 +162,10 @@ describe("fromRouter", () => {
     it("says an unimplemented feature is not open yet", () => {
         const e = fromRouter(new ConnectError("x", Code.Unimplemented), "preview");
         expect(e.kind).toBe("unsupported");
-        expect(e.message).toBe("preview: not open yet, the other Bugnet tools work as usual");
+        expect(e.message).toBe(
+            "preview: Bugnet has not opened this yet, so a retry now or later gets the same " +
+                "answer. The other Bugnet tools work as usual",
+        );
         const f = fromRouter(routerError(Code.FailedPrecondition, "FEATURE_UNAVAILABLE"), "ssh");
         expect(f.message).toMatch(/^ssh: not open on this sandbox yet/);
     });

@@ -1,9 +1,12 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import { timestampDate, type Timestamp } from "@bufbuild/protobuf/wkt";
+import { Code, ConnectError } from "@connectrpc/connect";
 import type { CallToolResult, McpServer, ServerContext } from "@modelcontextprotocol/server";
+import { z } from "zod";
 import type { Config } from "../config.ts";
 import type { Payments } from "../payments/port.ts";
 import { PlacementState } from "../gen/bugnet/router/v1/router_pb.ts";
-import { GatewayError, fromRouter, type RouterClient } from "../router.ts";
+import { GatewayError, errorReason, fromRouter, type RouterClient } from "../router.ts";
 import type { Assessor } from "../assess/assessor.ts";
 import type { Log } from "../log.ts";
 
@@ -19,6 +22,12 @@ export interface Deps {
 export type Register = (server: McpServer, deps: Deps) => void;
 
 export const handlePattern = /^sbx_[a-z2-7]{26}$/;
+
+export const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
+
+export function iso(t: Timestamp | undefined): string | null {
+    return t ? timestampDate(t).toISOString() : null;
+}
 
 // Claude Code refuses tools marked this way in every unattended mode, so test gateways can drop it
 export function approvalMeta(deps: Deps): Record<string, unknown> | undefined {
@@ -36,9 +45,12 @@ export function handleTag(handle: string): string {
     return `h:${handleHash(handle).slice(0, 12)}`;
 }
 
+// Exact to the micro, since bugnet_start and bugnet_extend accept only the exact price back
 export function usd(micros: number | bigint): string {
-    const n = Number(micros) / 1e6;
-    return `$${n.toFixed(n < 1 ? 3 : 2).replace(/0$/, "")}`;
+    const m = typeof micros === "bigint" ? micros : BigInt(Math.round(micros));
+    const abs = m < 0n ? -m : m;
+    const frac = (abs % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+    return `${m < 0n ? "-" : ""}$${abs / 1_000_000n}.${frac.padEnd(2, "0")}`;
 }
 
 // Claude Code shows the model only structuredContent, so the text leads it as message
@@ -54,6 +66,24 @@ export function ok(
     };
 }
 
+// The body sits in a structured field, so the message only sums it up and no byte goes twice
+export function okBody(
+    text: string,
+    summary: string,
+    structuredContent: Record<string, unknown> & { message?: never },
+): CallToolResult {
+    return {
+        content: [{ type: "text", text }],
+        structuredContent: { message: summary, ...structuredContent },
+    };
+}
+
+// The router resolves a relative path from the exec user's home and reads ~ as a folder name
+export function homePath(path: string): string {
+    if (path === "~") return ".";
+    return path.startsWith("~/") ? path.slice(2) || "." : path;
+}
+
 export function failure(err: unknown, what: string): CallToolResult {
     const e = err instanceof GatewayError ? err : fromRouter(err, what);
     const retry =
@@ -61,22 +91,20 @@ export function failure(err: unknown, what: string): CallToolResult {
     return { content: [{ type: "text", text: `${e.message}.${retry}` }], isError: true };
 }
 
-// An unknown job id also gets a bare NotFound, which must not read as a lost sandbox
+// A bare NotFound is a missing thing on a live sandbox, or an unknown handle on older routers
 async function notFound(
     deps: Deps,
     handle: string,
     e: GatewayError,
     what: string,
+    missing: string,
 ): Promise<CallToolResult> {
     try {
         await deps.router.getPlacement({ handle });
     } catch {
         return failure(e, what);
     }
-    return failure(
-        new GatewayError("not_found", `${what}: the sandbox has no job or file by that name`),
-        what,
-    );
+    return failure(new GatewayError("not_found", `${what}: this sandbox has ${missing}`), what);
 }
 
 // The router answers NOT_READY for both a starting and an ended sandbox, the placement tells which
@@ -85,11 +113,11 @@ export async function sandboxFailure(
     handle: string,
     err: unknown,
     what: string,
+    missing?: string,
 ): Promise<CallToolResult> {
-    const fromTool = err instanceof GatewayError;
-    const e = fromTool ? err : fromRouter(err, what);
-    if (!fromTool && e.kind === "not_found" && e.reason === null) {
-        return notFound(deps, handle, e, what);
+    const e = err instanceof GatewayError ? err : fromRouter(err, what);
+    if (e.kind === "not_found" && e.reason === null && missing !== undefined) {
+        return notFound(deps, handle, e, what, missing);
     }
     if (e.kind !== "not_ready") return failure(e, what);
     try {
@@ -124,11 +152,59 @@ export function toolUseId(ctx: ServerContext): string | undefined {
     return typeof v === "string" && v.length <= 200 ? v : undefined;
 }
 
-// Stable across a client's retries of one call, and never starting with _, which the router keeps
-export function idempotencyKey(ctx: ServerContext, parts: readonly string[]): string {
+// The router keeps keys starting with _ for its own jobs and refuses them from callers
+export function callKey(ctx: ServerContext): string | undefined {
     const id = toolUseId(ctx);
-    if (id && !id.startsWith("_")) return id;
+    return id && !id.startsWith("_") ? id : undefined;
+}
+
+export function hashKey(parts: readonly string[]): string {
     return "k1" + createHash("sha256").update(parts.join("\0")).digest("hex").slice(0, 32);
+}
+
+// Stable across a client's retries of one call, for tools whose same arguments mean the same thing
+export function idempotencyKey(ctx: ServerContext, parts: readonly string[]): string {
+    return callKey(ctx) ?? hashKey(parts);
+}
+
+const spentReasons = new Set(["TOKEN_USED", "TOKEN_EXPIRED", "LINK_LOCKED"]);
+
+// A repeated key names a link that is already spent, so one retry under a new key makes a live one
+export async function withFreshKey<T>(key: string, call: (key: string) => Promise<T>): Promise<T> {
+    try {
+        return await call(key);
+    } catch (e) {
+        const spent =
+            e instanceof ConnectError &&
+            e.code === Code.FailedPrecondition &&
+            spentReasons.has(errorReason(e) ?? "");
+        if (!spent) throw e;
+        return call(`k1${randomBytes(16).toString("hex")}`);
+    }
+}
+
+// The domain every host a router link names sits under, so a link never sends a file elsewhere
+export function underDomain(deps: Deps, host: string): boolean {
+    const domain = deps.config.router.links_domain;
+    return host === domain || host.endsWith(`.${domain}`);
+}
+
+// Router links reach the user's shell only in the shape the contract gives them
+export function routerLink(deps: Deps, raw: string, path: RegExp, query = false): URL | null {
+    const href = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`;
+    let url: URL;
+    try {
+        url = new URL(href);
+    } catch {
+        return null;
+    }
+    const plain =
+        url.protocol === "https:" &&
+        !url.username &&
+        !url.password &&
+        url.hash === "" &&
+        (query || url.search === "");
+    return plain && underDomain(deps, url.hostname) && path.test(url.pathname) ? url : null;
 }
 
 // Sends progress every few seconds while work runs, so clients keep the call alive

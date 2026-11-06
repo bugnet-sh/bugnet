@@ -1,4 +1,3 @@
-import { timestampDate, type Timestamp } from "@bufbuild/protobuf/wkt";
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { SecretState, type SecretInfo } from "../gen/bugnet/router/v1/router_pb.ts";
@@ -6,16 +5,18 @@ import { GatewayError, fromRouter } from "../router.ts";
 import { cleanText } from "../sanitize.ts";
 import {
     failure,
-    handlePattern,
     handleTag,
     idempotencyKey,
     ok,
+    routerLink,
     sandboxFailure,
+    withFreshKey,
     type Deps,
     type Register,
+    handleInput,
+    iso,
 } from "./common.ts";
 
-const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
 const nameInput = z
     .string()
     .regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/, "an environment variable name such as HF_TOKEN");
@@ -40,14 +41,14 @@ const failureText: Record<string, string> = {
     SOURCE_UNKNOWN: "this sandbox cannot use secrets, a new sandbox can",
 };
 
+// Data-plane 4.4, a bnsl_ token of 16 bytes and six Crockford base32 characters
+const linkPath = /^\/l\/bnsl_[A-Za-z0-9_-]{22}$/;
+const pairingShape = /^[0-9A-HJKMNP-TV-Z]{6}$/;
+
 // The router refuses hosts not in canonical form instead of rewriting them
 export function canonicalHosts(hosts: readonly string[]): string[] {
     const set = new Set(hosts.map((h) => h.trim().toLowerCase().replace(/\.$/, "")));
     return [...set].sort();
-}
-
-function iso(t: Timestamp | undefined): string | null {
-    return t ? timestampDate(t).toISOString() : null;
 }
 
 export interface SecretView {
@@ -86,6 +87,10 @@ function describeSecret(s: SecretView): string {
     return `- ${s.name}: ${s.state}${why}, hosts ${s.hosts.join(", ") || "none"}${headers}${fetch}`;
 }
 
+const secretsNotOpen =
+    "Bugnet has not opened secrets yet, so a retry now or later gets the same answer. Work " +
+    "that needs a secret goes without it here, and a value never goes in a command, env or file";
+
 // Both a missing secret path and a closed one answer FEATURE_UNAVAILABLE, and the cure is the same
 async function secretFailure(
     deps: Deps,
@@ -96,6 +101,9 @@ async function secretFailure(
 ): Promise<CallToolResult> {
     if (err instanceof GatewayError) return failure(err, what);
     const e = fromRouter(err, what);
+    if (e.kind === "unsupported" && e.reason === null) {
+        return failure(new GatewayError(e.kind, `${what}: ${secretsNotOpen}`), what);
+    }
     if (e.kind === "unsupported" && e.reason === "FEATURE_UNAVAILABLE") {
         return failure(
             new GatewayError(
@@ -109,23 +117,9 @@ async function secretFailure(
             what,
         );
     }
-    // A bare NotFound is an unknown handle, or for a delete an unknown secret name
-    if (e.kind === "not_found" && e.reason === null) {
-        if (name === undefined) return failure(e, what);
-        try {
-            await deps.router.getPlacement({ handle });
-        } catch {
-            return failure(e, what);
-        }
-        return failure(
-            new GatewayError(
-                "not_found",
-                `${what}: this sandbox has no secret named ${name}, bugnet_secrets lists them`,
-            ),
-            what,
-        );
-    }
-    return sandboxFailure(deps, handle, err, what);
+    const missing =
+        name === undefined ? undefined : `no secret named ${name}, bugnet_secrets lists them`;
+    return sandboxFailure(deps, handle, e, what, missing);
 }
 
 /* Tools */
@@ -159,22 +153,25 @@ export const registerSecretTools: Register = (server, deps) => {
             try {
                 const name = args.name ?? "";
                 const hosts = canonicalHosts(args.hosts ?? []);
-                const res = await deps.router.createSecretLink({
-                    handle: args.handle,
-                    name,
-                    hosts,
-                    requestId: idempotencyKey(ctx, [args.handle, name, hosts.join(",")]),
-                });
-                if (!res.url.startsWith("https://") || !res.pairingCode) {
-                    throw new GatewayError("internal", "secret link: the router gave no link");
+                const key = idempotencyKey(ctx, [args.handle, name, hosts.join(",")]);
+                const res = await withFreshKey(key, (requestId) =>
+                    deps.router.createSecretLink({ handle: args.handle, name, hosts, requestId }),
+                );
+                const link = routerLink(deps, res.url, linkPath);
+                if (!link || !pairingShape.test(res.pairingCode)) {
+                    throw new GatewayError(
+                        "internal",
+                        "secret link: the router gave no usable link",
+                    );
                 }
+                const url = link.href;
                 const expiresAt = iso(res.expiresAt);
                 // The URL and the pairing code are bearer values, so neither is logged
                 deps.log.info("secret link created", { handle: handleTag(args.handle), name });
                 const text = [
                     `Secret entry link for the user, single use, valid ` +
                         (expiresAt ? `until ${expiresAt}` : "for 10 minutes") +
-                        `: ${res.url}`,
+                        `: ${url}`,
                     `Pairing code: ${res.pairingCode}`,
                     "The link and its six-character pairing code are for the user. The page " +
                         "shows the same code and the sandbox's source, and the user checks both " +
@@ -191,7 +188,7 @@ export const registerSecretTools: Register = (server, deps) => {
                 ]
                     .filter(Boolean)
                     .join("\n");
-                return ok(text, { url: res.url, pairingCode: res.pairingCode, expiresAt });
+                return ok(text, { url, pairingCode: res.pairingCode, expiresAt });
             } catch (e) {
                 return secretFailure(deps, args.handle, e, "secret link");
             }

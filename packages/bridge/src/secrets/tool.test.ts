@@ -325,8 +325,8 @@ describe("put grant refusals from the gateway", () => {
     it("says the feature is not open yet while the router answers Unimplemented", async () => {
         const r = await rig({ elicit: accept }, {});
         const res = await call(r, hf());
-        expect(res.text).toBe(
-            "secret: put grant: not open yet, the other Bugnet tools work as usual.",
+        expect(res.text).toMatch(
+            /^secret: put grant: Bugnet has not opened secrets yet, so a retry now or later gets/,
         );
         expect(r.route.requests).toEqual([]);
     });

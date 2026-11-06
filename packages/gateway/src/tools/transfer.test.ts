@@ -24,7 +24,7 @@ import {
 } from "../testing/harness.ts";
 import { downloadName, shellWord, transferDescription } from "./transfer.ts";
 
-const url = "https://transfer.bugnet.sh/bnx_Q2hlY2tUaGVTaGEyNTZPZlRoZUZpbGVQbGVhc2U";
+const url = "https://transfer.bugnet.sh/bnx_Q2hlY2tUaGVTaGEyNTZPZlRoZUZpbGVQbGVhc2UxMjM";
 const digest = createHash("sha256").update("hello\n").digest();
 const hex = digest.toString("hex");
 const expires = timestampFromMs(testNow + 10 * 60_000);
@@ -144,6 +144,10 @@ describe("bugnet_transfer uploads", () => {
             }),
         });
         expect(Object.keys(r.structured)[0]).toBe("message");
+        const [command, errors] = r.text.slice(r.structured.message.length + 1).split("\n");
+        expect(r.text.startsWith(`${r.structured.message}\n`)).toBe(true);
+        expect(command).toBe(`command: curl -fsS -T in.csv '${url}'`);
+        expect(errors).toMatch(/^httpErrors: 400 the bytes sent were not sizeBytes long/);
     });
 
     it("hashes the handle, path, size, sha256 and mode into the key otherwise", async () => {
@@ -236,17 +240,17 @@ describe("bugnet_transfer downloads", () => {
             message: [
                 "Download link for /srv/out/result.tar.gz, 6 bytes, modified " +
                     "2026-11-05T11:59:00.000Z, until 2026-11-05T12:10:00.000Z.",
-                "command saves it as result.tar.gz in the working directory, and a name no " +
-                    "local file has yet keeps the user's files intact. curl -J is left out " +
-                    "because it takes the name from the server.",
+                "command saves it as bugnet-downloads/result.tar.gz under the working " +
+                    "directory, a folder of its own, so no file of the user's is replaced. curl " +
+                    "-J is left out because it takes the name from the server.",
                 "A sha256 of the saved file (shasum -a 256 or sha256sum) equal to sha256 " +
                     "confirms the copy.",
                 "The link works for one completed download. resumeCommand continues a cut " +
                     "download before the link expires, and httpErrors explains curl's error " +
                     "codes.",
             ].join("\n"),
-            command: `curl -fSo result.tar.gz '${url}'`,
-            resumeCommand: `curl -fSo result.tar.gz -C - '${url}'`,
+            command: `curl -fS --create-dirs -o bugnet-downloads/result.tar.gz '${url}'`,
+            resumeCommand: `curl -fS --create-dirs -C - -o bugnet-downloads/result.tar.gz '${url}'`,
             direction: "download",
             path: "/srv/out/result.tar.gz",
             url,
@@ -260,6 +264,42 @@ describe("bugnet_transfer downloads", () => {
             }),
         });
         expect(r.structured.command).not.toMatch(/-J|-O/);
+        const text = r.text.split("\n");
+        expect(text).toContain(`command: ${r.structured.command}`);
+        expect(text).toContain(`resumeCommand: ${r.structured.resumeCommand}`);
+        expect(text).toContain(`sha256: ${hex}`);
+    });
+
+    it("never saves a default download over a file of the user's", async () => {
+        const { client } = await setup();
+        for (const [path, file] of [
+            ["/app/package.json", "bugnet-downloads/package.json"],
+            ["/home/user/.bashrc", "bugnet-downloads/bashrc"],
+            ["/srv/.envrc", "bugnet-downloads/envrc"],
+            ["/srv/Makefile", "bugnet-downloads/Makefile"],
+        ]) {
+            const r = await callTool<Download>(client, "bugnet_transfer", { ...download, path });
+            expect(r.structured.command).toBe(`curl -fS --create-dirs -o ${file} '${url}'`);
+            expect(r.structured.resumeCommand).toBe(
+                `curl -fS --create-dirs -C - -o ${file} '${url}'`,
+            );
+        }
+    });
+
+    it("refuses a link that is not an https transfer link under Bugnet's domain", async () => {
+        for (const bad of [
+            "https://evil.example/upload",
+            "-K/tmp/attacker.conf",
+            "file:///etc/passwd",
+            "https://transfer.bugnet.sh/bnx_short",
+            `${url}?x=1`,
+            "",
+        ]) {
+            const { client } = await setup(() => ({ url: bad, expiresAt: expires, size: 6n }));
+            const r = await callTool(client, "bugnet_transfer", download);
+            expect(r.isError).toBe(true);
+            expect(r.text).toBe("transfer: the sandbox service gave no usable link.");
+        }
     });
 
     it("hashes only handle, direction and path into a download's key", async () => {
@@ -290,7 +330,10 @@ describe("bugnet_transfer downloads", () => {
             ...download,
             localFile: "~/Downloads/it's done.tgz",
         });
-        expect(r.structured.command).toBe(`curl -fSo ~/'Downloads/it'\\''s done.tgz' '${url}'`);
+        expect(r.structured.command).toBe(
+            `curl -fS --create-dirs -o ~/'Downloads/it'\\''s done.tgz' '${url}'`,
+        );
+        expect(r.structured.message).toMatch(/replacing any file of that name/);
     });
 
     it("refuses a directory with the tar advice", async () => {
@@ -321,6 +364,7 @@ describe("bugnet_transfer shell words", () => {
         expect(downloadName("~")).toBe("download");
         expect(downloadName("/")).toBe("download");
         expect(downloadName("/a/..")).toBe("download");
+        expect(downloadName("/home/u/.bashrc")).toBe("bashrc");
     });
 });
 
@@ -330,8 +374,9 @@ describe("bugnet_transfer errors", () => {
         const r = await callTool(client, "bugnet_transfer", download);
         expect(r.isError).toBe(true);
         expect(r.text).toBe(
-            "transfer: not open yet, the other Bugnet tools work as usual. bugnet_read_file " +
-                "and bugnet_write_file move up to 256 KiB per call.",
+            "transfer: Bugnet has not opened this yet, so a retry now or later gets the same " +
+                "answer. The other Bugnet tools work as usual. bugnet_read_file and " +
+                "bugnet_write_file move up to 256 KiB per call.",
         );
     });
 

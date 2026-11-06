@@ -3,15 +3,17 @@ import { z } from "zod";
 import type { Assessment } from "../assess/assessor.ts";
 import { sortFindings } from "../assess/scan.ts";
 import { maxCommands, refusedByPolicy, sentence, withoutSandboxClaim } from "../assess/verdict.ts";
-import { fromRouter } from "../router.ts";
+import { fromRouter, reasonOf } from "../router.ts";
 import { failure, ok, withProgress, type Deps, type Register } from "./common.ts";
 import {
     buildQuote,
     describeSize,
     limitQuotes,
+    needs,
     sizeText,
     workloads,
     type BuiltQuote,
+    type NeedName,
     type QuoteFloor,
     type QuoteRequest,
 } from "./quote.ts";
@@ -57,7 +59,28 @@ const assessInput = z.object({
         .describe("The user's machine, when known"),
     workload: z.enum(workloads).optional(),
     expectedMinutes: z.number().int().min(1).max(1440).optional(),
+    needs: z
+        .array(z.enum(needs))
+        .max(8)
+        .optional()
+        .describe(
+            "What the sandbox must offer: ssh, preview for a web app, secrets for an API token, gpu",
+        ),
 });
+
+const entryCommandBytes = 1000;
+
+// The estimator reads one command of at most 1,000 bytes, so a longer one is cut on a character
+export function entryCommandOf(commands: readonly string[] | undefined): string | undefined {
+    let cmd = commands?.[0];
+    if (!cmd) return undefined;
+    while (Buffer.byteLength(cmd) > entryCommandBytes) cmd = cmd.slice(0, -1);
+    return cmd;
+}
+
+const tokenWarning =
+    "A value shaped like an API token is in source or the commands, so the quote left them out. " +
+    "Tokens never go there, bugnet_secret_link adds them to the sandbox after bugnet_start";
 
 function needsLine(a: Assessment): string {
     const n = a.needs;
@@ -168,7 +191,7 @@ export function sizedByRouter(a: Assessment, floor: QuoteFloor): Assessment {
     return { ...a, needs };
 }
 
-// A source the router refuses still leaves a quote for the work without it
+// A source or command the router refuses still leaves a quote for the work without them
 async function assessQuote(
     deps: Deps,
     req: QuoteRequest,
@@ -178,9 +201,22 @@ async function assessQuote(
         return await buildQuote(deps, req, signal);
     } catch (e) {
         const refused = e instanceof ConnectError && e.code === Code.InvalidArgument;
-        if (!refused || req.source === undefined) throw e;
-        return buildQuote(deps, { ...req, source: undefined }, signal);
+        if (!refused || (req.source === undefined && req.entryCommand === undefined)) throw e;
+        const q = await buildQuote(
+            deps,
+            { ...req, source: undefined, entryCommand: undefined },
+            signal,
+        );
+        if (reasonOf(e) === "SECRET_IN_ARGUMENT") q.structured.warnings.push(tokenWarning);
+        return q;
     }
+}
+
+// The agent's needs decide where the sandbox can run, so the quote bugnet_start uses carries them
+function needsOf(asked: readonly NeedName[] | undefined, gpu: boolean): NeedName[] {
+    const set = new Set(asked ?? []);
+    if (gpu) set.add("gpu");
+    return needs.filter((n) => set.has(n));
 }
 
 function within<T>(work: Promise<T>, ms: number): Promise<T> {
@@ -250,8 +286,9 @@ export const registerAssessTool: Register = (server, deps) => {
                         {
                             source: assessment.source.kind !== "none" ? args.source : undefined,
                             workload: assessment.needs.workload,
+                            entryCommand: entryCommandOf(args.commands),
                             expectedMinutes: args.expectedMinutes,
-                            needs: assessment.needs.gpu ? ["gpu"] : [],
+                            needs: needsOf(args.needs, assessment.needs.gpu),
                             fallback: {
                                 minMemoryGiB: assessment.needs.minMemoryGiB,
                                 minDiskGiB: assessment.needs.minDiskGiB,

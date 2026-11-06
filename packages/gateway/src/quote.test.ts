@@ -50,6 +50,18 @@ describe("quote ids", () => {
         expect(verifyQuote(key, id, before)).toEqual(all);
     });
 
+    it("mark a GitHub repo the router will not place apart from one it will", () => {
+        const unplaced: QuoteClaims = {
+            ...claims,
+            github: false,
+            githubUnplaced: true,
+            estimateId: null,
+        };
+        const id = signQuote(key, unplaced);
+        expect(fields(id)[2]).toMatch(/h$/);
+        expect(verifyQuote(key, id, before)).toEqual(unplaced);
+    });
+
     it("mark a quote without an estimate with a dash", () => {
         const none = { ...claims, estimateId: null };
         const id = signQuote(key, none);

@@ -119,6 +119,14 @@ interface Rule {
 
 /* Reasons */
 
+const unknownHandle =
+    "no sandbox has this handle. Check it was copied in full, or quote and start a new one";
+
+// The router has not built the feature, which no retry, wait or extension changes
+export const notOpenText =
+    "Bugnet has not opened this yet, so a retry now or later gets the same answer. The " +
+    "other Bugnet tools work as usual";
+
 // Data-plane 11.3 and control-plane 13.1, each honoured only under the code it comes with
 const rules: Record<string, Rule> = {
     PORT_REFUSED: {
@@ -202,6 +210,28 @@ const rules: Record<string, Rule> = {
         code: Code.InvalidArgument,
         kind: "invalid",
         text: "the quote is not valid, bugnet_quote gives a new one",
+    },
+    PACKAGE_UNKNOWN: {
+        code: Code.InvalidArgument,
+        kind: "invalid",
+        text: "that package is not on offer, bugnet_quote lists the packages",
+    },
+    NOT_START_PACKAGE: {
+        code: Code.InvalidArgument,
+        kind: "invalid",
+        text:
+            "that package only extends a running sandbox, a start takes a package from " +
+            "bugnet_quote",
+    },
+    HANDLE_UNKNOWN: {
+        code: Code.NotFound,
+        kind: "not_found",
+        text: unknownHandle,
+    },
+    JOB_UNKNOWN: {
+        code: Code.NotFound,
+        kind: "not_found",
+        text: "this sandbox has no job with that id, bugnet_exec gives the jobId of each command",
     },
     not_found: {
         code: Code.NotFound,
@@ -320,11 +350,6 @@ const rules: Record<string, Rule> = {
             "the repo is private or missing. A GitHub token added with bugnet_secret_link " +
             "lets the next call read it",
     },
-    TOOL_MISSING: {
-        code: Code.FailedPrecondition,
-        kind: "precondition",
-        text: "the sandbox lacks a tool the fetch needs, cloning by hand with bugnet_exec works",
-    },
     OVER_CAP: {
         code: Code.OutOfRange,
         kind: "limit",
@@ -426,14 +451,8 @@ export function fromRouter(err: unknown, what: string): GatewayError {
     if (rule && rule.code === err.code) return fail(rule.kind, rule.text);
     switch (err.code) {
         case Code.NotFound:
-            // The router sends an unknown handle as a NotFound without a reason
-            if (reason === null) {
-                return fail(
-                    "not_found",
-                    "no sandbox has this handle. Check it was copied in full, or quote and " +
-                        "start a new one",
-                );
-            }
+            // Routers before HANDLE_UNKNOWN sent an unknown handle without a reason
+            if (reason === null) return fail("not_found", unknownHandle);
             return fail("not_found", safeMessage(err));
         case Code.FailedPrecondition:
             return fail(reason === null ? "not_ready" : "precondition", safeMessage(err));
@@ -445,7 +464,7 @@ export function fromRouter(err: unknown, what: string): GatewayError {
         case Code.ResourceExhausted:
             return fail("no_capacity", safeMessage(err));
         case Code.Unimplemented:
-            return fail("unsupported", "not open yet, the other Bugnet tools work as usual");
+            return fail("unsupported", notOpenText);
         case Code.DeadlineExceeded:
             return fail("timeout", "timed out");
         case Code.Unavailable:
