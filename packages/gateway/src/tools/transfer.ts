@@ -1,10 +1,4 @@
-/**
- * bugnet_transfer, a one-time HTTPS link that moves one file between the agent's machine and a
- * sandbox with curl.
- *
- * The link is a bearer credential, so it appears only in the tool result and never in a log.
- */
-import { randomBytes } from "node:crypto";
+// The transfer link is a bearer credential, so it goes into the tool result and never a log
 import type { MessageInitShape } from "@bufbuild/protobuf";
 import { timestampDate, type Timestamp } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
@@ -21,12 +15,17 @@ import {
     handlePattern,
     handleTag,
     idempotencyKey,
-    ok,
+    okBody,
+    routerLink,
     sandboxFailure,
+    withFreshKey,
     withProgress,
     type Deps,
     type Register,
 } from "./common.ts";
+
+// A folder of its own, so a default download never replaces a file of the user's
+export const downloadDir = "bugnet-downloads";
 
 const directions = ["upload", "download"] as const;
 type Direction = (typeof directions)[number];
@@ -72,7 +71,7 @@ const transferInput = z.object({
         .optional()
         .describe(
             "The local file the curl command sends or saves to. Downloads default to the " +
-                "sandbox file's name in the working directory",
+                `sandbox file's name in ${downloadDir}/ under the working directory`,
         ),
 });
 
@@ -97,10 +96,10 @@ export function shellWord(s: string): string {
     return /^[\w.+@%=:,/-]+$/.test(s) ? s : quoted(s);
 }
 
-// A download lands in the working directory under the sandbox file's own name
+// The sandbox file's own name, a dotfile made visible
 export function downloadName(path: string): string {
-    const base = path.replace(/\/+$/, "").split("/").pop() ?? "";
-    return ["", "~", ".", ".."].includes(base) ? "download" : base;
+    const base = (path.replace(/\/+$/, "").split("/").pop() ?? "").replace(/^\.+/, "");
+    return ["", "~"].includes(base) ? "download" : base;
 }
 
 function bytes(n: number): string {
@@ -200,26 +199,18 @@ function explain(err: unknown, direction: Direction, inlineKib: number): unknown
 
 type TransferRequest = MessageInitShape<typeof CreateTransferRequestSchema>;
 
-function spent(e: unknown): boolean {
-    if (!(e instanceof ConnectError) || e.code !== Code.FailedPrecondition) return false;
-    const reason = errorReason(e);
-    return reason === "TOKEN_USED" || reason === "TOKEN_EXPIRED";
-}
-
-// A repeated key names a link that is already spent, so one retry under a new key makes a live one
-async function createTransfer(
+function createTransfer(
     deps: Deps,
     req: TransferRequest,
     signal: AbortSignal,
 ): Promise<CreateTransferResponse> {
-    try {
-        return await deps.router.createTransfer(req, { signal });
-    } catch (e) {
-        if (!spent(e)) throw e;
-        const fresh = `k1${randomBytes(16).toString("hex")}`;
-        return deps.router.createTransfer({ ...req, idempotencyKey: fresh }, { signal });
-    }
+    return withFreshKey(req.idempotencyKey ?? "", (idempotencyKey) =>
+        deps.router.createTransfer({ ...req, idempotencyKey }, { signal }),
+    );
 }
+
+// Data-plane 4.4 and 8.3.1, a bnx_ token of 32 bytes and an optional file name
+const transferPath = /^\/bnx_[A-Za-z0-9_-]{43}(\/[A-Za-z0-9._-]{1,255})?$/;
 
 /* Results */
 
@@ -261,11 +252,11 @@ function transferRequest(args: Args, ctx: ServerContext): TransferRequest {
     };
 }
 
-function linkOf(args: Args, res: CreateTransferResponse) {
+function linkOf(args: Args, url: URL, res: CreateTransferResponse) {
     return {
         direction: args.direction,
         path: args.path,
-        url: res.url,
+        url: url.href,
         expiresAt: iso(res.expiresAt),
         size: Number(res.size),
         maxBytes: Number(res.maxBytes),
@@ -276,10 +267,17 @@ type Link = ReturnType<typeof linkOf>;
 
 const until = (link: Link) => (link.expiresAt ? `, until ${link.expiresAt}` : "");
 
+// The text carries the commands and error codes too, for clients that read only the text
+function errorLine(codes: Record<string, string>): string {
+    const list = Object.entries(codes).map(([code, why]) => `${code} ${why}`);
+    return `httpErrors: ${list.join("; ")}`;
+}
+
 function uploadResult(args: Args, link: Link): CallToolResult {
     const named = args.localFile !== undefined;
     const file = named ? shellWord(args.localFile as string) : "<file>";
-    const text = [
+    const command = `curl -fsS -T ${file} ${quoted(link.url)}`;
+    const lines = [
         `Upload link for ${link.path}, ${bytes(link.size)}${until(link)}.`,
         named ? `command sends ${file}.` : "command has <file> where the local file's path goes.",
         "The upload prints {path,size,sha256}, and a sha256 equal to the local file's " +
@@ -287,37 +285,50 @@ function uploadResult(args: Args, link: Link): CallToolResult {
         "Uploads are only for files the user named.",
         "The link works for one completed upload. A failed upload can run the same command " +
             "again before the link expires, and httpErrors explains curl's error codes.",
-    ].join("\n");
-    return ok(text, {
-        command: `curl -fsS -T ${file} ${quoted(link.url)}`,
+    ];
+    const text = [...lines, `command: ${command}`, errorLine(httpErrors.upload)].join("\n");
+    return okBody(text, lines.join("\n"), {
+        command,
         ...link,
         httpErrors: httpErrors.upload,
     });
 }
 
 function downloadResult(args: Args, link: Link, res: CreateTransferResponse): CallToolResult {
-    const file = shellWord(args.localFile ?? downloadName(args.path));
+    const named = args.localFile !== undefined;
+    const file = shellWord(args.localFile ?? `${downloadDir}/${downloadName(args.path)}`);
     const url = quoted(link.url);
     const modifiedAt = iso(res.modifiedAt);
     const sha256 = res.sha256.length === 32 ? Buffer.from(res.sha256).toString("hex") : null;
     const modified = modifiedAt ? `, modified ${modifiedAt}` : "";
-    const text = [
+    const command = `curl -fS --create-dirs -o ${file} ${url}`;
+    const resumeCommand = `curl -fS --create-dirs -C - -o ${file} ${url}`;
+    const lines = [
         `Download link for ${link.path}, ${bytes(link.size)}${modified}${until(link)}.`,
-        `command saves it as ${file} in the working directory, and a name no local file has ` +
-            "yet keeps the user's files intact. curl -J is left out because it takes the name " +
-            "from the server.",
+        (named
+            ? `command saves it as ${file}, replacing any file of that name.`
+            : `command saves it as ${file} under the working directory, a folder of its own, ` +
+              "so no file of the user's is replaced.") +
+            " curl -J is left out because it takes the name from the server.",
         sha256
             ? "A sha256 of the saved file (shasum -a 256 or sha256sum) equal to sha256 " +
               "confirms the copy."
             : "",
         "The link works for one completed download. resumeCommand continues a cut download " +
             "before the link expires, and httpErrors explains curl's error codes.",
+    ].filter(Boolean);
+    const text = [
+        ...lines,
+        `command: ${command}`,
+        `resumeCommand: ${resumeCommand}`,
+        sha256 ? `sha256: ${sha256}` : "",
+        errorLine(httpErrors.download),
     ]
         .filter(Boolean)
         .join("\n");
-    return ok(text, {
-        command: `curl -fSo ${file} ${url}`,
-        resumeCommand: `curl -fSo ${file} -C - ${url}`,
+    return okBody(text, lines.join("\n"), {
+        command,
+        resumeCommand,
         ...link,
         modifiedAt,
         sha256,
@@ -352,13 +363,14 @@ export const registerTransferTool: Register = (server, deps) => {
                 const res = await withProgress(ctx, "making the transfer link", () =>
                     createTransfer(deps, req, ctx.mcpReq.signal),
                 );
-                if (!res.url) {
+                const url = routerLink(deps, res.url, transferPath);
+                if (!url) {
                     throw new GatewayError(
                         "internal",
-                        "transfer: the sandbox service gave no link",
+                        "transfer: the sandbox service gave no usable link",
                     );
                 }
-                const link = linkOf(args, res);
+                const link = linkOf(args, url, res);
                 if (link.maxBytes > 0 && link.size > link.maxBytes) {
                     throw new GatewayError(
                         "limit",
