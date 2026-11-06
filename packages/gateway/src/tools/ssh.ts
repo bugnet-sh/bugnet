@@ -1,8 +1,18 @@
 import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { z } from "zod";
+import type { AddSshKeyResponse } from "../gen/bugnet/router/v1/router_pb.ts";
 import { GatewayError, fromRouter } from "../router.ts";
 import { KeyError, parsePublicKey } from "../sshkey.ts";
-import { handlePattern, handleTag, ok, sandboxFailure, type Register } from "./common.ts";
+import {
+    handlePattern,
+    handleTag,
+    ok,
+    okBody,
+    sandboxFailure,
+    underDomain,
+    type Deps,
+    type Register,
+} from "./common.ts";
 
 const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
 
@@ -45,9 +55,78 @@ function sshError(err: unknown, what: string): GatewayError {
     return e;
 }
 
-function knownHostsFileOf(command: string, given: string | undefined): string {
-    const named = /UserKnownHostsFile=(\S+)/.exec(command)?.[1]?.replace(/^["']|["']$/g, "");
-    return named || given || defaultKnownHostsFile;
+/* Router output */
+
+// Data-plane 9.2 says base32 but its own example has a 9, so any lower-case letter or digit
+const aliasShape = /^bn-[a-z0-9]{10}$/;
+const hostShape = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}$/;
+const fingerprintShape = /^SHA256:[A-Za-z0-9+/]{43}$/;
+const knownHostName = "(?:\\[[a-z0-9.-]+\\]:\\d{1,5}|[a-z0-9.-]+)";
+const keyTypes = "ssh-ed25519|ecdsa-sha2-nistp(?:256|384|521)|ssh-rsa|rsa-sha2-(?:256|512)";
+const knownHostShape = new RegExp(
+    `^${knownHostName}(?:,${knownHostName})* (?:${keyTypes}) [A-Za-z0-9+/]+={0,2}$`,
+);
+
+// ssh_config keywords that only connect, never ones like ProxyCommand that run a program
+const configKeys = new Set([
+    "batchmode",
+    "connecttimeout",
+    "controlmaster",
+    "controlpath",
+    "controlpersist",
+    "host",
+    "hostname",
+    "identitiesonly",
+    "identityfile",
+    "loglevel",
+    "port",
+    "serveralivecountmax",
+    "serveraliveinterval",
+    "stricthostkeychecking",
+    "user",
+    "userknownhostsfile",
+]);
+const configLine = /^\s*([A-Za-z]+)(?:\s+|\s*=\s*)[A-Za-z0-9._/~$@%:+=-]{1,300}\s*$/;
+
+// The stanza is optional, so one with any other line is left out rather than refused
+function safeConfig(config: string): string | null {
+    if (!config) return null;
+    for (const line of config.split("\n")) {
+        if (line.trim() === "") continue;
+        const key = configLine.exec(line)?.[1]?.toLowerCase();
+        if (!key || !configKeys.has(key)) return null;
+    }
+    return config;
+}
+
+interface Endpoint {
+    alias: string;
+    host: string;
+    port: number;
+    knownHosts: string[];
+}
+
+// The command goes into the user's shell, so the gateway builds it from parts it has checked
+function checkedEndpoint(deps: Deps, res: AddSshKeyResponse): Endpoint | null {
+    const ok =
+        aliasShape.test(res.alias) &&
+        hostShape.test(res.host) &&
+        underDomain(deps, res.host) &&
+        Number.isInteger(res.port) &&
+        res.port >= 1 &&
+        res.port <= 65_535 &&
+        res.knownHosts.every((l) => knownHostShape.test(l));
+    if (!ok) return null;
+    return { alias: res.alias, host: res.host, port: res.port, knownHosts: res.knownHosts };
+}
+
+export function sshCommand(e: Endpoint, identityFile: string, knownHostsFile: string): string {
+    return (
+        `ssh -i ${identityFile} -o IdentitiesOnly=yes -o BatchMode=yes ` +
+        `-o StrictHostKeyChecking=yes -o UserKnownHostsFile=${knownHostsFile}` +
+        (e.port === 22 ? "" : ` -p ${e.port}`) +
+        ` ${e.alias}@${e.host}`
+    );
 }
 
 export const registerSshTools: Register = (server, deps) => {
@@ -111,28 +190,40 @@ export const registerSshTools: Register = (server, deps) => {
                         `${what}: the sandbox service sent no host key, a retry in a minute may work`,
                     );
                 }
-                const fingerprint = res.fingerprint || key.fingerprint;
+                const end = checkedEndpoint(deps, res);
+                if (!end) {
+                    throw new GatewayError(
+                        "internal",
+                        `${what}: the sandbox service gave an unusable SSH address`,
+                    );
+                }
+                const fingerprint = fingerprintShape.test(res.fingerprint)
+                    ? res.fingerprint
+                    : key.fingerprint;
                 const expiresAt = res.expiresAt ? timestampDate(res.expiresAt).toISOString() : null;
-                const file = knownHostsFileOf(res.command, args.knownHostsFile);
+                const file = args.knownHostsFile ?? defaultKnownHostsFile;
+                const identity = args.identityFile ?? `~/.ssh/bugnet_${end.alias}`;
+                const command = sshCommand(end, identity, file);
                 deps.log.info("ssh key added", { handle: handleTag(args.handle), fingerprint });
-                const text = [
-                    `Added key ${fingerprint} for SSH to ${res.alias}` +
+                const lines = [
+                    `Added key ${fingerprint} for SSH to ${end.alias}` +
                         (expiresAt ? `, valid until ${expiresAt}.` : "."),
                     `The command checks host keys only against ${file}, so the knownHosts ` +
                         "lines go into that file before the first connection.",
                     "The first connection can wait up to a minute while the sandbox sets up SSH, " +
                         'and after a "try again" message a retry works.',
-                    `command: ${res.command}`,
-                ].join("\n");
-                return ok(text, {
-                    alias: res.alias,
-                    host: res.host,
-                    port: res.port,
+                    `command: ${command}`,
+                ];
+                const text = [...lines, "knownHosts:", ...end.knownHosts].join("\n");
+                return okBody(text, lines.join("\n"), {
+                    alias: end.alias,
+                    host: end.host,
+                    port: end.port,
                     fingerprint,
-                    knownHosts: res.knownHosts,
+                    knownHosts: end.knownHosts,
                     knownHostsFile: file,
-                    command: res.command,
-                    config: res.config || null,
+                    command,
+                    config: safeConfig(res.config),
                     expiresAt,
                 });
             } catch (e) {
