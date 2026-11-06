@@ -325,9 +325,7 @@ describe("put grant refusals from the gateway", () => {
     it("says the feature is not open yet while the router answers Unimplemented", async () => {
         const r = await rig({ elicit: accept }, {});
         const res = await call(r, hf());
-        expect(res.text).toBe(
-            "secret: put grant: not open yet, the other Bugnet tools work as usual.",
-        );
+        expect(res.text).toBe("secret: not open yet, the other Bugnet tools work as usual.");
         expect(r.route.requests).toEqual([]);
     });
 
@@ -335,7 +333,7 @@ describe("put grant refusals from the gateway", () => {
         const err = routerError(Code.FailedPrecondition, "FEATURE_UNAVAILABLE");
         const r = await rig({ elicit: accept }, refusing(err));
         const res = await call(r, hf());
-        expect(res.text).toMatch(/^secret: put grant: this sandbox cannot hold secrets\. /);
+        expect(res.text).toMatch(/^secret: this sandbox cannot hold secrets\. /);
     });
 
     it("reports NOT_READY on an ended sandbox as expired", async () => {
@@ -343,7 +341,7 @@ describe("put grant refusals from the gateway", () => {
         const r = await rig({ elicit: accept }, refusing(err));
         const res = await call(r, hf());
         expect(res.text).toMatch(
-            /^secret: put grant: this sandbox has ended and everything in it was deleted/,
+            /^secret: this sandbox has ended and everything in it was deleted/,
         );
     });
 
@@ -351,14 +349,14 @@ describe("put grant refusals from the gateway", () => {
         const err = routerError(Code.ResourceExhausted, "RATE_LIMITED", { retryAfterMs: 4000 });
         const r = await rig({ elicit: accept }, refusing(err));
         const res = await call(r, hf());
-        expect(res.text).toBe("secret: put grant: too many requests for now. Retry after 4 s.");
+        expect(res.text).toBe("secret: too many requests for now. Retry after 4 s.");
     });
 
     it("passes on an InvalidArgument refusal", async () => {
         const err = routerError(Code.InvalidArgument, undefined, { message: "bad handle" });
         const r = await rig({ elicit: accept }, refusing(err));
         const res = await call(r, hf());
-        expect(res.text).toBe("secret: put grant: bad handle.");
+        expect(res.text).toBe("secret: bad handle.");
         neverLeaks(r, res.raw);
     });
 });
@@ -423,7 +421,7 @@ describe("the confirmation binds the shown arguments", () => {
             callTool: async (params) => {
                 calls.push(params);
                 return {
-                    content: [{ type: "text", text: "secret grant: stop here." }],
+                    content: [{ type: "text", text: "put grant: stop here." }],
                     isError: true,
                 };
             },

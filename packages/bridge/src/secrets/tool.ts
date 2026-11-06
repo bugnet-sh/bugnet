@@ -262,7 +262,7 @@ async function putGrant(remote: RemoteTools, handle: string, signal: AbortSignal
         const text = blocks
             .map((b) => b.text ?? "")
             .join(" ")
-            .replace(/^secret grant: /, "")
+            .replace(/^put grant: /, "")
             .replace(/\.$/, "");
         throw new Refusal(text || "the gateway gave no put grant");
     }
