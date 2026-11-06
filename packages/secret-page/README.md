@@ -52,8 +52,9 @@ proxy's box key is made at deploy (data-plane 15.5), so the build warns, and the
 refuses every key. A rotation adds the new key there, rebuilds and redeploys this bundle and the
 bridge, and only then lets the router list the new key first (data-plane 10.2).
 
-A release build refuses a key whose id starts with `dev-`. The development key in
-`../seal/src/testing` goes only into the test builds, which show a banner saying so.
+A release build refuses a key whose id starts with `dev-`, and the development public key under
+any id. The development key in `../seal/src/testing` goes only into the test builds, which show a
+banner saying so.
 
 ## What the page decides
 
@@ -62,8 +63,15 @@ A release build refuses a key whose id starts with `dev-`. The development key i
   data-plane 10.3. A suggested host outside the preset is dropped even if the router sent it, so
   custom hosts are always typed by the user. Every host is shown as the proxy matches it, in
   lower-case punycode, and hosts outside every preset are marked as typed.
-- **GitHub.** A secret named `GH_TOKEN` or `GITHUB_TOKEN`, or bound to a GitHub host, is fetch only
-  unless the user ticks "Also let code in the sandbox use this token" (data-plane 10.7).
+- **GitHub.** A secret whose hosts include `api.github.com`, the host the router fetches a private
+  repository through, is fetch only unless the user ticks "Also let code in the sandbox use this
+  token" (data-plane 10.7). Any other secret, `GH_TOKEN` bound to `github.com` alone included, is
+  an ordinary one.
+- **Value.** A text field masked with CSS, never a password field, which browsers offer to save
+  once the form goes away. A value that fits 64 KiB but not the 70 KiB box once JSON escapes it is
+  named on its field before sealing.
+- **Times.** The creation and expiry times are refreshed every 30 seconds, and an expired link
+  says so before anything is typed.
 - **Errors.** Each reason of data-plane 8.4 and 11.3 has a fixed sentence, and the route's own
   `message` is never shown. A refusal that leaves the link unusable removes the form.
 - **Retries.** One `submissionId` per page load, so a retried PUT is answered with the first
