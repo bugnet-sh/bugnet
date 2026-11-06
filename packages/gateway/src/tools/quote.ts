@@ -1,10 +1,4 @@
-/**
- * bugnet_quote and the quote bugnet_assess embeds.
- *
- * The router's estimator sizes the work and recommends a package. While a router answers without
- * a floor, bugnet_assess still sizes from its own reading of the source, and bugnet_quote lists
- * the packages without a recommendation.
- */
+// Without the router's floor, bugnet_assess sizes the work itself and bugnet_quote recommends none
 import { z } from "zod";
 import {
     Confidence,
@@ -13,6 +7,7 @@ import {
     GpuNeed,
     Need,
     SourceKind,
+    UnreadReason,
     WarningCode,
     Workload,
     type EstimateResponse,
@@ -379,15 +374,40 @@ function packageLine(p: PackageView, rec: Recommended | null): string {
     );
 }
 
-function headline(available: number, views: PackageView[]): string {
+function listed(words: readonly string[]): string {
+    if (words.length < 2) return words.join("");
+    return `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`;
+}
+
+function headline(available: number, views: PackageView[], wants: readonly NeedName[]): string {
     if (available > 0) return "Bugnet packages, paid per run in USDC on Solana:";
     if (
         views.length > 0 &&
         views.every((v) => v.unavailable === unavailableWords("feature_unavailable"))
     ) {
-        return "No package can start with these needs, they are not open yet.";
+        if (wants.length === 0)
+            return "No package can start with these needs, they are not open yet.";
+        const one = wants.length === 1;
+        return (
+            `No package can start with the need${one ? "" : "s"} ${listed(wants)}, which ` +
+            `${one ? "is" : "are"} not open yet. A quote without ${one ? "it" : "one of them"} ` +
+            "may list packages that start."
+        );
     }
     return "No package can start right now. Try again in a minute.";
+}
+
+// A GitHub repo the estimator could not see is private or gone, and only a secret fetches it
+function privateRepoWarning(est: EstimateResponse, secrets: boolean): string | null {
+    const s = est.source;
+    if (s?.kind !== SourceKind.GITHUB || s.read || s.unreadReason !== UnreadReason.NOT_FOUND) {
+        return null;
+    }
+    const token = "a GITHUB_TOKEN added with bugnet_secret_link once the sandbox runs";
+    return secrets
+        ? `The repo could not be read, so it is private or missing. A private one needs ${token}`
+        : "The repo could not be read, so it is private or missing. A private one needs a " +
+              `quote with needs ["secrets"] and ${token}`;
 }
 
 // Prices the packages, takes the router's sizing and signs a quoteId bugnet_start accepts
@@ -409,8 +429,12 @@ export async function buildQuote(
             warnings.push("No GPU package is available right now, GPU work cannot start");
         }
     }
-    if (requirements.secrets && !codes.has(WarningCode.SECRETS)) {
-        warnings.push("Secrets go in with bugnet_secret_link or the bridge, never in arguments");
+    const unread = privateRepoWarning(est, requirements.secrets);
+    if (unread) warnings.push(unread);
+    if (requirements.secrets && !codes.has(WarningCode.SECRETS) && available.length > 0) {
+        warnings.push(
+            "Secrets go in with bugnet_secret_link once the sandbox runs, never in arguments",
+        );
     }
     const reasons = est.reasons
         .slice(0, shownReasons)
@@ -432,8 +456,10 @@ export async function buildQuote(
     });
     const unavailable = byPrice.filter((v) => !v.available);
     const ttl = Math.round(deps.config.limits.quote_ttl / 60_000);
+    const wants = needs.filter((n) => args.needs?.includes(n));
+    const startable = available.length > 0;
     const text = [
-        headline(available.length, views),
+        headline(available.length, views, wants),
         ...available.map((p) => packageLine(p, rec)),
         unavailable.length > 0
             ? `Unavailable now: ${unavailable.map((v) => `${v.id} (${v.unavailable})`).join(", ")}.`
@@ -443,8 +469,8 @@ export async function buildQuote(
         reasons.length > 0 ? `Why: ${reasons.join(". ")}.` : "",
         floor ? `Sizing: ${floorText(floor)}.` : "",
         ...warnings.map((w) => `Warning: ${w}.`),
-        `quoteId (valid ${ttl} min): ${quoteId}`,
-        "Tell the user the price and get their go-ahead before bugnet_start.",
+        startable ? `quoteId (valid ${ttl} min): ${quoteId}` : "",
+        startable ? "Tell the user the price and get their go-ahead before bugnet_start." : "",
     ]
         .filter(Boolean)
         .join("\n");
