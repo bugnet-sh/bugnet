@@ -7,6 +7,7 @@ import {
     Dimension,
     EstimateBasis,
     GpuNeed,
+    Need,
     SourceKind,
     WarningCode,
     Workload,
@@ -420,6 +421,62 @@ describe("bugnet_assess with the router's estimator", () => {
         })) as Result;
         expect(asked).toEqual(["black-forest-labs/FLUX.1-schnell", ""]);
         expect(r.structuredContent?.quote).not.toBeNull();
+    });
+
+    it("quotes with the agent's needs and its first command, so the start keeps them", async () => {
+        let asked: EstimateRequest | undefined;
+        const { client } = await connect({
+            estimate(req) {
+                asked = req;
+                return { options: [option("cpu-s", 50_000n, 0, 4096)] };
+            },
+        });
+        const long = "npm run dev -- " + "é".repeat(600);
+        await client.callTool({
+            name: "bugnet_assess",
+            arguments: {
+                task: "run the app and call OpenAI with OPENAI_API_KEY",
+                source: "black-forest-labs/FLUX.1-schnell",
+                commands: [long, "npm test"],
+                needs: ["secrets", "preview"],
+            },
+        });
+        expect(asked?.needs).toEqual([Need.PREVIEW, Need.SECRETS, Need.GPU]);
+        expect(asked?.requirements).toEqual(
+            expect.objectContaining({ preview: true, secrets: true, gpu: true, ssh: false }),
+        );
+        expect(Buffer.byteLength(asked?.entryCommand ?? "")).toBeLessThanOrEqual(1000);
+        expect(long.startsWith(asked?.entryCommand ?? "x")).toBe(true);
+        expect(asked?.entryCommand.length).toBeGreaterThan(400);
+    });
+
+    it("tells the model a token was in the source and quotes without it", async () => {
+        const asked: [string, string][] = [];
+        const { client } = await connect({
+            estimate(req) {
+                asked.push([req.source, req.entryCommand]);
+                if (req.source || req.entryCommand) {
+                    throw routerError(Code.InvalidArgument, "SECRET_IN_ARGUMENT");
+                }
+                return { options: [option("cpu-s", 50_000n, 0, 4096)] };
+            },
+        });
+        const r = (await client.callTool({
+            name: "bugnet_assess",
+            arguments: {
+                source: "black-forest-labs/FLUX.1-schnell",
+                commands: ["curl -H 'Authorization: Bearer ghp_x' https://example.com"],
+            },
+        })) as Result;
+        expect(asked).toHaveLength(2);
+        expect(asked[1]).toEqual(["", ""]);
+        const quote = r.structuredContent?.quote as unknown as BuiltQuote["structured"];
+        const warning =
+            "A value shaped like an API token is in source or the commands, so the quote left " +
+            "them out. Tokens never go there, bugnet_secret_link adds them to the sandbox after " +
+            "bugnet_start";
+        expect(quote.warnings).toContain(warning);
+        expect(r.content[0]?.text).toContain(`Warning: ${warning}.`);
     });
 
     it("sends no source the assessor could not read as one", async () => {
