@@ -33,7 +33,8 @@ const notOpenYet =
     "Bugnet has not opened SSH yet, so a retry now or later gets the same answer. " +
     "bugnet_exec and the file tools work as usual";
 const notOnSandbox =
-    "SSH is not open on this sandbox yet, bugnet_exec and the file tools work as usual";
+    "SSH is not open on this sandbox, the other Bugnet tools work here as usual. A sandbox " +
+    'started from bugnet_quote with needs ["ssh"] has it';
 
 // Router refusals worded for SSH, NOT_READY left for sandboxFailure to tell ended from starting
 function sshError(err: unknown, what: string): GatewayError {
@@ -59,42 +60,13 @@ function sshError(err: unknown, what: string): GatewayError {
 const aliasShape = /^bn-[a-z0-9]{10}$/;
 const hostShape = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}$/;
 const fingerprintShape = /^SHA256:[A-Za-z0-9+/]{43}$/;
-const knownHostName = "(?:\\[[a-z0-9.-]+\\]:\\d{1,5}|[a-z0-9.-]+)";
 const keyTypes = "ssh-ed25519|ecdsa-sha2-nistp(?:256|384|521)|ssh-rsa|rsa-sha2-(?:256|512)";
-const knownHostShape = new RegExp(
-    `^${knownHostName}(?:,${knownHostName})* (?:${keyTypes}) [A-Za-z0-9+/]+={0,2}$`,
-);
+const knownHostShape = new RegExp(`^(\\S+) (?:${keyTypes}) [A-Za-z0-9+/]+={0,2}$`);
 
-// ssh_config keywords that only connect, never ones like ProxyCommand that run a program
-const configKeys = new Set([
-    "batchmode",
-    "connecttimeout",
-    "controlmaster",
-    "controlpath",
-    "controlpersist",
-    "host",
-    "hostname",
-    "identitiesonly",
-    "identityfile",
-    "loglevel",
-    "port",
-    "serveralivecountmax",
-    "serveraliveinterval",
-    "stricthostkeychecking",
-    "user",
-    "userknownhostsfile",
-]);
-const configLine = /^\s*([A-Za-z]+)(?:\s+|\s*=\s*)[A-Za-z0-9._/~$@%:+=-]{1,300}\s*$/;
-
-// The stanza is optional, so one with any other line is left out rather than refused
-function safeConfig(config: string): string | null {
-    if (!config) return null;
-    for (const line of config.split("\n")) {
-        if (line.trim() === "") continue;
-        const key = configLine.exec(line)?.[1]?.toLowerCase();
-        if (!key || !configKeys.has(key)) return null;
-    }
-    return config;
+// Each line may name only the checked host, as ssh writes it for that port
+function namesOnly(line: string, host: string, port: number): boolean {
+    const names = knownHostShape.exec(line)?.[1]?.split(",");
+    return names !== undefined && names.every((n) => n === host || n === `[${host}]:${port}`);
 }
 
 interface Endpoint {
@@ -113,9 +85,34 @@ function checkedEndpoint(deps: Deps, res: AddSshKeyResponse): Endpoint | null {
         Number.isInteger(res.port) &&
         res.port >= 1 &&
         res.port <= 65_535 &&
-        res.knownHosts.every((l) => knownHostShape.test(l));
+        res.knownHosts.every((l) => namesOnly(l, res.host, res.port));
     if (!ok) return null;
     return { alias: res.alias, host: res.host, port: res.port, knownHosts: res.knownHosts };
+}
+
+// ssh_config reads environment variables only as ${NAME}, which the shell form $TMPDIR is not
+function configPath(path: string): string {
+    return path.replace(/^\$TMPDIR/, "${TMPDIR}");
+}
+
+// Built like the command from checked parts, so a router stanza can never point another host here
+function sshConfig(e: Endpoint, identity: string, knownHostsFile: string, share: boolean): string {
+    const dir = knownHostsFile.slice(0, knownHostsFile.lastIndexOf("/") + 1) || "~/.ssh/";
+    const lines = [
+        `Host bugnet-${e.alias}`,
+        `HostName ${e.host}`,
+        `Port ${e.port}`,
+        `User ${e.alias}`,
+        `IdentityFile ${configPath(identity)}`,
+        "IdentitiesOnly yes",
+        `UserKnownHostsFile ${configPath(knownHostsFile)}`,
+        "StrictHostKeyChecking yes",
+        "BatchMode yes",
+        ...(share
+            ? ["ControlMaster auto", `ControlPath ${configPath(dir)}cm-%C`, "ControlPersist 60"]
+            : []),
+    ];
+    return lines.map((l, i) => (i === 0 ? l : `    ${l}`)).join("\n") + "\n";
 }
 
 export function sshCommand(e: Endpoint, identityFile: string, knownHostsFile: string): string {
@@ -140,7 +137,7 @@ export const registerSshTools: Register = (server, deps) => {
                 "of its .pub file, never the private key. Codex, whose sandbox cannot write " +
                 "~/.ssh, makes the key at $TMPDIR/bugnet/<alias> and passes identityFile " +
                 '"$TMPDIR/bugnet/<alias>" and knownHostsFile "$TMPDIR/bugnet/known_hosts". ' +
-                "The same key again is safe.",
+                'The same key again is safe. It needs a sandbox quoted with needs ["ssh"].',
             inputSchema: z.object({
                 handle: handleInput,
                 publicKey: z
@@ -221,7 +218,13 @@ export const registerSshTools: Register = (server, deps) => {
                     knownHosts: end.knownHosts,
                     knownHostsFile: file,
                     command,
-                    config: safeConfig(res.config),
+                    // The router leaves connection sharing out where the client's ssh lacks it
+                    config: sshConfig(
+                        end,
+                        identity,
+                        file,
+                        /^\s*ControlMaster\b/im.test(res.config),
+                    ),
                     expiresAt,
                 });
             } catch (e) {
