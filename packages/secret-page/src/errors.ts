@@ -5,6 +5,7 @@
  * fixed sentence, so a compromised server cannot put words of its own on a page whose job is to
  * warn.
  */
+import { failureWhy } from "@bugnet/seal";
 
 export interface PageProblem {
     // The route's reason, or a page code such as network, shown small for support
@@ -201,12 +202,6 @@ export const pageProblem: PageProblem = {
     retry: false,
 };
 
-// Codes a stored secret can fail with, data-plane 10.10 and 10.12.5.4
-const failures: Record<string, string> = {
-    PORT_443_TAKEN: "port 443 in the sandbox is taken, and secrets need it",
-    SOURCE_UNKNOWN: "this sandbox cannot use secrets, and a new sandbox can",
-};
-
 export function failureText(reason: string): string {
-    return failures[reason] ?? "the sandbox could not take it";
+    return failureWhy(reason) ?? "the sandbox could not take it";
 }

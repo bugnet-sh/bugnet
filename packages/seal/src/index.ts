@@ -8,6 +8,7 @@ export {
     namePattern,
     type SecretSpec,
 } from "./canonical.ts";
+export { failureCode, failureReasons, failureWhy } from "./failures.ts";
 export { pinnedKeys } from "./pinned.ts";
 export { presetFor, presets, withinPreset, type Preset } from "./presets.ts";
 export {

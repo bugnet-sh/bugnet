@@ -4,7 +4,7 @@
  * Absent fields take their proto defaults and unknown fields are ignored, so a newer route still
  * works. Every string shown on the page is cleaned here, and the page only ever sets it as text.
  */
-import type { SealingKey, SecretSpec } from "@bugnet/seal";
+import { failureCode, type SealingKey, type SecretSpec } from "@bugnet/seal";
 
 export class AnswerError extends Error {}
 
@@ -132,7 +132,6 @@ export function parseSubmit(answer: unknown): SecretAnswer {
         spec: spec(docField(secret, "spec")),
         state: state as SecretState,
         updatedAt: time(secret, "updatedAt"),
-        // Router codes only, so no free text reaches the page
-        failureReason: /^[A-Z0-9_]{1,64}$/.test(reason) ? reason : reason ? "UNKNOWN" : "",
+        failureReason: failureCode(reason),
     };
 }

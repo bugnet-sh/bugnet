@@ -24,6 +24,7 @@ import {
     canonicalHeaderNames,
     canonicalHosts,
     chooseKey,
+    failureWhy,
     namePattern,
     presetFor,
     sealSecret,
@@ -273,6 +274,23 @@ async function putGrant(remote: RemoteTools, handle: string, signal: AbortSignal
     return grant;
 }
 
+// Data-plane 10.3, a later secret change applies the whole set again
+const failureNext: Record<string, string> = {
+    PORT_443_TAKEN:
+        "Stop what listens on port 443 in the sandbox, then call bugnet_secret_from_env again " +
+        "to set it up",
+    SOURCE_UNKNOWN: "Start a new sandbox to use secrets",
+};
+
+function failedText(name: string, reason: string): string {
+    const code = reason || "UNKNOWN";
+    const why = failureWhy(code) ?? "the sandbox could not take it";
+    const next = Object.hasOwn(failureNext, code)
+        ? failureNext[code]
+        : "bugnet_secrets shows its state, and a new sandbox may be needed for secrets";
+    return `${name} is stored but not active in the sandbox, because ${why} (${code}). ${next}`;
+}
+
 function routeRefusal(e: RouteError): Refusal {
     return new Refusal(e.message, e.retryAfterSeconds);
 }
@@ -370,9 +388,7 @@ export async function secretFromEnv(
         });
         const text =
             s.state === "FAILED"
-                ? `${spec.name} was stored but could not be applied to the sandbox` +
-                  (s.failureReason ? ` (${s.failureReason})` : "") +
-                  ". A new sandbox may be needed for secrets"
+                ? failedText(spec.name, s.failureReason)
                 : `${spec.name} is stored for ${spec.hosts.join(", ")}, state ${s.state}. In ` +
                   `the sandbox $${spec.name} holds a placeholder that Bugnet's egress proxy ` +
                   "swaps for the value only on HTTPS requests to those hosts";

@@ -111,6 +111,8 @@ export interface FakeSecretsRoute {
     keys: SealingKey[];
     // Answers queued for the next requests, before any check runs
     canned: Canned[];
+    // What a PUT that passes every check answers
+    outcome: { state: "APPLYING" | "ACTIVE" | "FAILED"; failureReason: string };
     close(): Promise<void>;
 }
 
@@ -174,6 +176,7 @@ export async function fakeSecretsRoute(grant = testGrant): Promise<FakeSecretsRo
         opened: [] as OpenedSecret[],
         keys: [devListed],
         canned: [] as Canned[],
+        outcome: { state: "ACTIVE", failureReason: "" } as FakeSecretsRoute["outcome"],
     };
     const http = createServer((req, res) => {
         let body = "";
@@ -218,9 +221,8 @@ export async function fakeSecretsRoute(grant = testGrant): Promise<FakeSecretsRo
                     return answer(200, {
                         secret: {
                             spec: checked.body.spec,
-                            state: "ACTIVE",
                             updatedAt: "2026-11-05T12:00:01Z",
-                            failureReason: "",
+                            ...state.outcome,
                         },
                         replaced,
                     });
