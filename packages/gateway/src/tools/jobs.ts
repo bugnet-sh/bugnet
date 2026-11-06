@@ -4,10 +4,13 @@ import { JobState } from "../gen/bugnet/router/v1/router_pb.ts";
 import { GatewayError } from "../router.ts";
 import { tail, untrustedLabel } from "../sanitize.ts";
 import {
-    sandboxFailure,
+    callKey,
     handlePattern,
+    hashKey,
+    homePath,
     ok,
-    toolUseId,
+    okBody,
+    sandboxFailure,
     waitMs,
     withProgress,
     type Register,
@@ -52,9 +55,24 @@ function oomLine(oomKilled: boolean, peakMemoryMib: number): string {
     return `${oomText}${peakMemoryMib > 0 ? `. Its peak memory was ${peakMemoryMib} MiB` : ""}.`;
 }
 
+// The router passes cwd to the provider as is, which has no ~, so the shell resolves it
+export function inHome(cwd: string, argv: string[]): { cwd: string; argv: string[] } {
+    if (cwd !== "~" && !cwd.startsWith("~/")) return { cwd, argv };
+    const script = 'cd -- "$HOME/$1" || exit 1; shift; exec "$@"';
+    return { cwd: "", argv: ["sh", "-c", script, "sh", homePath(cwd), ...argv] };
+}
+
 function outputBlock(label: string, text: string, truncated: boolean): string {
     if (!text) return "";
     return `${label}${truncated ? " (last part)" : ""}:\n${text}`;
+}
+
+function outputSummary(stdout: string, stderr: string): string {
+    const parts = [
+        stdout ? `${Buffer.byteLength(stdout)} bytes in stdout` : "",
+        stderr ? `${Buffer.byteLength(stderr)} bytes in stderr` : "",
+    ].filter(Boolean);
+    return parts.length > 0 ? `Output: ${parts.join(", ")}.` : "";
 }
 
 const execInput = z
@@ -62,7 +80,11 @@ const execInput = z
         handle: handleInput,
         cmd: z.string().max(100_000).optional().describe("Shell command, run with sh -c"),
         argv: z.array(z.string().max(100_000)).max(1000).optional(),
-        cwd: z.string().max(4096).optional(),
+        cwd: z
+            .string()
+            .max(4096)
+            .optional()
+            .describe("Working directory, absolute or under ~, the home folder by default"),
         env: z
             .record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string().max(32_768))
             .optional()
@@ -81,6 +103,14 @@ const execInput = z
             .max(45)
             .optional()
             .describe("How long to wait for output before returning, default 25"),
+        requestId: z
+            .string()
+            .regex(/^[A-Za-z0-9._:-]{1,100}$/, "letters, digits and ._:-")
+            .optional()
+            .describe(
+                "Any id unique to this run. Resending the same command with it returns that " +
+                    "run instead of starting another",
+            ),
     })
     .refine((a) => (a.cmd === undefined) !== (a.argv === undefined), {
         message: "give exactly one of cmd or argv",
@@ -119,19 +149,29 @@ export const registerJobTools: Register = (server, deps) => {
                         );
                     }
                 }
-                let argv = args.argv ?? ["sh", "-c", args.cmd as string];
+                const run = inHome(args.cwd ?? "", args.argv ?? ["sh", "-c", args.cmd as string]);
+                let argv = run.argv;
                 if (args.timeoutSeconds) {
                     argv = ["timeout", "-k", "5", String(args.timeoutSeconds), ...argv];
                 }
+                // A requestId repeats only with the same command, so a reused one never returns another run
+                const key = args.requestId
+                    ? hashKey([
+                          args.requestId,
+                          run.cwd,
+                          JSON.stringify(argv),
+                          JSON.stringify(args.env ?? {}),
+                      ])
+                    : (callKey(ctx) ?? randomUUID());
                 const wait = waitMs(deps, args.waitSeconds);
                 const res = await withProgress(ctx, "running the command", (signal) =>
                     deps.router.exec(
                         {
                             handle: args.handle,
                             argv,
-                            cwd: args.cwd ?? "",
+                            cwd: run.cwd,
                             env: args.env ?? {},
-                            idempotencyKey: toolUseId(ctx) ?? randomUUID(),
+                            idempotencyKey: key,
                             // The router reads 0 as its 25 s default, so no wait asks for 1 ms
                             waitMs: wait === 0 ? 1 : wait,
                         },
@@ -146,17 +186,23 @@ export const registerJobTools: Register = (server, deps) => {
                     ? `Command ${state}${res.exitCode !== undefined ? ` with exit code ${res.exitCode}` : ""}.`
                     : `Command still running as job ${res.jobId}. Follow it with bugnet_job ` +
                       `(jobId ${res.jobId}, cursor ${res.cursor}).`;
-                const text = [
+                const lines = [
                     head,
                     oomLine(res.oomKilled, 0),
                     res.truncated ? "Earlier output was dropped from the stream." : "",
                     out.text || err.text ? untrustedLabel : "",
+                ];
+                const text = [
+                    ...lines,
                     outputBlock("stdout", out.text, out.truncated),
                     outputBlock("stderr", err.text, err.truncated),
                 ]
                     .filter(Boolean)
                     .join("\n");
-                return ok(text, {
+                const summary = [...lines, outputSummary(out.text, err.text)]
+                    .filter(Boolean)
+                    .join("\n");
+                return okBody(text, summary, {
                     jobId: res.jobId,
                     state,
                     exitCode: res.exitCode ?? null,
@@ -239,19 +285,25 @@ export const registerJobTools: Register = (server, deps) => {
                     peakMemoryMib: number;
                 } | null;
                 const state = finished ? "exited" : "running";
-                const text = [
+                const lines = [
                     finished
                         ? `Command exited with code ${finished.code}.`
                         : `Command still running. Next cursor: ${cursor}.`,
                     finished ? oomLine(finished.oomKilled, finished.peakMemoryMib) : "",
                     skipped ? "Some output was skipped, the full log stays in the sandbox." : "",
                     out.text || err.text ? untrustedLabel : "No new output.",
+                ];
+                const text = [
+                    ...lines,
                     outputBlock("stdout", out.text, out.truncated),
                     outputBlock("stderr", err.text, err.truncated),
                 ]
                     .filter(Boolean)
                     .join("\n");
-                return ok(text, {
+                const summary = [...lines, outputSummary(out.text, err.text)]
+                    .filter(Boolean)
+                    .join("\n");
+                return okBody(text, summary, {
                     jobId: args.jobId,
                     state,
                     exitCode: finished ? finished.code : null,

@@ -57,6 +57,24 @@ export function ok(
     };
 }
 
+// Bulk output already sits in a structured field, so the message is its summary and each byte goes once
+export function okBody(
+    text: string,
+    summary: string,
+    structuredContent: Record<string, unknown> & { message?: never },
+): CallToolResult {
+    return {
+        content: [{ type: "text", text }],
+        structuredContent: { message: summary, ...structuredContent },
+    };
+}
+
+// The router resolves a relative path from the exec user's home and reads ~ as a folder name
+export function homePath(path: string): string {
+    if (path === "~") return ".";
+    return path.startsWith("~/") ? path.slice(2) || "." : path;
+}
+
 export function failure(err: unknown, what: string): CallToolResult {
     const e = err instanceof GatewayError ? err : fromRouter(err, what);
     const retry =
@@ -125,11 +143,19 @@ export function toolUseId(ctx: ServerContext): string | undefined {
     return typeof v === "string" && v.length <= 200 ? v : undefined;
 }
 
-// Stable across a client's retries of one call, and never starting with _, which the router keeps
-export function idempotencyKey(ctx: ServerContext, parts: readonly string[]): string {
+// The router keeps keys starting with _ for its own jobs and refuses them from callers
+export function callKey(ctx: ServerContext): string | undefined {
     const id = toolUseId(ctx);
-    if (id && !id.startsWith("_")) return id;
+    return id && !id.startsWith("_") ? id : undefined;
+}
+
+export function hashKey(parts: readonly string[]): string {
     return "k1" + createHash("sha256").update(parts.join("\0")).digest("hex").slice(0, 32);
+}
+
+// Stable across a client's retries of one call, for tools whose same arguments mean the same thing
+export function idempotencyKey(ctx: ServerContext, parts: readonly string[]): string {
+    return callKey(ctx) ?? hashKey(parts);
 }
 
 // Sends progress every few seconds while work runs, so clients keep the call alive
