@@ -200,7 +200,9 @@ export const registerExtendTool: Register = (server, deps) => {
                     },
                     budget.signal(30_000, applyReserveMs),
                 );
-                if (order.status === "payment_required") return paymentRequiredResult(order);
+                if (order.status === "payment_required") {
+                    return paymentRequiredResult(order, args.orderId);
+                }
                 if (order.status === "refused") {
                     throw new GatewayError("denied", `payment refused: ${order.reason}`);
                 }
