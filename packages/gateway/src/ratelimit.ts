@@ -10,15 +10,26 @@ export interface AddressLimits {
     shared: Rate;
     // Ranges many users share, such as a hosted client's egress, which get the shared rate
     sharedRanges: readonly string[];
+    // One IPv6 holder may own a /48 of /64s, so the /48 shares this multiple of the normal rate
+    v6BlockMultiple: number;
 }
 
 interface Bucket {
     tokens: number;
     at: number;
+    rate: Rate;
 }
 
-// Past this many addresses the least recently seen bucket goes, as it has refilled the longest
+interface Level {
+    key: string;
+    rate: Rate;
+}
+
+// Past this many keys a new one may replace only a bucket that has refilled to its burst
 export const maxTrackedAddresses = 10_000;
+
+// New keys share this bucket while every tracked one is still refilling
+const overflowKey = "overflow";
 
 export function parseCidr(cidr: string): { address: string; prefix: number; v6: boolean } | null {
     const m = /^([^/]+)\/(\d{1,3})$/.exec(cidr.trim());
@@ -28,6 +39,30 @@ export function parseCidr(cidr: string): { address: string; prefix: number; v6: 
     if (isIPv4(address) && prefix <= 32) return { address, prefix, v6: false };
     if (isIPv6(address) && prefix <= 128) return { address, prefix, v6: true };
     return null;
+}
+
+const loopback = new BlockList();
+loopback.addSubnet("127.0.0.0", 8, "ipv4");
+loopback.addAddress("::1", "ipv6");
+
+export function isLoopbackRange(c: { address: string; prefix: number; v6: boolean }): boolean {
+    const inside = loopback.check(c.address, c.v6 ? "ipv6" : "ipv4");
+    return inside && c.prefix >= (c.v6 ? 128 : 8);
+}
+
+// Peers a set of CIDR ranges names, an IPv4 peer of a dual-stack listener included
+export function rangeFilter(ranges: readonly string[]): (address: string | undefined) => boolean {
+    const list = new BlockList();
+    for (const range of ranges) {
+        const c = parseCidr(range);
+        if (c) list.addSubnet(c.address, c.prefix, c.v6 ? "ipv6" : "ipv4");
+    }
+    return (address) => {
+        if (!address) return false;
+        const v4 = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(address)?.[1] ?? address;
+        if (isIPv4(v4)) return list.check(v4, "ipv4");
+        return isIPv6(address) && list.check(address, "ipv6");
+    };
 }
 
 function hextets(address: string): string[] | null {
@@ -47,56 +82,76 @@ function hextets(address: string): string[] | null {
     return all.length === 8 ? all : null;
 }
 
+function prefixKey(parts: string[], hextetCount: number): string {
+    const head = parts.slice(0, hextetCount).map((h) => Number.parseInt(h, 16).toString(16));
+    return `${head.join(":")}::/${hextetCount * 16}`;
+}
+
 // One IPv6 holder usually gets a whole /64, so its addresses share one bucket
 export function addressKey(address: string): string {
     if (!isIPv6(address)) return address;
     const parts = hextets(address);
-    if (!parts) return address;
-    return `${parts
-        .slice(0, 4)
-        .map((h) => Number.parseInt(h, 16).toString(16))
-        .join(":")}::/64`;
+    return parts ? prefixKey(parts, 4) : address;
+}
+
+function refilled(b: Bucket, now: number): number {
+    const perMs = b.rate.perMinute / 60_000;
+    return Math.min(b.rate.burst, b.tokens + Math.max(0, now - b.at) * perMs);
 }
 
 export class AddressLimiter {
+    // Kept in least recently used order, the first entry the stalest
     private readonly buckets = new Map<string, Bucket>();
-    private readonly shared = new BlockList();
+    private readonly shared: (address: string) => boolean;
+    private readonly block: Rate;
 
     constructor(private readonly limits: AddressLimits) {
-        for (const range of limits.sharedRanges) {
-            const c = parseCidr(range);
-            if (c) this.shared.addSubnet(c.address, c.prefix, c.v6 ? "ipv6" : "ipv4");
-        }
+        this.shared = rangeFilter(limits.sharedRanges);
+        const m = limits.v6BlockMultiple;
+        this.block = { perMinute: limits.normal.perMinute * m, burst: limits.normal.burst * m };
     }
 
-    private rateFor(address: string): { rate: Rate; key: string } {
-        const family = isIPv4(address) ? "ipv4" : "ipv6";
-        if (this.shared.check(address, family)) {
-            return { rate: this.limits.shared, key: `shared ${address}` };
-        }
-        return { rate: this.limits.normal, key: addressKey(address) };
+    private levels(address: string): Level[] {
+        if (this.shared(address)) return [{ key: `shared ${address}`, rate: this.limits.shared }];
+        const parts = isIPv4(address) ? null : hextets(address);
+        if (!parts) return [{ key: address, rate: this.limits.normal }];
+        return [
+            { key: prefixKey(parts, 4), rate: this.limits.normal },
+            { key: prefixKey(parts, 3), rate: this.block },
+        ];
     }
 
-    // Takes one token, giving the milliseconds until one is free when the bucket is empty
+    // A full table never drops a bucket still refilling, as that would hand its owner a new burst
+    private resolve(level: Level, now: number): Level {
+        if (this.buckets.has(level.key) || this.buckets.size < maxTrackedAddresses) return level;
+        const [staleKey, stale] = this.buckets.entries().next().value as [string, Bucket];
+        if (refilled(stale, now) >= stale.rate.burst) {
+            this.buckets.delete(staleKey);
+            return level;
+        }
+        return { key: overflowKey, rate: this.limits.normal };
+    }
+
+    // Takes one token from every level, giving the milliseconds until all have one when any is empty
     take(address: string | undefined, now: number): number | null {
         if (!address || (!isIPv4(address) && !isIPv6(address))) return null;
-        const { rate, key } = this.rateFor(address);
-        const perMs = rate.perMinute / 60_000;
-        const old = this.buckets.get(key);
-        const tokens = old
-            ? Math.min(rate.burst, old.tokens + Math.max(0, now - old.at) * perMs)
-            : rate.burst;
-        this.buckets.delete(key);
-        if (tokens < 1) {
-            this.buckets.set(key, { tokens, at: now });
-            return Math.ceil((1 - tokens) / perMs);
+        const resolved = new Map<string, Bucket>();
+        for (const level of this.levels(address)) {
+            const { key, rate } = this.resolve(level, now);
+            const old = this.buckets.get(key);
+            resolved.set(key, { tokens: old ? refilled(old, now) : rate.burst, at: now, rate });
         }
-        this.buckets.set(key, { tokens: tokens - 1, at: now });
-        if (this.buckets.size > maxTrackedAddresses) {
-            const oldest = this.buckets.keys().next().value as string;
-            this.buckets.delete(oldest);
+        const waits = [...resolved.values()].map((b) =>
+            b.tokens < 1 ? Math.ceil(((1 - b.tokens) * 60_000) / b.rate.perMinute) : 0,
+        );
+        const wait = Math.max(...waits);
+        for (const [key, b] of resolved) {
+            if (wait === 0) b.tokens -= 1;
+            else if (!this.buckets.has(key)) continue;
+            this.buckets.delete(key);
+            this.buckets.set(key, b);
         }
-        return null;
+        return wait === 0 ? null : wait;
     }
 
     get tracked(): number {
@@ -110,6 +165,7 @@ export interface QuoteLimitSettings {
     shared_ranges: string[];
     shared_quotes_per_minute: number;
     shared_quote_burst: number;
+    quote_v6_block_multiple: number;
 }
 
 // Every MCP request builds its tools again, so the buckets live with the settings instead
@@ -122,6 +178,7 @@ export function quoteLimiter(s: QuoteLimitSettings): AddressLimiter {
             normal: { perMinute: s.quotes_per_minute, burst: s.quote_burst },
             shared: { perMinute: s.shared_quotes_per_minute, burst: s.shared_quote_burst },
             sharedRanges: s.shared_ranges,
+            v6BlockMultiple: s.quote_v6_block_multiple,
         });
         quoteLimiters.set(s, limiter);
     }

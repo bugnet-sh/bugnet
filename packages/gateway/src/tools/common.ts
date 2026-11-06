@@ -9,6 +9,7 @@ import { PlacementState } from "../gen/bugnet/router/v1/router_pb.ts";
 import { GatewayError, errorReason, fromRouter, type RouterClient } from "../router.ts";
 import type { Assessor } from "../assess/assessor.ts";
 import type { Log } from "../log.ts";
+import type { Tracing } from "../trace.ts";
 
 export interface Deps {
     config: Config;
@@ -17,6 +18,7 @@ export interface Deps {
     assessor: Assessor;
     log: Log;
     now: () => number;
+    tracing?: Tracing;
 }
 
 export type Register = (server: McpServer, deps: Deps) => void;

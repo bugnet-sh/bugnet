@@ -1,9 +1,9 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { hostHeaderValidation, toNodeHandler } from "@modelcontextprotocol/node";
-import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
+import { McpServer, createMcpHandler, type ServerContext } from "@modelcontextprotocol/server";
 import { allowedHosts } from "./config.ts";
 import { instructions } from "./instructions.ts";
-import { peerAddress, withClientAddress } from "./request.ts";
+import { peerAddress, withClientAddress, withToolCall } from "./request.ts";
 import { registerAssessTool } from "./tools/assess.ts";
 import type { Deps, Register } from "./tools/common.ts";
 import { registerExtendTool } from "./tools/extend.ts";
@@ -33,11 +33,33 @@ export const registrations: Register[] = [
     registerSecretTools,
 ];
 
+type AnyHandler = (...a: unknown[]) => unknown;
+
+// Each tool call runs in its own scope, which the router client reads to cancel and trace its calls
+function scopeToolCalls(server: McpServer, deps: Deps): void {
+    const tracing = deps.tracing;
+    const register = server.registerTool.bind(server) as (
+        name: string,
+        config: unknown,
+        cb: AnyHandler,
+    ) => unknown;
+    const scoped = (name: string, config: unknown, cb: AnyHandler) =>
+        register(name, config, (...a: unknown[]) => {
+            const ctx = a[a.length - 1] as ServerContext;
+            const args = a.length > 1 ? a[0] : undefined;
+            const run = () => cb(...a);
+            const traced = tracing ? () => tracing.tool(name, args, run) : run;
+            return withToolCall(ctx.mcpReq.signal, traced);
+        });
+    server.registerTool = scoped as typeof server.registerTool;
+}
+
 export function buildMcpServer(deps: Deps, extra: Register[] = []): McpServer {
     const server = new McpServer(
         { name: "bugnet", title: "Bugnet sandboxes", version },
         { instructions },
     );
+    scopeToolCalls(server, deps);
     for (const register of [...registrations, ...extra]) register(server, deps);
     return server;
 }

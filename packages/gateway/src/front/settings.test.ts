@@ -81,6 +81,35 @@ describe("front settings", () => {
         expect(() => check(ip)).toThrow(/no DNS name/);
     });
 
+    it("trusts PROXY headers only from proxy_protocol_from, loopback by default", () => {
+        expect(parseSettings("").front.proxy_protocol_from).toEqual(["127.0.0.1/32", "::1/128"]);
+        const certs = ['cert_file = "c"', 'key_file = "k"'];
+        const open = [...prod.slice(0, -1), ...certs];
+        for (const addr of ["0.0.0.0:8444", ":8444", "192.0.2.10:8444", "[::]:8444"]) {
+            expect(() => check([...open, `tls_addr = "${addr}"`])).toThrow(/proxy_protocol_from/);
+            const named = [
+                ...open,
+                `tls_addr = "${addr}"`,
+                'proxy_protocol_from = ["10.1.2.3/32"]',
+            ];
+            expect(() => check(named)).not.toThrow();
+            const plain = [...open, `tls_addr = "${addr}"`, "proxy_protocol = false"];
+            expect(() => check(plain)).not.toThrow();
+        }
+        expect(() => check([...prod, ...certs])).not.toThrow();
+        expect(() => check([...prod, ...certs, "proxy_protocol_from = []"])).toThrow(
+            /proxy_protocol_from/,
+        );
+        for (const all of ["0.0.0.0/0", "::/0"]) {
+            expect(() => check([...prod, ...certs, `proxy_protocol_from = ["${all}"]`])).toThrow(
+                /proxy_protocol_from/,
+            );
+        }
+        expect(() => parseSettings('[front]\nproxy_protocol_from = ["10.0.0.1"]')).toThrow(
+            /front\.proxy_protocol_from\.0: a CIDR range/,
+        );
+    });
+
     it("keeps dev payments off any front a proxy relays", () => {
         const dev = ['[payments]\nmode = "dev"', "[front]", 'cert_file = "c"', 'key_file = "k"'];
         expect(() => check([...dev, 'tls_addr = "127.0.0.1:8444"'])).toThrow(/dev/);

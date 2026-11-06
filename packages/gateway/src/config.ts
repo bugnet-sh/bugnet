@@ -8,7 +8,7 @@
 import { readFileSync } from "node:fs";
 import { parse } from "smol-toml";
 import { z } from "zod";
-import { parseCidr } from "./ratelimit.ts";
+import { isLoopbackRange, parseCidr } from "./ratelimit.ts";
 
 const duration = z
     .string()
@@ -25,7 +25,7 @@ const settingsSchema = z
         router: z
             .object({
                 url: z.url().default("http://127.0.0.1:8080"),
-                timeout: duration.prefault("50s"),
+                timeout: duration.prefault("20s"),
                 links_domain: z
                     .string()
                     .regex(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/, "a lower-case domain such as bugnet.sh")
@@ -54,6 +54,7 @@ const settingsSchema = z
                 shared_ranges: z.array(cidr).max(100).default(["160.79.104.0/21"]),
                 shared_quotes_per_minute: z.int().min(1).max(1_000_000).default(120),
                 shared_quote_burst: z.int().min(1).max(1_000_000).default(40),
+                quote_v6_block_multiple: z.int().min(1).max(65536).default(4),
             })
             .strict()
             .prefault({}),
@@ -76,10 +77,27 @@ const settingsSchema = z
             })
             .strict()
             .prefault({}),
+        telemetry: z
+            .object({
+                traces: z.boolean().default(false),
+                otlp_endpoint: z.url().or(z.literal("")).default(""),
+                sample_ratio: z.number().min(0).max(1).default(1),
+                environment: z
+                    .string()
+                    .regex(/^[a-z0-9-]{1,64}$/, "lowercase letters, digits and hyphens")
+                    .default("main"),
+                export_timeout: duration.prefault("10s"),
+                batch_timeout: duration.prefault("5s"),
+                batch_size: z.int().min(1).max(65536).default(512),
+                queue_size: z.int().min(1).max(65536).default(2048),
+            })
+            .strict()
+            .prefault({}),
         front: z
             .object({
                 tls_addr: z.string().default(""),
                 proxy_protocol: z.boolean().default(true),
+                proxy_protocol_from: z.array(cidr).max(100).default(["127.0.0.1/32", "::1/128"]),
                 proxy_timeout: duration.prefault("3s"),
                 proxy_max_bytes: z.int().min(52).max(65551).default(536),
                 handshake_timeout: duration.prefault("10s"),
@@ -106,6 +124,8 @@ export interface Secrets {
     paymentsToken: string;
     githubToken: string;
     huggingfaceToken: string;
+    // The whole Authorization header value for the trace backend, empty for a local collector
+    otlpAuthorization?: string;
 }
 
 export interface Config extends Settings {
@@ -177,6 +197,7 @@ export function readSecrets(env: NodeJS.ProcessEnv, settings: Settings): Secrets
         paymentsToken,
         githubToken: env.GITHUB_TOKEN ?? "",
         huggingfaceToken: env.HF_TOKEN ?? "",
+        otlpAuthorization: env.BUGNET_OTLP_AUTHORIZATION ?? "",
     };
 }
 
@@ -200,6 +221,22 @@ const dnsName = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][
 export function acmeDomains(s: Settings): string[] {
     if (s.front.acme_domains.length > 0) return s.front.acme_domains;
     return [new URL(s.public_url).hostname];
+}
+
+function checkProxyPeers(ranges: string[], loopbackFront: boolean): void {
+    const parsed = ranges.map((r) => parseCidr(r) as NonNullable<ReturnType<typeof parseCidr>>);
+    if (parsed.length === 0) {
+        throw new ConfigError("front.proxy_protocol_from is empty, so no proxy could connect");
+    }
+    if (parsed.some((c) => c.prefix === 0)) {
+        throw new ConfigError("front.proxy_protocol_from must not trust every address");
+    }
+    // A front reachable beyond this machine must name the proxy, or any peer could name a client
+    if (!loopbackFront && parsed.every(isLoopbackRange)) {
+        throw new ConfigError(
+            "front.tls_addr is not loopback, so front.proxy_protocol_from must name the proxy",
+        );
+    }
 }
 
 function checkFront(s: Settings): void {
@@ -233,12 +270,30 @@ function checkFront(s: Settings): void {
             }
         }
     }
-    // A PROXY header means a proxy relays strangers, which dev payments must never serve
     const loopback = host === "localhost" || host === "::1" || /^127\./.test(host);
+    if (f.proxy_protocol) checkProxyPeers(f.proxy_protocol_from, loopback);
+    // A PROXY header means a proxy relays strangers, which dev payments must never serve
     if (s.payments.mode === "dev" && (f.proxy_protocol || !loopback)) {
         throw new ConfigError(
             "payments.mode dev needs a loopback front.tls_addr, no proxy_protocol",
         );
+    }
+}
+
+function checkTelemetry(t: Settings["telemetry"]): void {
+    if (t.batch_size > t.queue_size) {
+        throw new ConfigError("telemetry.batch_size is over telemetry.queue_size");
+    }
+    if (!t.traces) return;
+    if (!t.otlp_endpoint) throw new ConfigError("telemetry.traces needs telemetry.otlp_endpoint");
+    const url = new URL(t.otlp_endpoint);
+    if (url.username || url.password) {
+        throw new ConfigError("telemetry.otlp_endpoint must not hold a user or password");
+    }
+    // Spans may only cross the network encrypted, plain http stays on this machine
+    const plainOk = url.protocol === "http:" && isLoopback(t.otlp_endpoint);
+    if (url.protocol !== "https:" && !plainOk) {
+        throw new ConfigError("telemetry.otlp_endpoint must be https, or http to a loopback host");
     }
 }
 
@@ -252,8 +307,12 @@ export function checkSettings(s: Settings): void {
         }
     }
     checkFront(s);
+    checkTelemetry(s.telemetry);
     if (s.payments.mode === "http" && !s.payments.url) {
         throw new ConfigError("payments.mode http needs payments.url");
+    }
+    if (s.router.timeout < 1000 || s.router.timeout >= 45_000) {
+        throw new ConfigError("router.timeout must be 1s or more and under 45s, the tool limit");
     }
     if (s.limits.default_wait_seconds > s.limits.max_wait_seconds) {
         throw new ConfigError("limits.default_wait_seconds is over limits.max_wait_seconds");

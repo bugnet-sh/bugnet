@@ -35,7 +35,7 @@ describe("config", () => {
         expect(parseDuration("10m")).toBe(600_000);
         const s = parseSettings("");
         expect(s.limits.quote_ttl).toBe(600_000);
-        expect(s.router.timeout).toBe(50_000);
+        expect(s.router.timeout).toBe(20_000);
     });
 
     it("keeps dev payments on loopback", () => {

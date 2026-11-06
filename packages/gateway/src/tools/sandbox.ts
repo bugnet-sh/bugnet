@@ -10,7 +10,7 @@ import {
 } from "../gen/bugnet/router/v1/router_pb.ts";
 import { extensionsFor } from "./extend.ts";
 import { verifyQuote, QuoteError, type QuoteClaims } from "../quote.ts";
-import { GatewayError, errorReason, fromRouter } from "../router.ts";
+import { GatewayError, errorReason, fromRouter, waitMargin } from "../router.ts";
 import type { OrderResult } from "../payments/port.ts";
 import {
     approvalMeta,
@@ -194,7 +194,7 @@ async function waitReady(
         const wait = Math.min(until - deps.now(), 25_000);
         const res = await deps.router.getPlacement(
             { handle, waitMs: wait, knownState: PlacementState.PLACING },
-            { signal },
+            { signal, timeoutMs: wait + waitMargin },
         );
         p = res.placement;
     }
@@ -419,7 +419,7 @@ export const registerSandboxTools: Register = (server, deps) => {
                     p = await withProgress(ctx, "waiting for the sandbox", async (signal) => {
                         const res = await deps.router.getPlacement(
                             { handle: args.handle, waitMs: wait, knownState: known },
-                            { signal },
+                            { signal, timeoutMs: wait + waitMargin },
                         );
                         return res.placement;
                     });

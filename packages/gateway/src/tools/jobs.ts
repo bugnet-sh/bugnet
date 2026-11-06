@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { JobState } from "../gen/bugnet/router/v1/router_pb.ts";
 import { Code, ConnectError } from "@connectrpc/connect";
-import { GatewayError, errorReason } from "../router.ts";
+import { GatewayError, errorReason, waitMargin } from "../router.ts";
 import { tail, untrustedLabel } from "../sanitize.ts";
 import {
     callKey,
@@ -277,7 +277,7 @@ export const registerJobTools: Register = (server, deps) => {
                                 cursor,
                                 until: { exit: true },
                             },
-                            { signal: stop },
+                            { signal: stop, timeoutMs: wait + waitMargin },
                         );
                         for await (const f of stream) {
                             if (f.cursor) cursor = f.cursor;

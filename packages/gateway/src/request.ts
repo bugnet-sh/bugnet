@@ -6,6 +6,7 @@ interface RequestContext {
 }
 
 const store = new AsyncLocalStorage<RequestContext>();
+const toolCalls = new AsyncLocalStorage<AbortSignal>();
 const peers = new WeakMap<Socket, string>();
 
 // IPv4 peers of a dual-stack listener arrive as ::ffff:a.b.c.d, which would split one client in two
@@ -32,4 +33,14 @@ export function withClientAddress<T>(address: string | undefined, work: () => T)
 // The address of the client whose HTTP request is running, undefined outside one
 export function clientAddress(): string | undefined {
     return store.getStore()?.clientAddress;
+}
+
+// Runs one tool call, whose router calls stop when the client cancels it
+export function withToolCall<T>(signal: AbortSignal, work: () => T): T {
+    return toolCalls.run(signal, work);
+}
+
+// The abort signal of the tool call running, undefined outside one
+export function toolCallSignal(): AbortSignal | undefined {
+    return toolCalls.getStore();
 }

@@ -7,19 +7,35 @@ import {
 } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { BinaryReader, WireType } from "@bufbuild/protobuf/wire";
+import type { Config } from "./config.ts";
 import { SandboxRouterService } from "./gen/bugnet/router/v1/router_pb.ts";
+import { toolCallSignal } from "./request.ts";
 
 export type RouterClient = Client<typeof SandboxRouterService>;
 
-export function createRouterClient(baseUrl: string, internalToken: string): RouterClient {
+// A long poll's deadline past its wait, which router.timeout alone would cut short
+export const waitMargin = 5_000;
+
+// A cancelled tool call cancels the router calls it made, so no tool passes its signal by hand
+const followToolCall: Interceptor = (next) => (req) => {
+    const tool = toolCallSignal();
+    return next(tool ? { ...req, signal: AbortSignal.any([req.signal, tool]) } : req);
+};
+
+// Calls without a deadline of their own end at router.timeout, long polls set wait plus a margin
+export function createRouterClient(
+    config: Pick<Config, "router" | "secrets">,
+    interceptors: Interceptor[] = [],
+): RouterClient {
     const auth: Interceptor = (next) => (req) => {
-        req.header.set("Authorization", `Bearer ${internalToken}`);
+        req.header.set("Authorization", `Bearer ${config.secrets.internalToken}`);
         return next(req);
     };
     const transport = createConnectTransport({
-        baseUrl,
+        baseUrl: config.router.url,
         httpVersion: "2",
-        interceptors: [auth],
+        defaultTimeoutMs: config.router.timeout,
+        interceptors: [...interceptors, followToolCall, auth],
     });
     return createClient(SandboxRouterService, transport);
 }
