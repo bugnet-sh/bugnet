@@ -511,7 +511,7 @@ describe("put grant refusals from the gateway", () => {
         const r = await rig({ elicit: accept }, {});
         const res = await call(r, hf());
         expect(res.text).toMatch(
-            /^secret: Bugnet has not opened secrets yet, so a retry now or later gets/,
+            /^secret: Bugnet has not opened secrets yet, so a retry now or later, or a new sandbox /,
         );
         expect(r.route.requests).toEqual([]);
     });

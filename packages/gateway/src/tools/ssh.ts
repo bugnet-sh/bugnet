@@ -31,8 +31,8 @@ const fingerprintInput = z
 export const defaultKnownHostsFile = "~/.ssh/bugnet_known_hosts";
 
 const notOpenYet =
-    "Bugnet has not opened SSH yet, so a retry now or later gets the same answer. " +
-    "bugnet_exec and the file tools work as usual";
+    "Bugnet has not opened SSH yet, so a retry now or later, or a new sandbox from any quote, " +
+    "gets the same answer. bugnet_exec and the file tools work as usual";
 const notOnSandbox =
     "SSH is not open on this sandbox, the other Bugnet tools work here as usual. A sandbox " +
     'started from bugnet_quote with needs ["ssh"] has it';

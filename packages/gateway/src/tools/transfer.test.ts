@@ -378,9 +378,9 @@ describe("bugnet_transfer errors", () => {
         const r = await callTool(client, "bugnet_transfer", download);
         expect(r.isError).toBe(true);
         expect(r.text).toBe(
-            "transfer: Bugnet has not opened this yet, so a retry now or later gets the same " +
-                "answer. The other Bugnet tools work as usual. bugnet_read_file and " +
-                "bugnet_write_file move up to 256 KiB per call.",
+            "transfer: Bugnet has not opened this yet, so a retry now or later, or a new " +
+                "sandbox from any quote, gets the same answer. The other Bugnet tools work as " +
+                "usual. bugnet_read_file and bugnet_write_file move up to 256 KiB per call.",
         );
     });
 

@@ -402,8 +402,8 @@ describe("bugnet_ssh", () => {
         const r = await callTool(client, "bugnet_ssh", { handle: testHandle, publicKey });
         expect(r.isError).toBe(true);
         expect(r.text).toBe(
-            "ssh: Bugnet has not opened SSH yet, so a retry now or later gets the same answer. " +
-                "bugnet_exec and the file tools work as usual.",
+            "ssh: Bugnet has not opened SSH yet, so a retry now or later, or a new sandbox from " +
+                "any quote, gets the same answer. bugnet_exec and the file tools work as usual.",
         );
     });
 
@@ -539,8 +539,9 @@ describe("bugnet_ssh_remove", () => {
         const client = await connect({});
         const r = await callTool(client, "bugnet_ssh_remove", { handle: testHandle, fingerprint });
         expect(r.text).toBe(
-            "ssh remove: Bugnet has not opened SSH yet, so a retry now or later gets the same " +
-                "answer. bugnet_exec and the file tools work as usual.",
+            "ssh remove: Bugnet has not opened SSH yet, so a retry now or later, or a new " +
+                "sandbox from any quote, gets the same answer. bugnet_exec and the file tools " +
+                "work as usual.",
         );
     });
 

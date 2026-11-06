@@ -143,8 +143,8 @@ const unknownHandle =
 
 // The router has not built the feature, which no retry, wait or extension changes
 export const notOpenText =
-    "Bugnet has not opened this yet, so a retry now or later gets the same answer. The " +
-    "other Bugnet tools work as usual";
+    "Bugnet has not opened this yet, so a retry now or later, or a new sandbox from any quote, " +
+    "gets the same answer. The other Bugnet tools work as usual";
 
 // Data-plane 11.3 and control-plane 13.1, each honoured only under the code it comes with
 const rules: Record<string, Rule> = {

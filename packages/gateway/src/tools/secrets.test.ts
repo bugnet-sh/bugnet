@@ -471,9 +471,9 @@ describe.each(tools)("$tool refusals", ({ tool, method, what, args }) => {
         const r = await callTool(client, tool, args);
         expect(r.isError).toBe(true);
         expect(r.text).toBe(
-            `${what}: Bugnet has not opened secrets yet, so a retry now or later gets the same ` +
-                "answer. Work that needs a secret goes without it here, and a value never goes in " +
-                "a command, env or file.",
+            `${what}: Bugnet has not opened secrets yet, so a retry now or later, or a new ` +
+                "sandbox from any quote, gets the same answer. Work that needs a secret goes " +
+                "without it here, and a value never goes in a command, env or file.",
         );
     });
 

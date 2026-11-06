@@ -22,8 +22,9 @@ function previewRefusal(err: unknown): unknown {
     if (err.code === Code.Unimplemented) {
         return new GatewayError(
             "unsupported",
-            "preview: Bugnet has not opened web previews yet, so a retry now or later gets the " +
-                "same answer. The other Bugnet tools work as usual",
+            "preview: Bugnet has not opened web previews yet, so a retry now or later, or a new " +
+                "sandbox from any quote, gets the same answer. The other Bugnet tools work as " +
+                "usual",
         );
     }
     const reason = errorReason(err);
