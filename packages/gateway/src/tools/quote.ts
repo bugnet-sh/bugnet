@@ -1,5 +1,6 @@
 // Without the router's floor, bugnet_assess sizes the work itself and bugnet_quote recommends none
 import { z } from "zod";
+import { parseSource } from "../assess/source.ts";
 import {
     Confidence,
     Dimension,
@@ -446,11 +447,13 @@ export async function buildQuote(
     else if (est.estimateId) deps.log.warn("estimate id is not a UUID, quoting without it");
     const named = est.source?.kind === SourceKind.GITHUB;
     const github = named && estimateId !== null;
+    // A router whose estimate names no source still leaves the agent a GitHub repo to clone
+    const asked = parseSource(args.source).kind === "github";
     const expiresAt = deps.now() + deps.config.limits.quote_ttl;
     const quoteId = signQuote(deps.config.secrets.quoteKey, {
         requirements,
         github,
-        githubUnplaced: named && !github,
+        githubUnplaced: (named || asked) && !github,
         estimateId,
         expiresAt,
     });

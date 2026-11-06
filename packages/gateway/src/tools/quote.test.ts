@@ -22,10 +22,12 @@ import {
     connectTools,
     fakeRouter,
     packageOption,
+    placement,
     resources,
     routerError,
     testConfig,
     testDeps,
+    testHandle,
     testNow,
     type RouterImpl,
 } from "../testing/harness.ts";
@@ -533,6 +535,36 @@ describe("bugnet_quote and a GitHub repo", () => {
         const claims = verifyQuote(deps.config.secrets.quoteKey, r.structured.quoteId, testNow);
         expect(claims.github).toBe(false);
         expect(claims.githubUnplaced).toBe(true);
+    });
+
+    it("says where the repo is when the router's estimate names no source at all", async () => {
+        const { client, deps } = await setup({
+            estimate: () => ({ options }),
+            createPlacement: () => ({ handle: testHandle, placement: placement() }),
+        });
+        for (const source of [
+            "https://github.com/kelseyhightower/nocode",
+            "github.com/sharkdp/hyperfine",
+            "git@github.com:acme/app.git",
+        ]) {
+            const q = await callTool<Quote>(client, "bugnet_quote", { source });
+            const claims = verifyQuote(deps.config.secrets.quoteKey, q.structured.quoteId, testNow);
+            expect(claims.githubUnplaced, source).toBe(true);
+            const r = await callTool(client, "bugnet_start", {
+                quoteId: q.structured.quoteId,
+                packageId: "small-10m",
+                confirmPriceUsd: "0.05",
+            });
+            expect(r.isError).toBe(false);
+            expect(r.text).toMatch(
+                /^Bugnet did not place the quoted repo in this sandbox, cloning it by hand with/m,
+            );
+        }
+        for (const source of ["https://huggingface.co/gpt2", "https://example.com/x.sh", ""]) {
+            const q = await callTool<Quote>(client, "bugnet_quote", { source });
+            const claims = verifyQuote(deps.config.secrets.quoteKey, q.structured.quoteId, testNow);
+            expect(claims.githubUnplaced, source).toBeFalsy();
+        }
     });
 });
 
