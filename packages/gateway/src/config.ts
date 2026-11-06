@@ -26,6 +26,10 @@ const settingsSchema = z
             .object({
                 url: z.url().default("http://127.0.0.1:8080"),
                 timeout: duration.prefault("50s"),
+                links_domain: z
+                    .string()
+                    .regex(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/, "a lower-case domain such as bugnet.sh")
+                    .default("bugnet.sh"),
             })
             .strict()
             .prefault({}),

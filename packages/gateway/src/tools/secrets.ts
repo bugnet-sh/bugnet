@@ -10,7 +10,9 @@ import {
     handleTag,
     idempotencyKey,
     ok,
+    routerLink,
     sandboxFailure,
+    withFreshKey,
     type Deps,
     type Register,
 } from "./common.ts";
@@ -39,6 +41,10 @@ const failureText: Record<string, string> = {
     PORT_443_TAKEN: "port 443 in the sandbox is taken, and secrets need it",
     SOURCE_UNKNOWN: "this sandbox cannot use secrets, a new sandbox can",
 };
+
+// Data-plane 4.4, a bnsl_ token of 16 bytes and six Crockford base32 characters
+const linkPath = /^\/l\/bnsl_[A-Za-z0-9_-]{22}$/;
+const pairingShape = /^[0-9A-HJKMNP-TV-Z]{6}$/;
 
 // The router refuses hosts not in canonical form instead of rewriting them
 export function canonicalHosts(hosts: readonly string[]): string[] {
@@ -152,22 +158,25 @@ export const registerSecretTools: Register = (server, deps) => {
             try {
                 const name = args.name ?? "";
                 const hosts = canonicalHosts(args.hosts ?? []);
-                const res = await deps.router.createSecretLink({
-                    handle: args.handle,
-                    name,
-                    hosts,
-                    requestId: idempotencyKey(ctx, [args.handle, name, hosts.join(",")]),
-                });
-                if (!res.url.startsWith("https://") || !res.pairingCode) {
-                    throw new GatewayError("internal", "secret link: the router gave no link");
+                const key = idempotencyKey(ctx, [args.handle, name, hosts.join(",")]);
+                const res = await withFreshKey(key, (requestId) =>
+                    deps.router.createSecretLink({ handle: args.handle, name, hosts, requestId }),
+                );
+                const link = routerLink(deps, res.url, linkPath);
+                if (!link || !pairingShape.test(res.pairingCode)) {
+                    throw new GatewayError(
+                        "internal",
+                        "secret link: the router gave no usable link",
+                    );
                 }
+                const url = link.href;
                 const expiresAt = iso(res.expiresAt);
                 // The URL and the pairing code are bearer values, so neither is logged
                 deps.log.info("secret link created", { handle: handleTag(args.handle), name });
                 const text = [
                     `Secret entry link for the user, single use, valid ` +
                         (expiresAt ? `until ${expiresAt}` : "for 10 minutes") +
-                        `: ${res.url}`,
+                        `: ${url}`,
                     `Pairing code: ${res.pairingCode}`,
                     "The link and its six-character pairing code are for the user. The page " +
                         "shows the same code and the sandbox's source, and the user checks both " +
@@ -184,7 +193,7 @@ export const registerSecretTools: Register = (server, deps) => {
                 ]
                     .filter(Boolean)
                     .join("\n");
-                return ok(text, { url: res.url, pairingCode: res.pairingCode, expiresAt });
+                return ok(text, { url, pairingCode: res.pairingCode, expiresAt });
             } catch (e) {
                 return secretFailure(deps, args.handle, e, "secret link");
             }

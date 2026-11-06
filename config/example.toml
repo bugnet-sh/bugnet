@@ -8,6 +8,7 @@ allowed_hosts = []                      # Host header values to accept, public_u
 [router]
 url = "http://127.0.0.1:8080"           # Router API base URL, Connect over h2c
 timeout = "50s"                         # upper bound on one router call
+links_domain = "bugnet.sh"              # every preview, transfer, secret and SSH host the router names is under it
 
 [payments]
 mode = "http"                           # "http" calls the Payments service, "dev" settles free on loopback only
