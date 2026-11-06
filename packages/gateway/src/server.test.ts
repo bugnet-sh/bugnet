@@ -99,4 +99,46 @@ describe("the /mcp endpoint's browser rules", () => {
         const r = await post({ cookie });
         expect(r.status).toBe(200);
     });
+
+    it("asks to clear bugnet.sh cookies when the jar is past the header limit", async () => {
+        const cookie = Array.from({ length: 90 }, (_, i) => `c${i}=${"x".repeat(1000)}`).join("; ");
+        const r = await post({ cookie });
+        expect(r.status).toBe(431);
+        expect(r.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
+        expect(await r.text()).toMatch(/clear the cookies for bugnet\.sh/i);
+    });
+});
+
+describe("the gateway's other paths", () => {
+    const stops: (() => Promise<void>)[] = [];
+    afterEach(async () => {
+        for (const stop of stops.splice(0)) await stop();
+    });
+
+    async function request(method: string, path: string, toml = ""): Promise<Response> {
+        const deps = testDeps({ config: testConfig(`listen_addr = "127.0.0.1:0"\n${toml}`) });
+        const http = await startHttp(deps);
+        stops.push(() => new Promise((r) => http.close(() => r())));
+        const { port } = http.address() as AddressInfo;
+        return fetch(`http://127.0.0.1:${port}${path}`, { method, redirect: "manual" });
+    }
+
+    it.each(["GET", "HEAD"])("sends %s / to the home page", async (method) => {
+        const r = await request(method, "/");
+        expect(r.status).toBe(302);
+        expect(r.headers.get("location")).toBe("https://bugnet.sh/");
+        expect(r.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
+    });
+
+    it("sends / to the home_url setting, and answers not found when it is empty", async () => {
+        const dev = await request("GET", "/?x=1", `home_url = "https://dev.bugnet.sh/"`);
+        expect(dev.headers.get("location")).toBe("https://dev.bugnet.sh/");
+        expect((await request("GET", "/", `home_url = ""`)).status).toBe(404);
+    });
+
+    it("answers not found for other paths and methods", async () => {
+        expect((await request("POST", "/")).status).toBe(404);
+        expect((await request("GET", "/index.html")).status).toBe(404);
+        expect((await request("GET", "/healthz")).status).toBe(200);
+    });
 });

@@ -22,6 +22,7 @@ const settingsSchema = z
     .object({
         listen_addr: z.string().default("127.0.0.1:8787"),
         public_url: z.url().default("http://127.0.0.1:8787"),
+        home_url: z.url().or(z.literal("")).default("https://bugnet.sh/"),
         allowed_hosts: z.array(z.string()).default([]),
         allowed_origins: z
             .array(z.string().regex(/^https:\/\/[a-z0-9.-]+(:\d{1,5})?\/?$/, "an https origin"))
