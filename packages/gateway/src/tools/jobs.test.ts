@@ -14,6 +14,7 @@ import {
     fakeRouter,
     placement,
     routerError,
+    testConfig,
     testDeps,
     testHandle,
     type RouterImpl,
@@ -177,6 +178,81 @@ describe("bugnet_exec", () => {
             "exec: Bugnet could not confirm the command started. Calling bugnet_exec again in a " +
                 "few seconds starts it.",
         );
+    });
+
+    it("cuts the retry to what the tool call has left and says the run may be going", async () => {
+        const skew = { by: 0 };
+        const asked: (number | undefined)[] = [];
+        const deps = testDeps({
+            now: () => Date.now() + skew.by,
+            router: fakeRouter({
+                exec: async (_req, ctx) => {
+                    asked.push(ctx.timeoutMs());
+                    if (asked.length === 1) {
+                        skew.by += 38_500;
+                        throw routerError(Code.Unavailable);
+                    }
+                    await new Promise((r) => ctx.signal.addEventListener("abort", r));
+                    throw routerError(Code.DeadlineExceeded);
+                },
+            }),
+        });
+        const client = await connectTools(deps);
+        const started = Date.now();
+        const r = await callTool(client, "bugnet_exec", {
+            handle: testHandle,
+            cmd: "make deploy",
+            waitSeconds: 1,
+            requestId: "deploy-1",
+        });
+        expect(Date.now() - started).toBeLessThan(3_000);
+        expect(asked).toHaveLength(2);
+        expect(asked[1]).toBeLessThanOrEqual(1_500);
+        expect(r.text).toBe(
+            "exec: Bugnet did not confirm the command started in time, so it may be running. " +
+                "bugnet_exec with the same requestId and command returns that run instead of " +
+                "starting another.",
+        );
+    });
+
+    it("sends no retry when the tool call has no time left for one", async () => {
+        const skew = { by: 0 };
+        let calls = 0;
+        const deps = testDeps({
+            now: () => Date.now() + skew.by,
+            router: fakeRouter({
+                exec: () => {
+                    calls += 1;
+                    skew.by += 40_000;
+                    throw routerError(Code.Unavailable);
+                },
+            }),
+        });
+        const client = await connectTools(deps);
+        const r = await callTool(client, "bugnet_exec", { handle: testHandle, cmd: "make" });
+        expect(calls).toBe(1);
+        expect(r.text).toBe(
+            "exec: Bugnet did not confirm the command started in time, so it may be running. " +
+                "Look for its effects before running it again.",
+        );
+    });
+
+    it("ends a stalled first attempt inside the tool call's plan", async () => {
+        const deps = testDeps({
+            config: testConfig('[limits]\ntool_budget = "5s"\nmax_wait_seconds = 1'),
+            now: Date.now,
+            router: fakeRouter({
+                exec: async (_req, ctx) => {
+                    await new Promise((r) => ctx.signal.addEventListener("abort", r));
+                    throw routerError(Code.DeadlineExceeded);
+                },
+            }),
+        });
+        const client = await connectTools(deps);
+        const started = Date.now();
+        const r = await callTool(client, "bugnet_exec", { handle: testHandle, cmd: "make" });
+        expect(Date.now() - started).toBeLessThan(2_500);
+        expect(r.text).toMatch(/^exec: Bugnet did not confirm the command started in time/);
     });
 
     it("hands back a job id and cursor for a command still running", async () => {

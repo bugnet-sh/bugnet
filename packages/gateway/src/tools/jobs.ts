@@ -5,6 +5,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { GatewayError, errorReason, waitMargin } from "../router.ts";
 import { tail, untrustedLabel } from "../sanitize.ts";
 import {
+    Budget,
     callKey,
     hashKey,
     homePath,
@@ -70,6 +71,9 @@ function outputBlock(label: string, text: string, truncated: boolean): string {
 function unrecorded(e: unknown): boolean {
     return e instanceof ConnectError && e.code === Code.Unavailable && errorReason(e) === null;
 }
+
+// Less than this left sends no retry, which needs the router to start the command
+const retryMs = 1_000;
 
 function outputSummary(stdout: string, stderr: string): string {
     const parts = [
@@ -169,6 +173,7 @@ export const registerJobTools: Register = (server, deps) => {
                     : (callKey(ctx) ?? randomUUID());
                 const wait = waitMs(deps, args.waitSeconds);
                 const started = Date.now();
+                const budget = new Budget(deps);
                 const attempt = (signal: AbortSignal) => {
                     const left = Math.max(0, wait - (Date.now() - started));
                     return deps.router.exec(
@@ -181,19 +186,33 @@ export const registerJobTools: Register = (server, deps) => {
                             // The router reads 0 as its 25 s default, so no wait asks for 1 ms
                             waitMs: left === 0 ? 1 : left,
                         },
-                        { signal, timeoutMs: left + 15_000 },
+                        { signal, timeoutMs: budget.ms(left + 15_000) },
                     );
                 };
+                const mayRun = new GatewayError(
+                    "timeout",
+                    "exec: Bugnet did not confirm the command started in time, so it may be " +
+                        "running. " +
+                        (args.requestId
+                            ? "bugnet_exec with the same requestId and command returns that run " +
+                              "instead of starting another"
+                            : "Look for its effects before running it again"),
+                );
+                const cut = (e: unknown) =>
+                    e instanceof ConnectError && e.code === Code.DeadlineExceeded;
                 const res = await withProgress(ctx, "running the command", async (signal) => {
                     try {
                         return await attempt(signal);
                     } catch (e) {
+                        if (cut(e)) throw mayRun;
                         if (!unrecorded(e)) throw e;
                     }
+                    if (budget.left() < retryMs) throw mayRun;
                     // The same key runs the command at most once, so the retry is safe
                     try {
                         return await attempt(signal);
                     } catch (e) {
+                        if (cut(e)) throw mayRun;
                         if (!unrecorded(e)) throw e;
                         throw new GatewayError(
                             "unavailable",
