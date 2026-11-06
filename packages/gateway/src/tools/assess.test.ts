@@ -340,7 +340,7 @@ describe("bugnet_assess with the router's estimator", () => {
             /^Needs: GPU yes, memory about 40 GiB, disk about 80 GiB, workload inference\./m,
         );
         expect(text).toMatch(
-            /^Recommended package: gpu-l, 4 vCPU \/ 64 GiB \/ 1 GPU, 30 min, \$1\.8 USDC\.$/m,
+            /^Recommended package: gpu-l, 4 vCPU \/ 64 GiB \/ 1 GPU, 30 min, \$1\.80 USDC\.$/m,
         );
         expect(text).toMatch(/^Why: The weights take 23\.8 GiB\.$/m);
         expect(text).toMatch(/^Warning: The model is gated\.$/m);

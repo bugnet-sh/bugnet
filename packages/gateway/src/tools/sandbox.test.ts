@@ -124,6 +124,23 @@ describe("bugnet_start", () => {
         );
     });
 
+    it("starts at the price the quote showed when it is off the cent grid", async () => {
+        const offGrid = [packageOption("small-10m", 52_500n)];
+        const { client, payments } = await setup({
+            ...startRouter({ waits: [] }),
+            estimate: () => ({ options: offGrid }),
+        });
+        const q = await callTool<{ packages: { priceUsd: string }[] }>(client, "bugnet_quote", {
+            workload: "script",
+        });
+        const shown = q.structured.packages[0]?.priceUsd as string;
+        expect(shown).toBe("$0.0525");
+        const id = (q.structured as unknown as { quoteId: string }).quoteId;
+        const r = await callTool(client, "bugnet_start", startArgs(id, shown));
+        expect(r.isError).toBe(false);
+        expect(payments.orders[0]?.amountMicros).toBe(52_500);
+    });
+
     it("refuses a price other than the package's before any order", async () => {
         const { client, payments } = await setup(startRouter({ waits: [] }));
         const id = await quoteId(client);

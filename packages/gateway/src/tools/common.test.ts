@@ -12,7 +12,7 @@ import {
     testHandle,
     type RouterImpl,
 } from "../testing/harness.ts";
-import { idempotencyKey, ok, type Register } from "./common.ts";
+import { idempotencyKey, ok, usd, type Register } from "./common.ts";
 
 const keyTool: Register = (server) => {
     server.registerTool(
@@ -41,6 +41,18 @@ describe("ok", () => {
         expect(r.content).toEqual([{ type: "text", text: "Sandbox ready." }]);
         expect(r._meta).toEqual({ m: 1 });
         expect(ok("x", {})._meta).toBeUndefined();
+    });
+});
+
+describe("usd", () => {
+    it("shows the exact price, so the price shown is the price accepted", () => {
+        expect(usd(50_000)).toBe("$0.05");
+        expect(usd(52_500)).toBe("$0.0525");
+        expect(usd(10_500n)).toBe("$0.0105");
+        expect(usd(1_234_000)).toBe("$1.234");
+        expect(usd(1_200_000)).toBe("$1.20");
+        expect(usd(1)).toBe("$0.000001");
+        expect(usd(0)).toBe("$0.00");
     });
 });
 
