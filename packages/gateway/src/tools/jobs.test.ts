@@ -147,6 +147,38 @@ describe("bugnet_exec", () => {
         expect(keys[3]).not.toBe(keys[4]);
     });
 
+    it("retries once under the same key when the router recorded no job yet", async () => {
+        const keys: string[] = [];
+        const client = await connect({
+            exec(req) {
+                keys.push(req.idempotencyKey);
+                if (keys.length === 1) throw routerError(Code.Unavailable);
+                return { jobId: "j1", state: JobState.EXITED, exitCode: 0 };
+            },
+        });
+        const r = await callTool(client, "bugnet_exec", { handle: testHandle, cmd: "true" });
+        expect(r.isError).toBe(false);
+        expect(keys).toHaveLength(2);
+        expect(keys[1]).toBe(keys[0]);
+    });
+
+    it("says to try again when the retry finds no job either", async () => {
+        let calls = 0;
+        const client = await connect({
+            exec() {
+                calls += 1;
+                throw routerError(Code.Unavailable);
+            },
+        });
+        const r = await callTool(client, "bugnet_exec", { handle: testHandle, cmd: "true" });
+        expect(calls).toBe(2);
+        expect(r.isError).toBe(true);
+        expect(r.text).toBe(
+            "exec: Bugnet could not confirm the command started. Calling bugnet_exec again in a " +
+                "few seconds starts it.",
+        );
+    });
+
     it("hands back a job id and cursor for a command still running", async () => {
         const client = await connect({
             exec: () => ({ jobId: "j2", state: JobState.RUNNING, cursor: "c7" }),

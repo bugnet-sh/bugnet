@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { JobState } from "../gen/bugnet/router/v1/router_pb.ts";
-import { GatewayError } from "../router.ts";
+import { Code, ConnectError } from "@connectrpc/connect";
+import { GatewayError, errorReason } from "../router.ts";
 import { tail, untrustedLabel } from "../sanitize.ts";
 import {
     callKey,
@@ -65,6 +66,11 @@ export function inHome(cwd: string, argv: string[]): { cwd: string; argv: string
 function outputBlock(label: string, text: string, truncated: boolean): string {
     if (!text) return "";
     return `${label}${truncated ? " (last part)" : ""}:\n${text}`;
+}
+
+// Another call holds the key and recorded no job yet, which the router answers without a reason
+function unrecorded(e: unknown): boolean {
+    return e instanceof ConnectError && e.code === Code.Unavailable && errorReason(e) === null;
 }
 
 function outputSummary(stdout: string, stderr: string): string {
@@ -164,8 +170,10 @@ export const registerJobTools: Register = (server, deps) => {
                       ])
                     : (callKey(ctx) ?? randomUUID());
                 const wait = waitMs(deps, args.waitSeconds);
-                const res = await withProgress(ctx, "running the command", (signal) =>
-                    deps.router.exec(
+                const started = Date.now();
+                const attempt = (signal: AbortSignal) => {
+                    const left = Math.max(0, wait - (Date.now() - started));
+                    return deps.router.exec(
                         {
                             handle: args.handle,
                             argv,
@@ -173,11 +181,29 @@ export const registerJobTools: Register = (server, deps) => {
                             env: args.env ?? {},
                             idempotencyKey: key,
                             // The router reads 0 as its 25 s default, so no wait asks for 1 ms
-                            waitMs: wait === 0 ? 1 : wait,
+                            waitMs: left === 0 ? 1 : left,
                         },
-                        { signal, timeoutMs: wait + 15_000 },
-                    ),
-                );
+                        { signal, timeoutMs: left + 15_000 },
+                    );
+                };
+                const res = await withProgress(ctx, "running the command", async (signal) => {
+                    try {
+                        return await attempt(signal);
+                    } catch (e) {
+                        if (!unrecorded(e)) throw e;
+                    }
+                    // The same key runs the command at most once, so the retry is safe
+                    try {
+                        return await attempt(signal);
+                    } catch (e) {
+                        if (!unrecorded(e)) throw e;
+                        throw new GatewayError(
+                            "unavailable",
+                            "exec: Bugnet could not confirm the command started. Calling " +
+                                "bugnet_exec again in a few seconds starts it",
+                        );
+                    }
+                });
                 const out = tail(res.stdoutTail, cap);
                 const err = tail(res.stderrTail, cap);
                 const state = jobStateName[res.state];

@@ -1,6 +1,6 @@
 import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { z } from "zod";
-import { GatewayError } from "../router.ts";
+import { GatewayError, reasonOf } from "../router.ts";
 import { cleanText, looksLikeText, untrustedLabel } from "../sanitize.ts";
 import { handlePattern, homePath, ok, okBody, sandboxFailure, type Register } from "./common.ts";
 
@@ -16,6 +16,7 @@ const inlineReadBytes = 32 * 1024;
 
 const noPath = "no file or directory at that path";
 const noFolder = "no folder for that path yet, mkdir -p through bugnet_exec makes it";
+// A write's missing path is its folder, the file itself need not exist
 
 export const registerFileTools: Register = (server, deps) => {
     const { read_file_max_bytes: readMax, write_file_max_bytes: writeMax } = deps.config.limits;
@@ -153,6 +154,11 @@ export const registerFileTools: Register = (server, deps) => {
                 const size = Number(res.size);
                 return ok(`Wrote ${size} bytes to ${args.path}.`, { path: args.path, size });
             } catch (e) {
+                const reason = reasonOf(e);
+                if (reason === "FILE_NOT_FOUND" || reason === "not_found") {
+                    const err = new GatewayError("not_found", `write file: ${noFolder}`);
+                    return sandboxFailure(deps, args.handle, err, "write file");
+                }
                 return sandboxFailure(deps, args.handle, e, "write file", noFolder);
             }
         },

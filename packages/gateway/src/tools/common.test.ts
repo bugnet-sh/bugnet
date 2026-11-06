@@ -122,6 +122,36 @@ describe("NotFound answers", () => {
         expect(r.lookups).toBe(0);
     });
 
+    it.each(["FILE_NOT_FOUND", "not_found"])(
+        "names a missing path from %s without looking the sandbox up",
+        async (reason) => {
+            const read = await answer(
+                "bugnet_read_file",
+                { path: "a.txt" },
+                {
+                    readFile() {
+                        throw routerError(Code.NotFound, reason);
+                    },
+                },
+            );
+            expect(read.text).toBe("read file: no file or directory at that path.");
+            expect(read.lookups).toBe(0);
+            const write = await answer(
+                "bugnet_write_file",
+                { path: "x/a.txt", content: "a" },
+                {
+                    writeFile() {
+                        throw routerError(Code.NotFound, reason);
+                    },
+                },
+            );
+            expect(write.text).toBe(
+                "write file: no folder for that path yet, mkdir -p through bugnet_exec makes it.",
+            );
+            expect(write.lookups).toBe(0);
+        },
+    );
+
     it("looks the sandbox up on a bare NotFound, as older routers send it", async () => {
         const r = await answer(
             "bugnet_read_file",
