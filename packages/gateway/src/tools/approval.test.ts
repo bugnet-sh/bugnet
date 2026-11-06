@@ -8,6 +8,7 @@ import type { Payments } from "../payments/port.ts";
 import type { RouterClient } from "../router.ts";
 import type { Deps } from "./common.ts";
 import { registerExtendTool } from "./extend.ts";
+import { registerQuoteTool } from "./quote.ts";
 import { registerSandboxTools } from "./sandbox.ts";
 
 async function metaOf(toml: string) {
@@ -32,11 +33,15 @@ async function metaOf(toml: string) {
     const server = new McpServer({ name: "t", version: "0" });
     registerSandboxTools(server, deps);
     registerExtendTool(server, deps);
+    registerQuoteTool(server, deps);
     const [a, b] = InMemoryTransport.createLinkedPair();
     await server.connect(a);
     const client = new Client({ name: "t", version: "0" });
     await client.connect(b);
     const { tools } = await client.listTools();
+    expect(tools.map((t) => t.name)).toEqual(
+        expect.arrayContaining(["bugnet_start", "bugnet_extend", "bugnet_quote"]),
+    );
     const flag = (name: string) =>
         tools.find((t) => t.name === name)?._meta?.["anthropic/requiresUserInteraction"];
     return {
