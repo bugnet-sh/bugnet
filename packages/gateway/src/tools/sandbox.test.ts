@@ -355,6 +355,61 @@ describe("bugnet_status", () => {
         );
     });
 
+    it("shows the used time of a ready sandbox, which grows until it ends", async () => {
+        const { client, clock } = await setup({
+            getPlacement: () => ({ placement: placement() }),
+            listExtensions: () => ({ options: [] }),
+        });
+        type Used = { message: string; usedSeconds: number; endedAt?: string };
+        const r = await callTool<Used>(client, "bugnet_status", { handle: testHandle });
+        expect(r.structured.usedSeconds).toBe(30);
+        expect(r.structured.endedAt).toBeUndefined();
+        expect(r.structured.message.split("\n")[0]).toBe(
+            "Sandbox ready, package small-10m, time left 10 min " +
+                "(deadline 2026-11-05T12:10:00.000Z), used for about 30 s.",
+        );
+        clock.now += 15_000;
+        const later = await callTool<Used>(client, "bugnet_status", { handle: testHandle });
+        expect(later.structured.usedSeconds).toBe(45);
+    });
+
+    it("shows when an ended sandbox ended and its fixed used time", async () => {
+        const { client } = await setup({
+            getPlacement: () => ({
+                placement: placement(PlacementState.TERMINATED, {
+                    endedAt: timestampFromMs(testNow - 10_000),
+                    terminationReason: "stop",
+                }),
+            }),
+        });
+        const r = await callTool<{ message: string; endedAt: string; usedSeconds: number }>(
+            client,
+            "bugnet_status",
+            { handle: testHandle },
+        );
+        expect(r.structured.endedAt).toBe("2026-11-05T11:59:50.000Z");
+        expect(r.structured.usedSeconds).toBe(20);
+        expect(r.structured.message.split("\n")[0]).toBe(
+            "Sandbox ended, package small-10m, time left none, the sandbox has ended " +
+                "(deadline 2026-11-05T12:10:00.000Z), used for about 20 s.",
+        );
+    });
+
+    it("counts a sandbox that failed before it was ready as unused", async () => {
+        const { client } = await setup({
+            getPlacement: () => ({
+                placement: placement(PlacementState.FAILED, { readyAt: undefined }),
+            }),
+        });
+        const r = await callTool<{ message: string; usedSeconds: number }>(
+            client,
+            "bugnet_status",
+            { handle: testHandle },
+        );
+        expect(r.structured.usedSeconds).toBe(0);
+        expect(r.structured.message).not.toMatch(/used for/);
+    });
+
     it("says an ended sandbox has no time left and an unknown handle is unknown", async () => {
         let known = true;
         const { client } = await setup({
@@ -380,6 +435,7 @@ describe("bugnet_stop", () => {
             stopPlacement: () => ({
                 placement: placement(PlacementState.TERMINATED, {
                     readyAt: timestampFromMs(testNow - 90_000),
+                    endedAt: timestampFromMs(testNow),
                 }),
             }),
         });
@@ -390,17 +446,46 @@ describe("bugnet_stop", () => {
             expect.objectContaining({
                 message: "Sandbox ended, used for about 90 s.",
                 state: "ended",
+                endedAt: new Date(testNow).toISOString(),
                 usedSeconds: 90,
             }),
         );
     });
 
-    it("counts used time only up to the deadline of an ended sandbox", async () => {
+    it("gives the same used time on every stop and status once the sandbox ended", async () => {
+        let endedAt: number | undefined;
+        const ended = () =>
+            placement(PlacementState.TERMINATED, {
+                readyAt: timestampFromMs(testNow - 90_000),
+                ...(endedAt !== undefined ? { endedAt: timestampFromMs(endedAt) } : {}),
+            });
+        const { client, clock } = await setup({
+            stopPlacement: () => {
+                endedAt ??= clock.now;
+                return { placement: ended() };
+            },
+            getPlacement: () => ({ placement: ended() }),
+        });
+        type Used = { usedSeconds: number; endedAt: string };
+        const first = await callTool<Used>(client, "bugnet_stop", { handle: testHandle });
+        clock.now += 7_000;
+        const second = await callTool<Used>(client, "bugnet_stop", { handle: testHandle });
+        clock.now += 3_000;
+        const status = await callTool<Used>(client, "bugnet_status", { handle: testHandle });
+        expect(first.structured.usedSeconds).toBe(90);
+        expect(second.structured.usedSeconds).toBe(90);
+        expect(status.structured.usedSeconds).toBe(90);
+        expect(second.text).toBe("Sandbox ended, used for about 90 s.");
+        expect(status.structured.endedAt).toBe(new Date(testNow).toISOString());
+    });
+
+    it("counts used time only up to the deadline, even when the sandbox ended after it", async () => {
         const { client } = await setup({
             stopPlacement: () => ({
                 placement: placement(PlacementState.TERMINATED, {
                     readyAt: timestampFromMs(testNow - 60 * 60_000),
                     deadline: timestampFromMs(testNow - 50 * 60_000),
+                    endedAt: timestampFromMs(testNow - 50 * 60_000 + 4_000),
                 }),
             }),
         });
@@ -408,6 +493,56 @@ describe("bugnet_stop", () => {
             handle: testHandle,
         });
         expect(r.structured.usedSeconds).toBe(600);
+    });
+
+    it("counts a stopping sandbox up to now, capped at the deadline", async () => {
+        let deadline = testNow + 10 * 60_000;
+        const { client, clock } = await setup({
+            stopPlacement: () => ({
+                placement: placement(PlacementState.TERMINATING, {
+                    deadline: timestampFromMs(deadline),
+                }),
+            }),
+        });
+        const stopping = await callTool<{ usedSeconds: number; endedAt?: string }>(
+            client,
+            "bugnet_stop",
+            { handle: testHandle },
+        );
+        expect(stopping.structured.usedSeconds).toBe(30);
+        expect(stopping.structured.endedAt).toBeUndefined();
+        deadline = testNow - 10_000;
+        clock.now += 60_000;
+        const late = await callTool<{ usedSeconds: number }>(client, "bugnet_stop", {
+            handle: testHandle,
+        });
+        expect(late.structured.usedSeconds).toBe(20);
+    });
+
+    it("never reports a negative used time", async () => {
+        const { client } = await setup({
+            stopPlacement: () => ({
+                placement: placement(PlacementState.TERMINATED, {
+                    readyAt: timestampFromMs(testNow + 5_000),
+                    endedAt: timestampFromMs(testNow + 2_000),
+                }),
+            }),
+        });
+        const r = await callTool<{ usedSeconds: number }>(client, "bugnet_stop", {
+            handle: testHandle,
+        });
+        expect(r.structured.usedSeconds).toBe(0);
+    });
+
+    it("gives no used time for an ended sandbox whose end the router does not say", async () => {
+        const { client } = await setup({
+            stopPlacement: () => ({ placement: placement(PlacementState.TERMINATED) }),
+        });
+        const r = await callTool<{ usedSeconds?: number }>(client, "bugnet_stop", {
+            handle: testHandle,
+        });
+        expect(r.structured.usedSeconds).toBeUndefined();
+        expect(r.text).toBe("Sandbox ended.");
     });
 
     it("reports the service as unavailable without the router's wording", async () => {

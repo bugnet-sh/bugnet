@@ -71,6 +71,7 @@ interface PlacementView {
     packageId: string;
     deadline: string | null;
     timeLeft: string;
+    endedAt?: string;
     failureReason?: string;
     refundable?: boolean;
     terminationReason?: string;
@@ -87,6 +88,7 @@ function placementView(p: Placement | undefined, now: number): PlacementView {
         packageId: p?.packageId ?? "",
         deadline: deadline?.toISOString() ?? null,
         timeLeft: p && ended(p.state) ? "none, the sandbox has ended" : timeLeft(deadline, now),
+        ...(p?.endedAt ? { endedAt: timestampDate(p.endedAt).toISOString() } : {}),
         ...(p && failureCode.test(p.failureReason) ? { failureReason: p.failureReason } : {}),
         ...(p?.state === PlacementState.FAILED ? { refundable: p.refundable } : {}),
         ...(p?.terminationReason
@@ -96,6 +98,21 @@ function placementView(p: Placement | undefined, now: number): PlacementView {
         ...(p && !ended(p.state) && aliasShape.test(p.sshAlias) ? { sshAlias: p.sshAlias } : {}),
         ...(source ? { source } : {}),
     };
+}
+
+// Never past the deadline, since the sweep that ends a sandbox there may run a little late
+function usedSeconds(p: Placement | undefined, now: number): number | undefined {
+    if (!p?.readyAt) return 0;
+    // A router from before ended_at cannot say when it ended, and now would keep growing
+    if (!p.endedAt && ended(p.state)) return undefined;
+    const end = p.endedAt ? timestampDate(p.endedAt).getTime() : now;
+    const deadline = p.deadline ? timestampDate(p.deadline).getTime() : Infinity;
+    const ms = Math.min(end, deadline) - timestampDate(p.readyAt).getTime();
+    return Math.max(0, Math.round(ms / 1000));
+}
+
+function usedText(used: number | undefined): string {
+    return used === undefined ? "" : `, used for about ${used} s`;
 }
 
 function sshLine(alias: string | undefined): string {
@@ -411,7 +428,11 @@ export const registerSandboxTools: Register = (server, deps) => {
                         return res.placement;
                     });
                 }
-                const view = placementView(p, deps.now());
+                const used = usedSeconds(p, deps.now());
+                const view = {
+                    ...placementView(p, deps.now()),
+                    ...(used !== undefined ? { usedSeconds: used } : {}),
+                };
                 const ready = p?.state === PlacementState.READY;
                 // A start that saw the sandbox still starting left the fetch to this look
                 if (ready && p?.bootstrap?.state === BootstrapState.PENDING) {
@@ -423,6 +444,7 @@ export const registerSandboxTools: Register = (server, deps) => {
                     `Sandbox ${view.state}, package ${view.packageId}, time left ${view.timeLeft}` +
                         (view.deadline ? ` (deadline ${view.deadline})` : "") +
                         (view.failureReason ? `, reason ${view.failureReason}` : "") +
+                        (p?.readyAt ? usedText(used) : "") +
                         ".",
                     view.terminationReason ? sentence(view.terminationReason) : "",
                     view.source && !(p && ended(p.state)) ? sentence(view.source.note) : "",
@@ -462,13 +484,12 @@ export const registerSandboxTools: Register = (server, deps) => {
             try {
                 const res = await deps.router.stopPlacement({ handle: args.handle });
                 const p = res.placement;
-                const ready = p?.readyAt ? timestampDate(p.readyAt).getTime() : null;
-                const deadline = p?.deadline ? timestampDate(p.deadline).getTime() : Infinity;
-                // Placement has no end time, and a sandbox never runs past its deadline
-                const end = Math.min(deps.now(), deadline);
-                const usedSeconds = ready ? Math.max(0, Math.round((end - ready) / 1000)) : 0;
-                const view = { ...placementView(p, deps.now()), usedSeconds };
-                return ok(`Sandbox ${view.state}, used for about ${usedSeconds} s.`, view);
+                const used = usedSeconds(p, deps.now());
+                const view = {
+                    ...placementView(p, deps.now()),
+                    ...(used !== undefined ? { usedSeconds: used } : {}),
+                };
+                return ok(`Sandbox ${view.state}${usedText(used)}.`, view);
             } catch (e) {
                 return failure(e, "stop");
             }
