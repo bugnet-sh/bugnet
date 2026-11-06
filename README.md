@@ -101,8 +101,8 @@ do the same. Start a new session afterwards. The tools show up as
 
 The hooks run a small local script with Node and stay silent if Node is not installed. They add a
 short hint when a prompt or a command looks like a fit, for example after a local run fails for
-lack of CUDA, memory or disk space. Set `BUGNET_HINTS=quiet` to keep only hints after failed commands, or
-`BUGNET_HINTS=off` to turn hints off.
+lack of CUDA, memory or disk space. Set `BUGNET_HINTS=quiet` to keep only hints after failed
+commands, or `BUGNET_HINTS=off` to turn hints off.
 
 ### Claude Code: just the MCP server
 
@@ -240,7 +240,8 @@ The bridge is a small program that runs on your computer. Your client talks to i
 it passes every call on to Bugnet's server unchanged. You only need it for these:
 
 - **Paying from a Solana wallet on your computer.** The bridge signs each payment locally, so your
-  wallet keys never leave your machine. <!-- PENDING: the bridge's payment signer is still being built -->
+  wallet keys never leave your machine.
+  <!-- PENDING: the bridge's payment signer is still being built -->
 - **Adding secrets from your machine.** It adds one tool, `bugnet_secret_from_env`, which reads a
   token from an environment variable, a `.env` file or the macOS keychain. Then it asks you to
   confirm, and seals the token before it leaves your computer.
@@ -426,7 +427,8 @@ Found a security problem? See [SECURITY.md](SECURITY.md).
 - Sandboxes run Linux. Windows and macOS programs can be inspected there but not run.
 - SSH, web previews, secrets and a GPU have to be asked for when the agent gets the quote. A
   running sandbox cannot add them later.
-- GPU sandboxes are offered only when available. <!-- PENDING: the launch size list has no GPU sizes yet -->
+- GPU sandboxes are offered only when available.
+  <!-- PENDING: the launch size list has no GPU sizes yet -->
 - Every tool call answers within 45 seconds. Longer commands keep running, and your agent follows
   them with `bugnet_job`.
 - Each call returns the last 8 KiB of a command's output and of its errors. Read whole files with
