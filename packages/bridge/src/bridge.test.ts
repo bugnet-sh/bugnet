@@ -158,7 +158,9 @@ describe.each(["legacy", "modern"] as const)("the bridge, %s client", (era) => {
             arguments: startArgs(await quoteId(b.client)),
         });
         expect(viaBridge.isError).toBe(true);
-        expect(viaBridge.structuredContent).toEqual(required);
+        expect(viaBridge.structuredContent).toEqual(
+            expect.objectContaining({ ...required, orderId: "o1" }),
+        );
         const d = await direct(gw.url);
         const viaDirect = await d.callTool({
             name: "bugnet_start",
@@ -201,7 +203,9 @@ describe.each(["legacy", "modern"] as const)("the bridge, %s client", (era) => {
             _meta: { "claudecode/toolUseId": "toolu_signed" },
         });
         expect(r.isError).toBeFalsy();
-        expect(signed).toEqual([{ required, tool: "bugnet_start", args }]);
+        expect(signed).toEqual([
+            { required: expect.objectContaining(required), tool: "bugnet_start", args },
+        ]);
         expect(gw.payments.orders.map((o) => [o.idempotencyKey, o.payment])).toEqual([
             ["toolu_signed", undefined],
             ["toolu_signed", { x402Version: 2, payload: { transaction: "by-signer" } }],
