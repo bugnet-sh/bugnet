@@ -15,7 +15,6 @@ import type { OrderResult } from "../payments/port.ts";
 import {
     approvalMeta,
     failure,
-    handlePattern,
     handleTag,
     ok,
     timeLeft,
@@ -25,8 +24,9 @@ import {
     withProgress,
     type Deps,
     type Register,
+    handleInput,
 } from "./common.ts";
-import { describeSize, quoted } from "./quote.ts";
+import { describeSize, quoted, unavailableWords } from "./quote.ts";
 import { fetchAfterStart, sentence, sourceView, unplacedNote, type SourceView } from "./source.ts";
 
 export { describeSize } from "./quote.ts";
@@ -120,8 +120,6 @@ const startInput = z.object({
         .describe("x402 PaymentPayload for this order if your wallet tool produced one"),
 });
 
-const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
-
 // Claude Code shows the model only structuredContent, so the guide rides beside the x402 fields
 export function paymentRequiredResult(r: Extract<OrderResult, { status: "payment_required" }>) {
     const guide = [
@@ -204,14 +202,9 @@ async function waitReady(
 }
 
 function refusal(packageId: string, o: PackageOption, open?: string[]): GatewayError {
-    const why =
-        o.unavailableReason === "no_candidate"
-            ? "is busy now, try again soon"
-            : o.unavailableReason === "feature_unavailable"
-              ? "is not open yet for these needs"
-              : "cannot start right now";
+    const why = unavailableWords(o.unavailableReason);
     const others = open && open.length > 0 ? `. The packages open now are ${open.join(", ")}` : "";
-    return new GatewayError("invalid", `package ${packageId} ${why}${others}`);
+    return new GatewayError("invalid", `package ${packageId} is ${why}${others}`);
 }
 
 // Routers before PricePackage answer Unimplemented, and Estimate still prices the package for them

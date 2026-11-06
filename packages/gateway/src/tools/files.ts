@@ -2,9 +2,8 @@ import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { z } from "zod";
 import { GatewayError, reasonOf } from "../router.ts";
 import { cleanText, looksLikeText, untrustedLabel } from "../sanitize.ts";
-import { handlePattern, homePath, ok, okBody, sandboxFailure, type Register } from "./common.ts";
+import { homePath, ok, okBody, sandboxFailure, type Register, handleInput } from "./common.ts";
 
-const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
 const pathInput = z
     .string()
     .min(1)

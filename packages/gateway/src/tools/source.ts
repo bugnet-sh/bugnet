@@ -4,7 +4,7 @@ import { BootstrapState, type Bootstrap } from "../gen/bugnet/router/v1/router_p
 import { GatewayError, reasonOf, retryDelayMs } from "../router.ts";
 import {
     failure,
-    handlePattern,
+    handleInput,
     handleTag,
     ok,
     sandboxFailure,
@@ -155,7 +155,7 @@ export const registerSourceTool: Register = (server, deps) => {
             title: "Fetch the quoted repo into a Bugnet sandbox",
             description: fetchSourceDescription,
             inputSchema: z.object({
-                handle: z.string().regex(handlePattern, "a sandbox handle starting with sbx_"),
+                handle: handleInput,
             }),
             annotations: {
                 readOnlyHint: false,

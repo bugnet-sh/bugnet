@@ -6,7 +6,6 @@ import { GatewayError, errorReason, fromRouter } from "../router.ts";
 import {
     approvalMeta,
     handleHash,
-    handlePattern,
     handleTag,
     ok,
     sandboxFailure,
@@ -15,10 +14,9 @@ import {
     usd,
     type Deps,
     type Register,
+    handleInput,
 } from "./common.ts";
 import { describeSize, paymentRequiredResult } from "./sandbox.ts";
-
-const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
 
 // A first refusal with these codes means the router recorded nothing, so the order is refunded
 const notApplied = new Set([

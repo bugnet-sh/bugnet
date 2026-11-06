@@ -586,7 +586,7 @@ describe("bugnet_start on a router with PricePackage", () => {
     it.each([
         ["no_candidate", "package small-10m is busy now, try again soon."],
         ["feature_unavailable", "package small-10m is not open yet for these needs."],
-        ["internal", "package small-10m cannot start right now."],
+        ["internal", "package small-10m is unavailable right now."],
     ])("refuses a package PricePackage marks %s before any order", async (reason, text) => {
         const seen = fresh();
         const { client, deps, payments } = await setup(

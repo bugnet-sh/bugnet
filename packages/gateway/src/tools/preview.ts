@@ -3,7 +3,6 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { z } from "zod";
 import { GatewayError, errorReason } from "../router.ts";
 import {
-    handlePattern,
     handleTag,
     ok,
     routerLink,
@@ -11,9 +10,8 @@ import {
     timeLeft,
     type Deps,
     type Register,
+    handleInput,
 } from "./common.ts";
-
-const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
 
 const quoteHint = 'bugnet_quote with needs ["preview"]';
 

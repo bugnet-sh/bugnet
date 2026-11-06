@@ -1,6 +1,5 @@
 // The transfer link is a bearer credential, so it goes into the tool result and never a log
 import type { MessageInitShape } from "@bufbuild/protobuf";
-import { timestampDate, type Timestamp } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
 import type { CallToolResult, ServerContext } from "@modelcontextprotocol/server";
 import { z } from "zod";
@@ -12,7 +11,6 @@ import {
 import { GatewayError, errorReason, fromRouter } from "../router.ts";
 import {
     approvalMeta,
-    handlePattern,
     handleTag,
     idempotencyKey,
     okBody,
@@ -22,6 +20,8 @@ import {
     withProgress,
     type Deps,
     type Register,
+    handleInput,
+    iso,
 } from "./common.ts";
 
 // A folder of its own, so a default download never replaces a file of the user's
@@ -30,7 +30,6 @@ export const downloadDir = "bugnet-downloads";
 const directions = ["upload", "download"] as const;
 type Direction = (typeof directions)[number];
 
-const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
 // Bidi overrides could make a printed command read differently from what the shell runs
 const plain = (s: string) => !/[\p{Cc}\u202a-\u202e\u2066-\u2069]/u.test(s);
 
@@ -215,10 +214,6 @@ const transferPath = /^\/bnx_[A-Za-z0-9_-]{43}(\/[A-Za-z0-9._-]{1,255})?$/;
 /* Results */
 
 type Args = z.infer<typeof transferInput>;
-
-function iso(t: Timestamp | undefined): string | null {
-    return t ? timestampDate(t).toISOString() : null;
-}
 
 function transferRequest(args: Args, ctx: ServerContext): TransferRequest {
     const { handle, path } = args;

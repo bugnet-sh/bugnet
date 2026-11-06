@@ -1,6 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
+import { timestampDate, type Timestamp } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
 import type { CallToolResult, McpServer, ServerContext } from "@modelcontextprotocol/server";
+import { z } from "zod";
 import type { Config } from "../config.ts";
 import type { Payments } from "../payments/port.ts";
 import { PlacementState } from "../gen/bugnet/router/v1/router_pb.ts";
@@ -20,6 +22,12 @@ export interface Deps {
 export type Register = (server: McpServer, deps: Deps) => void;
 
 export const handlePattern = /^sbx_[a-z2-7]{26}$/;
+
+export const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
+
+export function iso(t: Timestamp | undefined): string | null {
+    return t ? timestampDate(t).toISOString() : null;
+}
 
 // Claude Code refuses tools marked this way in every unattended mode, so test gateways can drop it
 export function approvalMeta(deps: Deps): Record<string, unknown> | undefined {

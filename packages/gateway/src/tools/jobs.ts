@@ -6,7 +6,6 @@ import { GatewayError, errorReason } from "../router.ts";
 import { tail, untrustedLabel } from "../sanitize.ts";
 import {
     callKey,
-    handlePattern,
     hashKey,
     homePath,
     ok,
@@ -15,6 +14,7 @@ import {
     waitMs,
     withProgress,
     type Register,
+    handleInput,
 } from "./common.ts";
 
 const jobStateName: Record<JobState, string> = {
@@ -24,8 +24,6 @@ const jobStateName: Record<JobState, string> = {
     [JobState.CANCELLED]: "cancelled",
     [JobState.LOST]: "lost",
 };
-
-const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
 
 // Values shaped like well-known API tokens, which belong in bugnet_secret_link instead
 const secretShapes = [

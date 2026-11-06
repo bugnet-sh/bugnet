@@ -1,4 +1,3 @@
-import { timestampDate, type Timestamp } from "@bufbuild/protobuf/wkt";
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { SecretState, type SecretInfo } from "../gen/bugnet/router/v1/router_pb.ts";
@@ -6,7 +5,6 @@ import { GatewayError, fromRouter } from "../router.ts";
 import { cleanText } from "../sanitize.ts";
 import {
     failure,
-    handlePattern,
     handleTag,
     idempotencyKey,
     ok,
@@ -15,9 +13,10 @@ import {
     withFreshKey,
     type Deps,
     type Register,
+    handleInput,
+    iso,
 } from "./common.ts";
 
-const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
 const nameInput = z
     .string()
     .regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/, "an environment variable name such as HF_TOKEN");
@@ -50,10 +49,6 @@ const pairingShape = /^[0-9A-HJKMNP-TV-Z]{6}$/;
 export function canonicalHosts(hosts: readonly string[]): string[] {
     const set = new Set(hosts.map((h) => h.trim().toLowerCase().replace(/\.$/, "")));
     return [...set].sort();
-}
-
-function iso(t: Timestamp | undefined): string | null {
-    return t ? timestampDate(t).toISOString() : null;
 }
 
 export interface SecretView {

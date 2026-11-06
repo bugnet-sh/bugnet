@@ -4,7 +4,6 @@ import type { AddSshKeyResponse } from "../gen/bugnet/router/v1/router_pb.ts";
 import { GatewayError, fromRouter } from "../router.ts";
 import { KeyError, parsePublicKey } from "../sshkey.ts";
 import {
-    handlePattern,
     handleTag,
     ok,
     okBody,
@@ -12,9 +11,8 @@ import {
     underDomain,
     type Deps,
     type Register,
+    handleInput,
 } from "./common.ts";
-
-const handleInput = z.string().regex(handlePattern, "a sandbox handle starting with sbx_");
 
 // The router's own rule for the paths it echoes into the command, data-plane 9.2
 const fileInput = z
