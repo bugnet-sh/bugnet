@@ -70,7 +70,7 @@ describe("getLink", () => {
             credentials: "omit",
             cache: "no-store",
             redirect: "error",
-            referrerPolicy: "no-referrer",
+            referrerPolicy: "strict-origin",
         });
         expect(init.body).toBeUndefined();
     });

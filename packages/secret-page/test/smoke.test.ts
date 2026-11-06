@@ -15,7 +15,7 @@ import { boundPayload, pinnedKeys, toBase64Url, type SealingKey } from "@bugnet/
 import { developmentKey, developmentPinned, openSealed } from "@bugnet/seal/testing";
 import { buildPage } from "../src/build.ts";
 import { routeProblem } from "../src/errors.ts";
-import { findLauncher } from "../src/testing/browser.ts";
+import { findLauncher, findOtherLaunchers } from "../src/testing/browser.ts";
 import { startFakeRoute, type FakeLink, type FakeRoute, type Put } from "../src/testing/route.ts";
 
 const dist = join(dirname(fileURLToPath(import.meta.url)), "..", "dist");
@@ -61,6 +61,7 @@ function bound(spec: Put["body"]["spec"], value: string): unknown {
 }
 
 const launcher = await findLauncher();
+const others = await findOtherLaunchers();
 
 let devDir = "";
 beforeAll(async () => {
@@ -230,6 +231,8 @@ describe.runIf(launcher !== null)(`in a headless browser (${launcher?.label ?? "
         expect(put?.headers["sec-fetch-site"]).toBe("same-origin");
         expect(put?.headers["content-type"]).toBe("application/json");
         expect(put?.headers.cookie).toBeUndefined();
+        // The Referer may name the origin, never the path that holds the link's token
+        expect(put?.headers.referer ?? `${route.origin}/`).toBe(`${route.origin}/`);
 
         const get = route.requests.find((r) => r.method === "GET" && r.path === `/v1/links/${t}`);
         expect(get?.headers["sec-fetch-site"]).toBe("same-origin");
@@ -522,6 +525,44 @@ const jsdomWhy =
     process.env.BUGNET_PAGE_SMOKE === "jsdom"
         ? "BUGNET_PAGE_SMOKE=jsdom"
         : "no headless browser found";
+
+describe.each(others.map((l) => [l.label, l] as const))(
+    "in %s, which sends Origin null on a state change under no-referrer",
+    (_label, other) => {
+        let browser: Browser;
+        let route: FakeRoute;
+        const links: Record<string, FakeLink> = {};
+
+        beforeAll(async () => {
+            browser = await other.launch();
+            route = await startFakeRoute(devDir, links);
+        }, 60_000);
+
+        afterAll(async () => {
+            await browser?.close();
+            await route?.close();
+        });
+
+        it("sends the PUT with the page's own Origin, and it opens with the dev key", async () => {
+            const t = token();
+            links[t] = link();
+            const page = await browser.newPage();
+            await page.goto(`${route.origin}/l/${t}`);
+            await page.locator("#form").waitFor({ state: "visible" });
+            const value = "hf_" + "d4e5f6".repeat(6);
+            await page.locator("#value").fill(value);
+            await page.locator("#submit").click();
+            const sent = () => route.requests.find((r) => r.method === "PUT" && r.path.includes(t));
+            await expect.poll(sent, { timeout: 20_000 }).toBeDefined();
+            expect(sent()?.headers.origin).toBe(route.origin);
+            await page.locator("#done").waitFor({ state: "visible" });
+            const put = route.puts.find((p) => p.token === t);
+            expect(put?.headers.referer ?? `${route.origin}/`).toBe(`${route.origin}/`);
+            expect(await opened(put)).toEqual(bound(put?.body.spec as Put["body"]["spec"], value));
+            await page.close();
+        }, 60_000);
+    },
+);
 
 describe.runIf(launcher === null)(`under jsdom, which enforces no CSP (${jsdomWhy})`, () => {
     let route: FakeRoute;

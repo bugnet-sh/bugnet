@@ -55,7 +55,8 @@ async function call(
             credentials: "omit",
             cache: "no-store",
             redirect: "error",
-            referrerPolicy: "no-referrer",
+            // Under no-referrer, Firefox and WebKit send a PUT's Origin as null, as Fetch says
+            referrerPolicy: "strict-origin",
             signal: AbortSignal.timeout(timeoutMs),
         });
     } catch {

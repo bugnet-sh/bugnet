@@ -86,10 +86,17 @@ banner saying so.
   usual places, or `BUGNET_CHROME`. It never downloads a browser. Without one, or with
   `BUGNET_PAGE_SMOKE=jsdom`, it runs the same bundle under jsdom, which enforces no CSP. Both open
   every PUT body with the development private key.
+- The same file also saves a secret in Firefox and WebKit when either is installed: Playwright's
+  own build, an older one in Playwright's cache, or `BUGNET_FIREFOX` and `BUGNET_WEBKIT`. Those
+  two follow the Fetch rules on a `PUT`'s `Origin` that Chromium does not.
 
 ## Notes for the secrets route
 
 - Browsers send no `Origin` header on a same-origin `GET`, so `GET /v1/links/<token>` arrives
   without one. It does carry `Sec-Fetch-Site: same-origin`. The `PUT` carries both.
+- The page's calls use the referrer policy `strict-origin`, so `Referer` names only the origin,
+  never the path with the link's token. Under `no-referrer`, Firefox and WebKit send a `PUT`'s
+  `Origin` as `null`, as the Fetch standard says, and the route would refuse every save there.
+  The document itself keeps `no-referrer`.
 - The CSP has no `wasm-unsafe-eval`, so libsodium's WebAssembly is refused, once per load, and it
   falls back to its asm.js build. That makes `page.js` about 1 MB, or 330 KB gzipped.
