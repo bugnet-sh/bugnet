@@ -58,6 +58,11 @@ const reasonField: Record<string, Field> = {
 
 const fields: readonly Field[] = ["name", "value", "hosts", "headers"];
 
+function canMask(doc: Document): boolean {
+    const css = doc.defaultView?.CSS;
+    return typeof css?.supports === "function" && css.supports("-webkit-text-security", "disc");
+}
+
 export async function startPage(env: PageEnv): Promise<void> {
     const doc = env.document;
 
@@ -266,7 +271,7 @@ export async function startPage(env: PageEnv): Promise<void> {
             if (first) inputs[first].focus();
             return;
         }
-        if (value.type !== "password") toggleValue();
+        setShown(false);
         setBusy(true, "Sealing the secret in this browser…");
         try {
             let sealed;
@@ -295,10 +300,9 @@ export async function startPage(env: PageEnv): Promise<void> {
         }
     }
 
-    function toggleValue(): void {
-        const shown = value.type === "password";
-        value.type = shown ? "text" : "password";
-        showValue.textContent = shown ? "Hide" : "Show";
+    // The label stays the same and aria-pressed alone says whether the value shows
+    function setShown(shown: boolean): void {
+        value.classList.toggle("masked", !shown);
         showValue.setAttribute("aria-pressed", String(shown));
     }
 
@@ -354,7 +358,9 @@ export async function startPage(env: PageEnv): Promise<void> {
     name.addEventListener("input", onNameChange);
     hosts.addEventListener("input", refreshHosts);
     value.addEventListener("input", refreshValue);
-    showValue.addEventListener("click", toggleValue);
+    showValue.addEventListener("click", () => setShown(value.classList.contains("masked")));
+    // Where CSS cannot mask the field it always shows, so a Show button would mislead
+    showValue.hidden = !canMask(doc);
     retry.addEventListener("click", () => retryAction?.());
     form.addEventListener("submit", (event) => {
         event.preventDefault();

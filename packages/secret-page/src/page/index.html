@@ -82,14 +82,19 @@
                         task needs. A token used in the sandbox can create credentials that outlive
                         it.
                     </p>
+                    <!-- Not a password field, which browsers offer to save once the form goes away -->
                     <div class="value-row">
                         <input
                             id="value"
                             name="value"
-                            type="password"
+                            type="text"
+                            class="masked"
                             autocomplete="off"
                             autocapitalize="off"
+                            autocorrect="off"
                             spellcheck="false"
+                            data-1p-ignore
+                            data-lpignore="true"
                             aria-describedby="value-hint value-note value-error"
                         />
                         <button
@@ -99,7 +104,7 @@
                             aria-controls="value"
                             aria-pressed="false"
                         >
-                            Show
+                            Show value
                         </button>
                     </div>
                     <p class="note" id="value-note" hidden></p>

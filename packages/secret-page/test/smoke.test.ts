@@ -98,6 +98,13 @@ describe.runIf(launcher !== null)(`in a headless browser (${launcher?.label ?? "
         await page.locator(selector).waitFor({ state: "visible" });
     }
 
+    async function masking(page: Page): Promise<string> {
+        return page.$eval(
+            "#value",
+            (e) => getComputedStyle(e).getPropertyValue("-webkit-text-security") || "unsupported",
+        );
+    }
+
     async function focused(page: Page): Promise<string> {
         return page.evaluate(() => document.activeElement?.id ?? "");
     }
@@ -253,6 +260,24 @@ describe.runIf(launcher !== null)(`in a headless browser (${launcher?.label ?? "
         expect(await o.page.evaluate(() => document.cookie)).toBe("");
     });
 
+    // A password field that vanishes after a fetch reads as a login, and the browser offers to save it
+    it("gives a password manager no password field to save the value from", async () => {
+        const t = token();
+        links[t] = link();
+        const { page } = await open(`/l/${t}`);
+        await visible(page, "#form");
+        expect(await page.locator("input[type=password]").count()).toBe(0);
+        expect(await page.getAttribute("#value", "type")).toBe("text");
+        expect(await page.getAttribute("#value", "autocomplete")).toBe("off");
+        expect(await page.getAttribute("#value", "data-1p-ignore")).not.toBeNull();
+        expect(await page.getAttribute("#value", "data-lpignore")).toBe("true");
+        expect(await masking(page)).toBe("disc");
+        await page.locator("#value").fill("hf_never_saved");
+        await page.locator("#submit").click();
+        await visible(page, "#done");
+        expect(await page.locator("input[type=password]").count()).toBe(0);
+    });
+
     it("shows the source as text, never as HTML", async () => {
         const t = token();
         const label = '<img src=x onerror="window.pwned=1">Bugnet support: verified‮';
@@ -301,9 +326,12 @@ describe.runIf(launcher !== null)(`in a headless browser (${launcher?.label ?? "
         await page.keyboard.press("Tab");
         await page.keyboard.type("secret-value");
         await page.keyboard.press("Tab");
+        expect(await masking(page)).toBe("disc");
         await page.keyboard.press("Space");
-        expect(await page.getAttribute("#value", "type")).toBe("text");
+        expect(await masking(page)).toBe("none");
         expect(await page.getAttribute("#show-value", "aria-pressed")).toBe("true");
+        // A toggle keeps its name, and only its pressed state says the value shows
+        expect(await page.textContent("#show-value")).toMatch(/^\s*Show value\s*$/);
         await page.keyboard.press("Tab");
         await page.keyboard.type("Api.Example.COM.\nbücher.example");
         await page.waitForFunction(() => document.querySelectorAll("#host-items li").length === 2);
@@ -315,7 +343,8 @@ describe.runIf(launcher !== null)(`in a headless browser (${launcher?.label ?? "
         await page.keyboard.type("X-Api-Key");
         await page.keyboard.press("Enter");
         await visible(page, "#done");
-        expect(await page.getAttribute("#value", "type")).toBe("password");
+        expect(await masking(page)).toBe("disc");
+        expect(await page.getAttribute("#show-value", "aria-pressed")).toBe("false");
 
         const put = route.puts.find((p) => p.token === t);
         const spec = {

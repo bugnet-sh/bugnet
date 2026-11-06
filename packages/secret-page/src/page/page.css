@@ -179,7 +179,6 @@ label {
 }
 
 input[type="text"],
-input[type="password"],
 textarea {
     display: block;
     width: 100%;
@@ -211,6 +210,11 @@ textarea[aria-invalid="true"] {
 .value-row input {
     flex: 1 1 auto;
     min-width: 0;
+}
+
+/* Masks without type=password, so no password manager takes the value for a login */
+.masked {
+    -webkit-text-security: disc;
 }
 
 .tick {
