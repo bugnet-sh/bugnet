@@ -210,10 +210,11 @@ pnpm --filter ./packages/secret-page exec \
 
 CI (`.github/workflows/ci.yml`) runs on every push and pull request: a frozen install, the proto
 codegen, `pnpm lint`, `pnpm typecheck`, a check that the committed hook bundle matches a fresh
-`pnpm build:plugin`, and `pnpm test` with Go and Playwright's Chromium, Firefox and WebKit. It
-checks out the private `bugnet-proto` beside this repository with the `PROTO_READ_TOKEN` secret, a
-fine-grained token with read-only Contents on that repository, so pull requests from forks stop at
-that step. The evals stay out of CI because they spend money and need API keys.
+`pnpm build:plugin`, and `pnpm test` with Go and Playwright's Chromium, Firefox and WebKit, failing
+if the Go or browser tests skipped. It checks out the private `bugnet-proto` beside this repository
+with the `PROTO_READ_TOKEN` secret, a fine-grained token with read-only Contents on that repository,
+so pull requests from forks stop at that step. The evals stay out of CI because they spend money and
+need API keys.
 
 The live judge spends Claude usage: each session is a real model run (about $0.01 to $0.10 at API
 prices), capped by `budgetUsd` in [`eval/agent/config.json`](eval/agent/config.json). It runs every
