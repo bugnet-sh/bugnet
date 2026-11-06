@@ -1,0 +1,173 @@
+name: CI
+
+on:
+    push:
+    pull_request:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+env:
+    PROTO_REPOSITORY: ${{ github.repository_owner }}/bugnet-proto
+    # The gateway builds against this branch until it merges into main
+    PROTO_REF: feat/router-v1-rest
+    BUF_VERSION: 1.75.0
+    # buf-Linux-x86_64 in the release's sha256.txt
+    BUF_SHA256: fad1e38d6909bbb583a4da81d8c02a01046e2cd663bde7e337dd24277393764b
+
+defaults:
+    run:
+        working-directory: bugnet-gateway
+
+jobs:
+    check:
+        name: Lint, typecheck and test
+        runs-on: ubuntu-24.04
+        timeout-minutes: 20
+        steps:
+            - name: Check out the gateway
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  path: bugnet-gateway
+                  persist-credentials: false
+
+            - name: Require the proto read token
+              env:
+                  PROTO_READ_TOKEN: ${{ secrets.PROTO_READ_TOKEN }}
+              run: |
+                  if [ -z "$PROTO_READ_TOKEN" ]; then
+                      why="PROTO_READ_TOKEN is not set or not shared with this run (forks get none)"
+                      echo "::error::$why, so CI cannot read the private $PROTO_REPOSITORY"
+                      exit 1
+                  fi
+
+            # packages/gateway/buf.gen.yaml reads the contract from ../../../bugnet-proto
+            - name: Check out the contract
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  repository: ${{ env.PROTO_REPOSITORY }}
+                  ref: ${{ env.PROTO_REF }}
+                  token: ${{ secrets.PROTO_READ_TOKEN }}
+                  path: bugnet-proto
+                  persist-credentials: false
+
+            - name: Set up pnpm
+              uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+              with:
+                  package_json_file: bugnet-gateway/package.json
+
+            - name: Set up Node
+              uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+              with:
+                  node-version: 26.x
+                  cache: pnpm
+                  cache-dependency-path: bugnet-gateway/pnpm-lock.yaml
+
+            - name: Set up Go
+              uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+              with:
+                  go-version-file: bugnet-gateway/packages/seal/interop/go.mod
+                  cache-dependency-path: bugnet-gateway/packages/seal/interop/go.sum
+
+            - name: Set up buf
+              uses: bufbuild/buf-action@37ac33d8960807670a6e9719080e885197b09cc6 # v1.7.0
+              with:
+                  version: ${{ env.BUF_VERSION }}
+                  checksum: ${{ env.BUF_SHA256 }}
+                  setup_only: true
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Generate the router client
+              run: pnpm --filter ./packages/gateway proto
+
+            - name: Lint
+              run: pnpm lint
+
+            - name: Typecheck
+              run: pnpm typecheck
+
+            - name: Check the committed plugin bundle
+              run: |
+                  pnpm build:plugin
+                  if ! git diff --quiet -- plugin/hooks/bugnet-hook.mjs; then
+                      echo "::error::Stale hook bundle, so run pnpm build:plugin and commit it"
+                      exit 1
+                  fi
+
+            - name: Key the browser cache by Playwright version
+              id: playwright
+              run: |
+                  cd packages/secret-page
+                  version=$(node -p 'require("playwright-core/package.json").version')
+                  echo "key=playwright-$RUNNER_OS-$RUNNER_ARCH-$version" >> "$GITHUB_OUTPUT"
+
+            - name: Cache the Playwright browsers
+              uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              with:
+                  path: ~/.cache/ms-playwright
+                  key: ${{ steps.playwright.outputs.key }}
+
+            - name: Install the Playwright browsers and their system dependencies
+              run: >-
+                  pnpm --filter ./packages/secret-page exec
+                  playwright-core install --with-deps --only-shell chromium firefox webkit
+
+            # The browser smoke tests skip when no browser launches, so a missing one fails here
+            - name: Check every browser launches
+              run: |
+                  pnpm --filter ./packages/secret-page exec node --input-type=module -e '
+                      const pw = await import("playwright-core");
+                      for (const type of [pw.chromium, pw.firefox, pw.webkit]) {
+                          const browser = await type.launch({ headless: true });
+                          console.log(type.name(), browser.version());
+                          await browser.close();
+                      }
+                  '
+
+            # The interop test wants an empty stderr from go run, which a module download breaks
+            - name: Download the Go modules for the seal interop test
+              run: go -C packages/seal/interop mod download
+
+            # One file at a time on any runner, since parallel files inflate the CPU time budgets
+            - name: Test
+              run: >-
+                  pnpm test --no-file-parallelism --reporter=default --reporter=json
+                  --outputFile.json="$RUNNER_TEMP/vitest.json"
+
+            # Skipped suites pass silently, so this fails when the Go or browser tests did not run
+            - name: Check the Go and browser tests ran
+              run: |
+                  node --input-type=module -e '
+                      const { readFileSync } = await import("node:fs");
+                      const report = JSON.parse(readFileSync(process.argv[1], "utf8"));
+                      const tests = report.testResults.flatMap((file) =>
+                          file.assertionResults.map((test) => ({
+                              file: file.name,
+                              suite: test.ancestorTitles[0] ?? "",
+                              status: test.status,
+                          })),
+                      );
+                      const wanted = {
+                          "Go interop": (t) => t.file.endsWith("seal/src/interop.test.ts"),
+                          Chromium: (t) => t.suite.startsWith("in a headless browser ("),
+                          Firefox: (t) => /^in (Playwright )?firefox\b/.test(t.suite),
+                          WebKit: (t) => /^in (Playwright )?webkit\b/.test(t.suite),
+                      };
+                      let short = 0;
+                      for (const [name, match] of Object.entries(wanted)) {
+                          const found = tests.filter(match);
+                          const passed = found.filter((t) => t.status === "passed").length;
+                          console.log(name + " " + passed + " of " + found.length + " passed");
+                          if (passed === 0 || passed < found.length) short += 1;
+                      }
+                      if (short > 0) {
+                          console.log("::error::Go or browser tests skipped instead of running");
+                          process.exit(1);
+                      }
+                  ' "$RUNNER_TEMP/vitest.json"
