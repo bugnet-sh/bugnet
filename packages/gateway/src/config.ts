@@ -204,10 +204,13 @@ export function readSecrets(env: NodeJS.ProcessEnv, settings: Settings): Secrets
 }
 
 // Only a real 127.0.0.0/8 literal counts, a name such as 127.0.0.1.nip.io resolves anywhere
-export function isLoopback(url: string): boolean {
-    const host = new URL(url).hostname.replace(/^\[|\]$/g, "");
+function loopbackHost(host: string): boolean {
     if (host === "localhost" || host === "::1") return true;
     return isIP(host) === 4 && host.startsWith("127.");
+}
+
+export function isLoopback(url: string): boolean {
+    return loopbackHost(new URL(url).hostname.replace(/^\[|\]$/g, ""));
 }
 
 export function hostPort(addr: string, setting: string): { host: string; port: number } {
@@ -274,7 +277,7 @@ function checkFront(s: Settings): void {
             }
         }
     }
-    const loopback = host === "localhost" || host === "::1" || /^127\./.test(host);
+    const loopback = loopbackHost(host);
     if (f.proxy_protocol) checkProxyPeers(f.proxy_protocol_from, loopback);
     // A PROXY header means a proxy relays strangers, which dev payments must never serve
     if (s.payments.mode === "dev" && (f.proxy_protocol || !loopback)) {

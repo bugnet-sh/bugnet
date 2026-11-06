@@ -123,4 +123,18 @@ describe("front settings", () => {
             check([...dev, 'tls_addr = "[::1]:8444"', "proxy_protocol = false"]),
         ).not.toThrow();
     });
+
+    it("counts only loopback literals as a loopback front, never a name such as 127.x", () => {
+        const dev = ['[payments]\nmode = "dev"', "[front]", 'cert_file = "c"', 'key_file = "k"'];
+        for (const name of ["127.0.0.1.attacker.example", "127.0.0.1.nip.io", "127.x"]) {
+            const plain = [...dev, `tls_addr = "${name}:8444"`, "proxy_protocol = false"];
+            expect(() => check(plain), name).toThrow(/dev needs a loopback front/);
+        }
+        const certs = ['cert_file = "c"', 'key_file = "k"'];
+        const open = [...prod.slice(0, -1), ...certs];
+        const named = [...open, 'tls_addr = "127.attacker.example:8444"'];
+        expect(() => check(named)).toThrow(/proxy_protocol_from must name the proxy/);
+        expect(() => check([...open, 'tls_addr = "127.0.0.2:8444"'])).not.toThrow();
+        expect(() => check([...open, 'tls_addr = "localhost:8444"'])).not.toThrow();
+    });
 });
