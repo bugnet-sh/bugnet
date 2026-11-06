@@ -42,6 +42,14 @@ export function buildMcpServer(deps: Deps, extra: Register[] = []): McpServer {
     return server;
 }
 
+// Previews are same-site with the gateway until the PSL entry ships, so same-site counts as foreign
+export function foreignRequest(req: IncomingMessage, publicOrigin: string): boolean {
+    const origin = req.headers.origin;
+    if (origin !== undefined && origin !== publicOrigin) return true;
+    const site = req.headers["sec-fetch-site"];
+    return site === "same-site" || site === "cross-site";
+}
+
 export function startHttp(deps: Deps, extra: Register[] = []): Promise<Server> {
     const handler = createMcpHandler(() => buildMcpServer(deps, extra), {
         legacy: "stateless",
@@ -49,7 +57,11 @@ export function startHttp(deps: Deps, extra: Register[] = []): Promise<Server> {
     });
     const mcp = toNodeHandler(handler);
     const validHost = hostHeaderValidation(allowedHosts(deps.config));
-    const http = createServer((req: IncomingMessage, res: ServerResponse) => {
+    const publicOrigin = new URL(deps.config.public_url).origin;
+    // A preview can fill the bugnet.sh cookie jar, which must never stop the gateway answering
+    const http = createServer({ maxHeaderSize: 64 * 1024 }, (req, res: ServerResponse) => {
+        res.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
+        delete req.headers.cookie;
         const path = (req.url ?? "/").split("?")[0];
         if (path === "/healthz") {
             res.writeHead(200, { "content-type": "text/plain" }).end("ok\n");
@@ -60,6 +72,10 @@ export function startHttp(deps: Deps, extra: Register[] = []): Promise<Server> {
             return;
         }
         if (!validHost(req, res)) return;
+        if (foreignRequest(req, publicOrigin)) {
+            res.writeHead(403, { "content-type": "text/plain" }).end("forbidden origin\n");
+            return;
+        }
         withClientAddress(peerAddress(req.socket), () => mcp(req, res)).catch((e: Error) => {
             deps.log.error("mcp handler crashed", { err: e.message });
             if (!res.headersSent) res.writeHead(500).end();
