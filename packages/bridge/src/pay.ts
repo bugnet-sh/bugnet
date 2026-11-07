@@ -197,7 +197,11 @@ export class PayCli implements OrderPayer {
         } finally {
             clearInterval(ticker);
             await client.close().catch(() => {});
-            log.info("pay finished", { orderId: step.orderId, outcome: outcome.kind });
+            log.info("pay finished", {
+                orderId: step.orderId,
+                outcome: outcome.kind,
+                ...(outcome.kind === "unavailable" ? { reason: outcome.reason } : {}),
+            });
         }
     }
 

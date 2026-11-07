@@ -167,6 +167,27 @@ function isPaidTool(name: string): boolean {
     return name === "bugnet_start" || name === "bugnet_extend";
 }
 
+// The client never sees an answer that lands after it gave up, so its order stays held
+function unseen(result: RemoteResult, signal: AbortSignal): boolean {
+    return signal.aborted || isInputRequiredResult(result);
+}
+
+// An order a call names is used up once the call succeeds or the gateway abandoned it
+function dropUsed(
+    req: CallToolRequest,
+    result: RemoteResult,
+    orders: PaidOrders,
+    signal: AbortSignal,
+): void {
+    const name = req.params.name;
+    const orderId = (req.params.arguments as { orderId?: unknown } | undefined)?.orderId;
+    if (!isPaidTool(name) && name !== "bugnet_redeem") return;
+    if (typeof orderId !== "string" || unseen(result, signal)) return;
+    const r = result as CallToolResult;
+    const refusal = (r.structuredContent as { refusal?: unknown } | undefined)?.refusal;
+    if (!r.isError || refusal === "abandoned") orders.drop(orderId);
+}
+
 // One counter per call, so progress rises across the bridge's own notes and the gateway's
 function progressFor(ctx: ServerContext): {
     note: (message: string) => void;
@@ -188,18 +209,24 @@ function progressFor(ctx: ServerContext): {
 }
 
 // Returns the result of the call that redeemed a paid order, dropping the order when it is spent
-function settle(orders: PaidOrders, result: RemoteResult, step: PaymentStep): RemoteResult {
-    if (isInputRequiredResult(result)) return result;
-    if (!result.isError) {
+function settle(
+    orders: PaidOrders,
+    result: RemoteResult,
+    step: PaymentStep,
+    signal: AbortSignal,
+): RemoteResult {
+    if (unseen(result, signal)) return result;
+    const r = result as CallToolResult;
+    if (!r.isError) {
         orders.drop(step.orderId);
         return result;
     }
-    const refusal = (result.structuredContent as { refusal?: unknown } | undefined)?.refusal;
+    const refusal = (r.structuredContent as { refusal?: unknown } | undefined)?.refusal;
     if (typeof refusal === "string" && spentRefusals.has(refusal)) {
         orders.drop(step.orderId);
-        return withAfterPayment(result, step, true);
+        return withAfterPayment(r, step, true);
     }
-    return withAfterPayment(result, step);
+    return withAfterPayment(r, step);
 }
 
 export function buildBridgeServer(deps: BridgeDeps): Server {
@@ -217,8 +244,15 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         ] as ClientCapabilities | undefined) ?? server.getClientCapabilities();
     const secretDeps = { ...deps, clientCapabilities };
     // A client that can open links gets the pay link, any other the payment step as it is
-    const linkPath = (step: PaymentStep, result: RemoteResult, ctx: ServerContext): RemoteResult =>
-        canElicitUrl(clientCapabilities(ctx)) ? payLinkRequest(step, deps.now()) : result;
+    const linkPath = (
+        step: PaymentStep,
+        result: RemoteResult,
+        ctx: ServerContext,
+        orders: PaidOrders,
+    ): RemoteResult => {
+        orders.holdLink(step.orderId);
+        return canElicitUrl(clientCapabilities(ctx)) ? payLinkRequest(step, deps.now()) : result;
+    };
     // Orders whose payment step this bridge passed on, the only ones a start may name as its own
     const relayed = new Set<string>();
 
@@ -293,7 +327,7 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
                     "Bugnet's gateway did not answer, a retry may work." + afterPaymentText(paid),
                 );
             }
-            return settle(orders, again, paid);
+            return settle(orders, again, paid, ctx.mcpReq.signal);
         };
         // Polls the order's page until it is paid, and redeems it then
         const waitAndRedeem = async (paid: PaymentStep, link: boolean): Promise<RemoteResult> => {
@@ -305,7 +339,7 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
                 () => progress.note(`waiting for order ${paid.orderId} to be paid`),
             ).then(
                 (o) => {
-                    // A timeout or a review may still end in a payment, so the hold stays
+                    // A timeout or review may still be paid, a refunded one goes on its next read
                     if (o === "paid") orders.markPaid(paid.orderId, "paid");
                     else if (o === "timeout" || o === "closed")
                         orders.markPaid(paid.orderId, "unknown");
@@ -402,11 +436,12 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         const step = ownPayment || isInputRequiredResult(result) ? null : paymentStep(name, result);
         // An orderId and claim the model sends itself settle the order's hold the same way
         const named =
-            typeof args.orderId === "string" && key !== null ? orders.heldFor(key) : undefined;
-        const mine =
-            named?.orderId === args.orderId && named?.state !== "paying" ? named : undefined;
+            typeof args.orderId === "string" && key !== null
+                ? orders.held(args.orderId, key)
+                : undefined;
+        const mine = named?.state !== "paying" ? named : undefined;
         const settling: PaymentStep | undefined = held ?? mine;
-        if (!step) return settling ? settle(orders, result, settling) : result;
+        if (!step) return settling ? settle(orders, result, settling, ctx.mcpReq.signal) : result;
         const paid: PaymentStep = step;
         orders.see(key, paid);
         if (name === "bugnet_start") relayed.add(paid.orderId);
@@ -421,8 +456,8 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             deps.log.warn("pay link refused", { orderId: paid.orderId, why });
             return result;
         }
-        if (orders.tried(paid.orderId)) return linkPath(paid, result, ctx);
-        if (!pay.payer) return linkPath(paid, result, ctx);
+        if (orders.tried(paid.orderId)) return linkPath(paid, result, ctx, orders);
+        if (!pay.payer) return linkPath(paid, result, ctx, orders);
         orders.markTried(paid.orderId);
         // Never raced against the client's signal, since pay may have paid by the time it gives up
         // The outcome is recorded as it lands, even when this call is already gone
@@ -451,7 +486,7 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             if (outcome.kind === "paid") return redeem();
             if (outcome.kind === "unknown" || spent(outcome)) return reread();
             if (outcome.kind === "declined") return result;
-            return linkPath(paid, result, ctx);
+            return linkPath(paid, result, ctx, orders);
         }
 
         function redeem(): Promise<RemoteResult> {
@@ -501,6 +536,7 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             deps.log.warn("gateway call failed", { tool: req.params.name, err: errText(e) });
             return toolError("Bugnet's gateway did not answer, a retry may work.");
         }
+        if (deps.pay) dropUsed(req, result, deps.pay.orders, ctx.mcpReq.signal);
         noteStarted(req, result, deps.started, relayed);
         return withoutEnvelope(result) as CallToolResult | InputRequiredResult;
     };

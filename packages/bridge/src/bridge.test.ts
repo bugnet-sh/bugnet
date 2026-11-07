@@ -499,6 +499,63 @@ describe.each(["legacy", "modern"] as const)("paying with pay, %s client", (era)
         expect(payer.calls[1]!.step.orderId).not.toBe(old.orderId);
     });
 
+    it("drops a paid order the gateway abandoned, and says it is refunded", async () => {
+        let creates = 0;
+        const router: RouterImpl = {
+            ...startRouter,
+            createPlacement: () => {
+                if (creates++ === 0) throw routerError(Code.PermissionDenied, "WALLET_BLOCKED");
+                return { handle: testHandle, placement: placement(PlacementState.READY) };
+            },
+        };
+        const payments = requirePayments();
+        const gw = await fakeGateway(router, { payments });
+        open.push(gw.close);
+        const payer = payingPayer(payments);
+        const pay = devPay(payments, payer);
+        const b = await bridge({ gateway: gw.url, era, deps: { pay } });
+        const args = startArgs(await quoteId(b.client));
+        const first = await b.client.callTool({ name: "bugnet_start", arguments: args });
+        const step = payer.calls[0]!.step;
+        expect(first.isError).toBe(true);
+        const texts = first.content as { type: string; text: string }[];
+        expect(texts.at(-1)!.text.endsWith(spentOrderText(step))).toBe(true);
+        expect(pay.orders.heldFor(key)).toBeUndefined();
+        await b.client.callTool({ name: "bugnet_start", arguments: args });
+        expect(payer.calls).toHaveLength(2);
+        expect(payer.calls[1]!.step.orderId).not.toBe(step.orderId);
+    });
+
+    it("drops a held order once bugnet_redeem uses it, so a start opens a new one", async () => {
+        let creates = 0;
+        const router: RouterImpl = {
+            ...startRouter,
+            createPlacement: () => {
+                if (creates++ === 0) throw routerError(Code.Unavailable);
+                return { handle: testHandle, placement: placement(PlacementState.READY) };
+            },
+        };
+        const payments = requirePayments();
+        const gw = await fakeGateway(router, { payments });
+        open.push(gw.close);
+        const payer = payingPayer(payments);
+        const pay = devPay(payments, payer);
+        const b = await bridge({ gateway: gw.url, era, deps: { pay } });
+        const args = startArgs(await quoteId(b.client));
+        await b.client.callTool({ name: "bugnet_start", arguments: args });
+        const old = payer.calls[0]!.step;
+        expect(pay.orders.heldFor(key)?.state).toBe("paid");
+        const redeemed = await b.client.callTool({
+            name: "bugnet_redeem",
+            arguments: { orderId: old.orderId, claim: old.claim, quoteId: args.quoteId },
+        });
+        expect((redeemed.structuredContent as { handle: string }).handle).toBe(testHandle);
+        expect(pay.orders.heldFor(key)).toBeUndefined();
+        await b.client.callTool({ name: "bugnet_start", arguments: args });
+        expect(payer.calls).toHaveLength(2);
+        expect(payer.calls[1]!.step.orderId).not.toBe(old.orderId);
+    });
+
     // The first call leaves an unsure hold, then the second call's page read decides
     it.each([
         ["paid", true],
@@ -740,6 +797,100 @@ describe("paying with pay, the gateway stand-in", () => {
             undefined,
             standInClaim,
         ]);
+    });
+});
+
+describe("settling holds, the gateway stand-in", () => {
+    const olderOrder = "ord_aaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const olderStep: PaymentStep = {
+        ...standInStep,
+        orderId: olderOrder,
+        payUrl: `${testPayOrigin}/o/${olderOrder}`,
+    };
+    const hold = (pay: BridgePay, k: string, step: PaymentStep) => {
+        pay.orders.see(k, step);
+        pay.orders.markPaid(step.orderId, "paid");
+    };
+    const used = (p: Record<string, unknown>): CallToolResult =>
+        (p.arguments as { orderId?: string }).orderId === undefined ? stepResult() : done;
+
+    it("settles the held order a start names, even when a newer one is held too", async () => {
+        const remote = fakeRemote(used);
+        const pay = devPay(testPayments(), null);
+        hold(pay, key, olderStep);
+        hold(pay, key, standInStep);
+        const b = await bridge({ remote, deps: { pay } });
+        const r = await b.client.callTool({
+            name: "bugnet_start",
+            arguments: { ...standInArgs, orderId: olderOrder, claim: standInClaim },
+        });
+        expect(r.isError).toBeFalsy();
+        expect(pay.orders.step(olderOrder)).toBeUndefined();
+        expect(pay.orders.heldFor(key)?.orderId).toBe(standInOrder);
+    });
+
+    it("drops a held extend order once bugnet_redeem applies it", async () => {
+        const extendKey = `extend\0${testHandle}\0more-10m`;
+        const extendStep: PaymentStep = { ...standInStep, tool: "bugnet_extend" };
+        const remote = fakeRemote(used);
+        const pay = devPay(testPayments(), null);
+        hold(pay, extendKey, extendStep);
+        const b = await bridge({ remote, deps: { pay } });
+        await b.client.callTool({
+            name: "bugnet_redeem",
+            arguments: { orderId: standInOrder, claim: standInClaim, handle: testHandle },
+        });
+        expect(pay.orders.heldFor(extendKey)).toBeUndefined();
+        const extend = { handle: testHandle, packageId: "more-10m", confirmPriceUsd: "0.04" };
+        await b.client.callTool({ name: "bugnet_extend", arguments: extend });
+        expect(remote.calls.at(-1)!.params.arguments).toEqual(extend);
+    });
+
+    it("drops a held order a redeem calls abandoned, and keeps it on another error", async () => {
+        const failed = (refusal: string): CallToolResult => ({
+            isError: true,
+            content: [{ type: "text", text: "start: no." }],
+            structuredContent: { message: "start: no.", orderId: standInOrder, refusal },
+        });
+        let answer = failed("claim_mismatch");
+        const remote = fakeRemote(() => answer);
+        const pay = devPay(testPayments(), null);
+        hold(pay, key, standInStep);
+        const b = await bridge({ remote, deps: { pay } });
+        const redeem = { orderId: standInOrder, claim: standInClaim, quoteId: "q" };
+        await b.client.callTool({ name: "bugnet_redeem", arguments: redeem });
+        expect(pay.orders.heldFor(key)?.state).toBe("paid");
+        answer = failed("abandoned");
+        await b.client.callTool({ name: "bugnet_redeem", arguments: redeem });
+        expect(pay.orders.heldFor(key)).toBeUndefined();
+    });
+
+    it("keeps a paid order whose redeem answered after the client gave up", async () => {
+        const giveUp = new AbortController();
+        const remote = fakeRemote(async (params, opts) => {
+            if ((params.arguments as { claim?: string }).claim === undefined) return stepResult();
+            if (!giveUp.signal.aborted) {
+                giveUp.abort();
+                await vi.waitFor(() => expect(opts.signal?.aborted).toBe(true));
+            }
+            return done;
+        });
+        const payer = payingPayer(testPayments(), { pays: false });
+        const pay = devPay(testPayments(), payer);
+        const b = await bridge({ remote, deps: { pay } });
+        const first = b.client.callTool(
+            { name: "bugnet_start", arguments: standInArgs },
+            { signal: giveUp.signal },
+        );
+        await expect(first).rejects.toThrow();
+        await vi.waitFor(() => expect(remote.calls).toHaveLength(2));
+        // The answer lands after the abort, which the client never sees
+        await new Promise((r) => setTimeout(r, 50));
+        expect(pay.orders.heldFor(key)?.state).toBe("paid");
+        const r = await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
+        expect(r.isError).toBeFalsy();
+        expect(payer.calls).toHaveLength(1);
+        expect(pay.orders.heldFor(key)).toBeUndefined();
     });
 });
 
@@ -1159,6 +1310,42 @@ describe.each(["legacy", "modern"] as const)("paying by link, %s client", (era) 
         const r = await b.client.callTool({ name: "bugnet_start", arguments: args });
         expect(r.structuredContent).toEqual(expect.objectContaining({ orderId: id }));
         expect(b.urls).toEqual([`${testPayOrigin}/o/${id}`, `${testPayOrigin}/o/${id}`]);
+        expect(gw.payments.orders.filter((o) => o.orderId === undefined)).toHaveLength(1);
+    });
+
+    it("gives a declined link's order to a new start, until it expired", async () => {
+        const gw = await gateway(requirePayments());
+        const reads: (PublicOrderState | null)[] = ["unpaid", "expired"];
+        const pay = devPay(gw.payments, null, { status: async () => reads.shift() ?? null });
+        const b = await bridge({
+            gateway: gw.url,
+            era,
+            elicitUrl: () => ({ action: "decline" }),
+            deps: { pay },
+        });
+        const args = startArgs(await quoteId(b.client));
+        const first = await b.client.callTool({ name: "bugnet_start", arguments: args });
+        const id = (first.structuredContent as { orderId: string }).orderId;
+        expect(pay.orders.heldFor(key)).toMatchObject({ orderId: id, state: "unknown" });
+        const again = await b.client.callTool({ name: "bugnet_start", arguments: args });
+        expect(again.structuredContent).toEqual(expect.objectContaining({ orderId: id }));
+        expect(b.urls).toEqual([`${testPayOrigin}/o/${id}`, `${testPayOrigin}/o/${id}`]);
+        expect(gw.payments.orders.filter((o) => o.orderId === undefined)).toHaveLength(1);
+        const fresh = await b.client.callTool({ name: "bugnet_start", arguments: args });
+        expect((fresh.structuredContent as { orderId: string }).orderId).not.toBe(id);
+        expect(gw.payments.orders.filter((o) => o.orderId === undefined)).toHaveLength(2);
+    });
+
+    it("gives a client that cannot open links the same order on a fresh start", async () => {
+        const gw = await gateway(requirePayments());
+        const pay = devPay(gw.payments, null);
+        const b = await bridge({ gateway: gw.url, era, deps: { pay } });
+        const args = startArgs(await quoteId(b.client));
+        const first = await b.client.callTool({ name: "bugnet_start", arguments: args });
+        const id = (first.structuredContent as { orderId: string }).orderId;
+        expect(pay.orders.heldFor(key)).toMatchObject({ orderId: id, state: "unknown" });
+        const again = await b.client.callTool({ name: "bugnet_start", arguments: args });
+        expect(again.structuredContent).toEqual(expect.objectContaining({ orderId: id }));
         expect(gw.payments.orders.filter((o) => o.orderId === undefined)).toHaveLength(1);
     });
 

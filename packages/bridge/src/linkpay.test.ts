@@ -1,4 +1,4 @@
-import { isInputRequiredResult } from "@modelcontextprotocol/server";
+import { isInputRequiredResult, type ClientCapabilities } from "@modelcontextprotocol/server";
 import { expect, it } from "vitest";
 import {
     canElicitUrl,
@@ -46,6 +46,8 @@ it("counts only a declared url mode as able to open links", () => {
     expect(canElicitUrl({ elicitation: { form: {} } })).toBe(false);
     expect(canElicitUrl({ elicitation: { url: {} } })).toBe(true);
     expect(canElicitUrl({ elicitation: { form: {}, url: {} } })).toBe(true);
+    // A client may send null for a capability it leaves out
+    expect(canElicitUrl({ elicitation: null } as unknown as ClientCapabilities)).toBe(false);
 });
 
 it("ties a link state to its order and tool for 10 minutes", () => {

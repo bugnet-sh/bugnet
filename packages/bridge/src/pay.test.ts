@@ -220,8 +220,14 @@ describe("PayCli", () => {
         // Review Focus 3, an old pay is started once and never again without the flags
         const old = await run({ BUGNET_FAKE_PAY_OLD: "1" });
         expect([old.outcome.kind, old.starts]).toEqual(["unavailable", 1]);
-        expect((await run({ BUGNET_FAKE_PAY_TOOL: "fetch" })).outcome.kind).toBe("unavailable");
+        const noCurl = await run({ BUGNET_FAKE_PAY_TOOL: "fetch" });
+        expect(noCurl.outcome.kind).toBe("unavailable");
         expect((await run({ BUGNET_FAKE_PAY_ARG: "address" })).outcome.kind).toBe("unavailable");
+        // The reason word tells a missing pay from one without a usable curl
+        const finished = (lines: string[]) =>
+            lines.map((l) => JSON.parse(l)).find((l) => l.msg === "pay finished");
+        expect(finished(missing.lines)).toMatchObject({ outcome: "unavailable", reason: "start" });
+        expect(finished(noCurl.lines)).toMatchObject({ outcome: "unavailable", reason: "no_curl" });
     });
 
     it("sends progress notes while pay runs", async () => {

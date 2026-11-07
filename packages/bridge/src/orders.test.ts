@@ -87,6 +87,35 @@ it("holds a pay in flight and forgets an order without forgetting it was tried",
     expect(orders.step(step.orderId)).toEqual(step);
 });
 
+it("finds the hold a call names by its orderId, only for the same package", () => {
+    const orders = new PaidOrders(() => 1_000);
+    const k = "start\0small-10m";
+    const older = { ...step, orderId: "ord_older" };
+    orders.see(k, older);
+    orders.markPaid(older.orderId, "paid");
+    orders.see(k, step);
+    orders.markPaid(step.orderId, "unknown");
+    expect(orders.held(older.orderId, k)).toEqual({ ...older, state: "paid" });
+    expect(orders.held(older.orderId, "start\0small-30m")).toBeUndefined();
+    orders.forget(older.orderId);
+    expect(orders.held(older.orderId, k)).toBeUndefined();
+    expect(orders.held("ord_none", k)).toBeUndefined();
+});
+
+it("holds a link once issued, but never takes a running poll's place", () => {
+    const orders = new PaidOrders(() => 1_000);
+    const k = "start\0small-10m";
+    orders.see(k, step);
+    orders.holdLink(step.orderId);
+    expect(orders.heldFor(k)).toEqual({ ...step, state: "unknown" });
+    expect(orders.linkOpened(step.orderId)).toBe(true);
+    orders.markPaying(step.orderId, Promise.resolve());
+    orders.holdLink(step.orderId);
+    expect(orders.heldFor(k)?.state).toBe("paying");
+    orders.holdLink("ord_none");
+    expect(orders.step("ord_none")).toBeUndefined();
+});
+
 describe("orderStatus", () => {
     const seen: { path: string; accept: string | undefined }[] = [];
     const answers: Record<string, [number, unknown]> = {
@@ -140,6 +169,7 @@ it("says a paid order's id and claim and never to pay again", () => {
             "automatically, so do not pay it again.",
     );
     expect([...spentRefusals].sort()).toEqual([
+        "abandoned",
         "claim_mismatch",
         "order_closed",
         "order_expired",

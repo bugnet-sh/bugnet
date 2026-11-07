@@ -17,8 +17,8 @@ export const linkTtlMs = 600_000;
 
 // An empty elicitation object means form only, as the SDK reads it
 export function canElicitUrl(caps: ClientCapabilities | undefined): boolean {
-    const e = caps?.elicitation as { url?: unknown } | undefined;
-    return e !== undefined && e.url !== undefined;
+    const e: unknown = caps?.elicitation;
+    return typeof e === "object" && e !== null && "url" in e;
 }
 
 const linkKey = randomBytes(32);

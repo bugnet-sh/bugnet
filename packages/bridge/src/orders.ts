@@ -86,6 +86,17 @@ export class PaidOrders {
         return best && { ...best.step, state: best.state as "paying" | "paid" | "unknown" };
     }
 
+    // The hold on the order a call names, when it was made for the same package
+    held(
+        orderId: string,
+        key: string,
+    ): (PaymentStep & { state: "paying" | "paid" | "unknown" }) | undefined {
+        this.sweep();
+        const e = this.entries.get(orderId);
+        if (!e || e.key !== key || e.state === "seen") return undefined;
+        return { ...e.step, state: e.state };
+    }
+
     // Marks the order as being paid, with the one pay promise every waiting call shares
     markPaying(orderId: string, flight: Promise<unknown>): void {
         this.sweep();
@@ -104,6 +115,17 @@ export class PaidOrders {
     markLink(orderId: string): void {
         const e = this.entries.get(orderId);
         if (e) e.link = true;
+    }
+
+    // The user may pay at a link without the client ever calling back, so it is held once issued
+    holdLink(orderId: string): void {
+        this.sweep();
+        const e = this.entries.get(orderId);
+        if (!e) return;
+        e.link = true;
+        if (e.state === "paying") return;
+        e.state = "unknown";
+        e.at = this.now();
     }
 
     flight(orderId: string): Promise<unknown> | undefined {
@@ -169,6 +191,8 @@ export function spentOrderText(step: Pick<PaymentStep, "orderId" | "claim">): st
 }
 
 export const spentRefusals: ReadonlySet<string> = new Set([
+    // The gateway's own word for an order the router refused outright, which Payments refunds
+    "abandoned",
     "order_unknown",
     "order_expired",
     "order_closed",
