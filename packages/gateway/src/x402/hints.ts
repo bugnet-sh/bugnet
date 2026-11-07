@@ -204,7 +204,7 @@ function refusalLine(
     if (!paused) {
         line += " More allowance or a new limit needs the user's yes and bugnet_x402_budget.";
     }
-    if (seen.has("allowance_spent") && account !== null && terms !== null) {
+    if (seen.has("allowance_spent") && !paused && account !== null && terms !== null) {
         line +=
             ` A question for the user: "The ${usd(account.fundedMicros)} x402 allowance is ` +
             `spent after ${account.paidCalls} paid calls. Add $0.50 more? Unspent money of ` +
@@ -217,7 +217,7 @@ function refusalLine(
 async function hintLines(deps: Deps, input: HintInput): Promise<string[]> {
     const { budget } = input;
     const on = deps.config.x402.enabled;
-    const indexKeys = on ? indexKeyNames(indexOf(deps)) : new Set<string>();
+    const indexKeys = indexKeyNames(indexOf(deps));
     const names = missingKeyNames(input.text, (n) => isApiKeyName(n, indexKeys));
     if (!on) return names.length > 0 ? [offLine(names)] : [];
     const codes = refusalCodesIn(input.text);

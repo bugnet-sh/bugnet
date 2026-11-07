@@ -9,6 +9,7 @@ import {
     testDeps,
     testHandle,
     testNow,
+    testPayTo,
     testPayments,
     testTerms,
     testX402Index,
@@ -27,6 +28,7 @@ import {
     refusalPattern,
     x402HintLines,
 } from "./hints.ts";
+import { loadIndex } from "./index.ts";
 import { isApiKeyName } from "./keys.ts";
 
 function sdk(name: string): string {
@@ -380,6 +382,41 @@ describe("x402HintLines", () => {
         expect(lines[0]?.startsWith(refusedStart)).toBe(true);
         expect(lines[0]).not.toContain("More allowance");
         expect(lines[0]).not.toContain("bugnet_x402_budget");
+        expect(lines[0]).not.toContain("A question for the user");
+    });
+
+    it("reads the index's key names even when [x402] is off", async () => {
+        const s = setup({ toml: "" });
+        s.deps.x402Index = loadIndex({
+            v: 1,
+            services: [
+                {
+                    host: "agent402.tools",
+                    url: "https://agent402.tools/v1/auto/chat/completions",
+                    method: "POST",
+                    prefix: "/v1/auto/",
+                    payTo: testPayTo,
+                    category: "chat",
+                    keyNames: ["AGENT_KEY"],
+                    name: "Agent402 chat",
+                    inputFields: ["model", "messages"],
+                    outputFields: ["choices"],
+                    envLines: ["OPENAI_API_KEY=x402"],
+                    reviewedAt: "2026-11-01",
+                },
+            ],
+        });
+        const lines = await x402HintLines(s.deps, {
+            tool: "job",
+            handle: testHandle,
+            text: "KeyError: 'AGENT_KEY'",
+            startedAt: null,
+            budget: s.budget,
+        });
+        expect(lines).toEqual([
+            "Bugnet: the command reports a missing API key, AGENT_KEY. bugnet_secret_link lets the user add it without it passing through the chat.",
+        ]);
+        expect(s.counts).toEqual({ account: 0, list: 0 });
     });
 
     it("keeps the refusal line when the terms cannot be read, and drops the question", async () => {
