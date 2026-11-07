@@ -185,6 +185,11 @@ export interface TestPayments extends Payments {
     readonly dev: DevPayments;
 }
 
+// Standard base64 of the JSON, the PAYMENT-REQUIRED header a seller sends
+export function paymentRequiredHeader(required: unknown): string {
+    return Buffer.from(JSON.stringify(required), "utf8").toString("base64");
+}
+
 export function testTerms(patch: Partial<X402Terms> = {}): X402Terms {
     return { ...devTerms, ...patch };
 }

@@ -1,5 +1,6 @@
 /**
- * Fetches public files for bugnet_assess without letting a caller reach internal hosts.
+ * Fetches public URLs for bugnet_assess and the x402 probes and searches without letting a
+ * caller reach internal hosts.
  *
  * Only https on port 443. Hostnames resolve through a lookup that refuses loopback, private,
  * link-local, CGNAT, multicast and other reserved addresses, and the socket connects to the
@@ -12,6 +13,7 @@ import { Agent, fetch as undiciFetch } from "undici";
 
 export const userAgent = "bugnet-assess/0.1";
 export const maxRedirects = 3;
+export const tooManyRedirects = "too many redirects";
 
 export class FetchRefused extends Error {
     readonly code = "EBUGNETREFUSED";
@@ -30,6 +32,9 @@ export interface FetchOptions {
     headers?: Record<string, string>;
     // Sent only while the request stays on the first URL's origin, so tokens never follow a redirect
     originHeaders?: Record<string, string>;
+    method?: "GET" | "POST"; // default GET
+    body?: string; // first request only, a followed redirect is a GET without a body
+    maxRedirects?: number; // default maxRedirects (3)
 }
 
 export interface Fetched {
@@ -44,7 +49,13 @@ export type Fetcher = (url: string, opts: FetchOptions) => Promise<Fetched>;
 
 export type RawFetch = (
     url: string,
-    init: { headers: Record<string, string>; signal: AbortSignal; redirect: "manual" },
+    init: {
+        method: "GET" | "POST";
+        headers: Record<string, string>;
+        body?: string;
+        signal: AbortSignal;
+        redirect: "manual";
+    },
 ) => Promise<Response>;
 
 export type Resolve = (
@@ -267,7 +278,13 @@ export function createSafeFetcher(cfg: SafeFetchConfig): Fetcher {
             };
             let res: Response;
             try {
-                res = await raw(current.href, { headers, signal, redirect: "manual" });
+                res = await raw(current.href, {
+                    method: hop === 0 ? (opts.method ?? "GET") : "GET",
+                    headers,
+                    ...(hop === 0 && opts.body !== undefined ? { body: opts.body } : {}),
+                    signal,
+                    redirect: "manual",
+                });
             } catch (e) {
                 const cause = (e as { cause?: unknown }).cause;
                 if (cause instanceof FetchRefused) throw cause;
@@ -276,7 +293,7 @@ export function createSafeFetcher(cfg: SafeFetchConfig): Fetcher {
             const location = res.headers.get("location");
             if (res.status >= 300 && res.status < 400 && location) {
                 await res.body?.cancel().catch(() => {});
-                if (hop >= maxRedirects) throw refused("too many redirects");
+                if (hop >= (opts.maxRedirects ?? maxRedirects)) throw refused(tooManyRedirects);
                 current = checkUrl(new URL(location, current).href);
                 continue;
             }

@@ -5,6 +5,7 @@ import {
     FetchRefused,
     guardedLookup,
     isPublicAddress,
+    tooManyRedirects,
     userAgent,
     type RawFetch,
     type Resolve,
@@ -225,5 +226,56 @@ describe("createSafeFetcher", () => {
             fetch("https://example.com/", { signal: signal(), maxBytes: 1024 }),
         ).rejects.toThrow(/too many redirects/);
         expect(n).toBe(4);
+    });
+
+    it("sends method and body on the first request and a GET without a body after a redirect", async () => {
+        const seen: { url: string; method: string; body: string | undefined }[] = [];
+        const raw: RawFetch = async (url, init) => {
+            seen.push({ url, method: init.method, body: init.body });
+            if (url === "https://api.example.com/a") {
+                return new Response(null, { status: 307, headers: { location: "/b" } });
+            }
+            return new Response("done", { status: 200 });
+        };
+        const fetch = createSafeFetcher({ timeoutMs: 3000, rawFetch: raw });
+        await fetch("https://api.example.com/a", {
+            signal: signal(),
+            maxBytes: 1024,
+            method: "POST",
+            body: "{}",
+        });
+        expect(seen).toEqual([
+            { url: "https://api.example.com/a", method: "POST", body: "{}" },
+            { url: "https://api.example.com/b", method: "GET", body: undefined },
+        ]);
+    });
+
+    it("sends GET without a body when no method is given", async () => {
+        const seen: { url: string; method: string; body: string | undefined }[] = [];
+        const raw: RawFetch = async (url, init) => {
+            seen.push({ url, method: init.method, body: init.body });
+            return new Response("ok", { status: 200 });
+        };
+        const fetch = createSafeFetcher({ timeoutMs: 3000, rawFetch: raw });
+        await fetch("https://example.com/x", { signal: signal(), maxBytes: 1024 });
+        expect(seen).toEqual([{ url: "https://example.com/x", method: "GET", body: undefined }]);
+    });
+
+    it("refuses the first redirect when maxRedirects is 0", async () => {
+        let n = 0;
+        const raw: RawFetch = async () => {
+            n += 1;
+            return new Response(null, { status: 302, headers: { location: "/r" } });
+        };
+        const fetch = createSafeFetcher({ timeoutMs: 3000, rawFetch: raw });
+        expect(tooManyRedirects).toBe("too many redirects");
+        const p = fetch("https://example.com/", {
+            signal: signal(),
+            maxBytes: 1024,
+            maxRedirects: 0,
+        });
+        await expect(p).rejects.toBeInstanceOf(FetchRefused);
+        await expect(p).rejects.toThrow(tooManyRedirects);
+        expect(n).toBe(1);
     });
 });

@@ -7,6 +7,7 @@ import type { Config } from "../config.ts";
 import type { Payments } from "../payments/port.ts";
 import { PlacementState } from "../gen/bugnet/router/v1/router_pb.ts";
 import { GatewayError, errorReason, fromRouter, type RouterClient } from "../router.ts";
+import type { Fetcher } from "../assess/fetch.ts";
 import type { Assessor } from "../assess/assessor.ts";
 import type { Log } from "../log.ts";
 import type { Tracing } from "../trace.ts";
@@ -19,6 +20,8 @@ export interface Deps {
     log: Log;
     now: () => number;
     tracing?: Tracing;
+    // Tests replace the safe fetcher that x402 probes and searches use
+    x402Fetch?: Fetcher;
 }
 
 export type Register = (server: McpServer, deps: Deps) => void;
