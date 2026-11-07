@@ -28,7 +28,10 @@ export async function buildBridge(outfile = distMain): Promise<void> {
         // package.json promises Node 20, so the bundle may use nothing newer
         target: "node20",
         legalComments: "none",
-        banner: { js: "#!/usr/bin/env node" },
+        // The stdio client's cross-spawn is CommonJS and requires Node's built-in modules
+        banner: {
+            js: '#!/usr/bin/env node\nimport { createRequire } from "node:module";\nconst require = createRequire(import.meta.url);',
+        },
         outfile,
         logLevel: "silent",
     });

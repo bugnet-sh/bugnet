@@ -4,6 +4,8 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { buildBridgeServer, version } from "./bridge.ts";
 import { ConfigError, loadCommand, usage } from "./config.ts";
 import { stderrLog } from "./log.ts";
+import { orderStatus, PaidOrders } from "./orders.ts";
+import { PayCli } from "./pay.ts";
 import { RemoteGateway } from "./remote.ts";
 import { runSecurity } from "./secrets/sources.ts";
 
@@ -34,6 +36,8 @@ async function main(): Promise<number> {
         log,
     });
     const started = new Set<string>();
+    // Outlives one server, so a paid order is still held when the client reconnects
+    const orders = new PaidOrders(Date.now);
     // The instructions come from the gateway, so the bridge connects before it answers anything
     await remote.connect().catch((e: unknown) => {
         log.warn("gateway not reachable yet", { gateway: s.gateway_url, err: String(e) });
@@ -54,6 +58,19 @@ async function main(): Promise<number> {
                 log,
                 now: Date.now,
                 started,
+                pay: {
+                    origin: s.pay_origin,
+                    payer: s.pay_command
+                        ? new PayCli({
+                              command: s.pay_command,
+                              origin: s.pay_origin,
+                              env: process.env,
+                              log,
+                          })
+                        : null,
+                    orders,
+                    status: (id, signal) => orderStatus(s.pay_origin, id, signal),
+                },
             }),
         { onerror: (e) => log.warn("mcp error", { err: e.message }) },
     );

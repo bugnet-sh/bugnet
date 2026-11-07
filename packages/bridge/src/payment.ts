@@ -1,4 +1,4 @@
-// The x402 signer port the Payments team implements, which CONTRIBUTING's bridge section describes
+// Reads the x402 payment step a paid gateway tool answers with
 import type { CallToolResult } from "@modelcontextprotocol/server";
 
 export interface X402PaymentRequired {
@@ -8,21 +8,6 @@ export interface X402PaymentRequired {
     resource?: { url: string; description?: string; mimeType?: string };
     extensions?: Record<string, unknown>;
 }
-
-export interface PaidCall {
-    tool: string;
-    arguments: Record<string, unknown>;
-}
-
-export interface PaymentSigner {
-    sign(
-        required: X402PaymentRequired,
-        call: PaidCall,
-        signal: AbortSignal,
-    ): Promise<unknown | null>;
-}
-
-export const paymentMetaKey = "x402/payment";
 
 export function paymentRequired(result: CallToolResult): X402PaymentRequired | null {
     const s = result.structuredContent as Record<string, unknown> | undefined;

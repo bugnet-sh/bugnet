@@ -178,12 +178,15 @@ It reads `~/.config/bugnet/mcp.toml` when it exists, or the file `--config` name
 [`packages/bridge/config/example.toml`](packages/bridge/config/example.toml) lists every setting
 at its default. It holds no secrets.
 
-The bridge ships without a payment signer, so a paid call's payment step reaches the agent.
-`src/payment.ts` is the port the Payments team implements: the signer gets the x402
-`PaymentRequired` of a paid call and the call it belongs to, and a payload it returns is sent once
-as `_meta["x402/payment"]` on a retry with the same arguments and `_meta`, so the gateway's
-idempotency key still names one order. `null` leaves the result to the agent. The signer owns the
-user's spend caps, the confirmation and the wallet keys.
+When `bugnet_start` or `bugnet_extend` answers with a payment step, the bridge pays it with the
+`pay` CLI (`src/pay.ts`). It checks that the pay link is `pay_origin` plus `/o/<orderId>`, that the
+x402 memo names the order and that the amount is at most `confirmPriceUsd`, then starts
+`pay mcp --allow-origin <pay_origin> --allow-network mainnet --max-payment <confirmPriceUsd>` with
+every `PAY_*` variable and `NO_DNA` removed and no client capabilities, so pay asks for Touch ID and
+fails closed without it. It pays an order at most once, keeps a paid order it could not use for 30
+minutes (`src/orders.ts`) and uses it before opening a new order for the same package.
+`pay_command = ""` turns pay off. `BUGNET_LIVE_PAY=1 pnpm test packages/bridge/src/pay.live.test.ts`
+runs the real `pay`.
 
 ## The secret page
 

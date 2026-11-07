@@ -13,6 +13,7 @@ import {
     testHandle,
     testNow,
     type RouterImpl,
+    type TestPayments,
 } from "@bugnet/gateway/testing";
 import {
     canonicalHeaderNames,
@@ -24,8 +25,10 @@ import { developmentKey, developmentPinned, openSealed } from "@bugnet/seal/test
 import { Client, type ElicitResult } from "@modelcontextprotocol/client";
 import { InMemoryTransport } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
-import { buildBridgeServer, type BridgeDeps } from "../bridge.ts";
+import { buildBridgeServer, type BridgeDeps, type BridgePay } from "../bridge.ts";
 import { stderrLog, type Log } from "../log.ts";
+import { PaidOrders, type PublicOrderState } from "../orders.ts";
+import type { OrderPayer, PayOutcome, PaymentStep } from "../pay.ts";
 import { RemoteGateway, type RemoteTools } from "../remote.ts";
 import type { KeychainAnswer, SourceDeps } from "../secrets/sources.ts";
 
@@ -341,4 +344,55 @@ export async function fakePayCommand(dir: string): Promise<string> {
     await writeFile(path, `#!/bin/sh\nexec "${process.execPath}" "${fakePay}" "$@"\n`);
     await chmod(path, 0o755);
     return path;
+}
+
+// The pay link origin of the dev payments the gateway tests serve
+export const testPayOrigin = "http://127.0.0.1:8787";
+
+export interface PayingPayer extends OrderPayer {
+    calls: { step: PaymentStep; maxMicros: number }[];
+    // Resolves when pay is first called
+    started: Promise<void>;
+}
+
+// Pays a dev order as pay would, after a delay and some progress notes, unless told not to
+export function payingPayer(
+    payments: TestPayments,
+    opts: { delayMs?: number; progress?: number; outcome?: PayOutcome; pays?: boolean } = {},
+): PayingPayer {
+    let begin = () => {};
+    const started = new Promise<void>((resolve) => {
+        begin = resolve;
+    });
+    const calls: PayingPayer["calls"] = [];
+    return {
+        calls,
+        started,
+        async pay(step, maxMicros, onProgress) {
+            calls.push({ step, maxMicros });
+            begin();
+            await new Promise((r) => setTimeout(r, opts.delayMs ?? 0));
+            for (let i = 0; i < (opts.progress ?? 0); i++) onProgress();
+            if (opts.pays ?? true) payments.dev.pay(step.orderId);
+            return opts.outcome ?? { kind: "paid" };
+        },
+    };
+}
+
+export function devPay(
+    payments: TestPayments,
+    payer: OrderPayer | null,
+    over: Partial<BridgePay> = {},
+): BridgePay {
+    return {
+        origin: testPayOrigin,
+        payer,
+        orders: new PaidOrders(Date.now),
+        status: async (id) => {
+            const a = payments.dev.status(id);
+            return a.status === 404 ? null : (a.body.state as PublicOrderState);
+        },
+        sleep: async () => {},
+        ...over,
+    };
 }

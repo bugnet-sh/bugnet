@@ -18,7 +18,25 @@ import {
 import type { PinnedKey } from "@bugnet/seal";
 import pkg from "../package.json" with { type: "json" };
 import type { Log } from "./log.ts";
-import { paymentMetaKey, paymentRequired, type PaymentSigner } from "./payment.ts";
+import {
+    orderKey,
+    spentRefusals,
+    unpaidText,
+    afterPaymentText,
+    withAfterPayment,
+    type PaidOrders,
+    type PublicOrderState,
+} from "./orders.ts";
+import {
+    maxPaymentMicros,
+    paymentStep,
+    payRefusal,
+    priceMicros,
+    type OrderPayer,
+    type PayOutcome,
+    type PaymentStep,
+} from "./pay.ts";
+import { paymentRequired } from "./payment.ts";
 import type { RemoteResult, RemoteTools } from "./remote.ts";
 import type { RouteOptions } from "./secrets/route.ts";
 import type { SourceDeps } from "./secrets/sources.ts";
@@ -32,6 +50,14 @@ import {
 // The bundle inlines it at build time, so --version and clientInfo follow every release bump
 export const version: string = pkg.version;
 
+export interface BridgePay {
+    origin: string;
+    payer: OrderPayer | null;
+    orders: PaidOrders;
+    status: (orderId: string, signal: AbortSignal) => Promise<PublicOrderState | null>;
+    sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
+}
+
 export interface BridgeDeps {
     remote: RemoteTools;
     route: RouteOptions;
@@ -41,7 +67,8 @@ export interface BridgeDeps {
     now: () => number;
     // One set for the process, which bugnet_secret_from_env trusts when no one can be asked
     started: Set<string>;
-    paymentSigner?: PaymentSigner;
+    // Pays a payment step with pay or by link, absent in tests that need neither
+    pay?: BridgePay;
     // How long to wait before listing the gateway's tools again after a failed listing
     relistMs?: number;
 }
@@ -110,6 +137,52 @@ function withoutEnvelope(result: RemoteResult): RemoteResult {
     return rest as RemoteResult;
 }
 
+const waitingInPay = "waiting for the payment to be approved in pay";
+
+function isPaidTool(name: string): boolean {
+    return name === "bugnet_start" || name === "bugnet_extend";
+}
+
+// One counter per call, so progress rises across the bridge's own notes and the gateway's
+function progressFor(ctx: ServerContext): {
+    note: (message: string) => void;
+    relay: ((p: Progress) => void) | undefined;
+} {
+    const token = ctx.mcpReq._meta?.progressToken;
+    let count = 0;
+    const note = (message: string) => {
+        if (token === undefined) return;
+        count += 1;
+        ctx.mcpReq
+            .notify({
+                method: "notifications/progress",
+                params: { progress: count, message, progressToken: token },
+            })
+            .catch(() => {});
+    };
+    return { note, relay: token === undefined ? undefined : (p) => note(p.message ?? "") };
+}
+
+// Returns the result of the call that redeemed a paid order, dropping the order when it is spent
+function settle(orders: PaidOrders, result: RemoteResult, step: PaymentStep): RemoteResult {
+    if (isInputRequiredResult(result)) return result;
+    if (!result.isError) {
+        orders.drop(step.orderId);
+        return result;
+    }
+    const refusal = (result.structuredContent as { refusal?: unknown } | undefined)?.refusal;
+    if (typeof refusal === "string" && spentRefusals.has(refusal)) {
+        orders.drop(step.orderId);
+        return withAfterPayment(result, step, true);
+    }
+    return withAfterPayment(result, step);
+}
+
+// The pay link path comes with Task A5, until then the payment step goes back as it is
+function linkPath(_step: PaymentStep, result: RemoteResult, _ctx: ServerContext): RemoteResult {
+    return result;
+}
+
 export function buildBridgeServer(deps: BridgeDeps): Server {
     const instructions = deps.remote.instructions();
     const server = new Server(
@@ -158,23 +231,129 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         return { tools: [...passed, secretFromEnvTool] };
     });
 
-    const call = async (params: Record<string, unknown>, ctx: ServerContext) => {
-        const token = ctx.mcpReq._meta?.progressToken;
-        const onprogress =
-            token === undefined
-                ? undefined
-                : (p: Progress) => {
-                      ctx.mcpReq
-                          .notify({
-                              method: "notifications/progress",
-                              params: { ...p, progressToken: token },
-                          })
-                          .catch(() => {});
-                  };
-        return deps.remote.callTool(params, {
+    const call = (
+        params: Record<string, unknown>,
+        ctx: ServerContext,
+        relay: ((p: Progress) => void) | undefined,
+    ) =>
+        deps.remote.callTool(params, {
             signal: ctx.mcpReq.signal,
-            ...(onprogress ? { onprogress } : {}),
+            ...(relay ? { onprogress: relay } : {}),
         });
+
+    // Pays a payment step of bugnet_start or bugnet_extend and redeems the order it names
+    const payFlow = async (
+        req: CallToolRequest,
+        ctx: ServerContext,
+        params: Record<string, unknown>,
+        pay: BridgePay,
+        progress: ReturnType<typeof progressFor>,
+    ): Promise<RemoteResult> => {
+        const { orders } = pay;
+        const name = req.params.name;
+        const args: Record<string, unknown> = { ...req.params.arguments };
+        const ownPayment =
+            args.payment !== undefined || ctx.mcpReq._meta?.["x402/payment"] !== undefined;
+        const key = orderKey(name, args);
+        let held: PaymentStep | undefined;
+        let forwarded = params;
+        const holding =
+            !ownPayment && args.orderId === undefined && key !== null
+                ? orders.heldFor(key)
+                : undefined;
+        if (holding) {
+            let use = holding.state === "paid";
+            if (!use) {
+                const state = await pay.status(holding.orderId, ctx.mcpReq.signal).catch(() => "?");
+                if (state === "?" || state === "paid" || state === "settling") use = true;
+                else orders.drop(holding.orderId);
+            }
+            if (use) {
+                held = holding;
+                forwarded = {
+                    ...params,
+                    arguments: { ...args, orderId: holding.orderId, claim: holding.claim },
+                };
+            }
+        }
+        const result = await call(forwarded, ctx, progress.relay);
+        const step = ownPayment || isInputRequiredResult(result) ? null : paymentStep(name, result);
+        if (!step) return held ? settle(orders, result, held) : result;
+        const paid: PaymentStep = step;
+        orders.see(key, paid);
+        if (orders.tried(paid.orderId)) return linkPath(paid, result, ctx);
+        const confirmed = priceMicros(args.confirmPriceUsd);
+        const why = payRefusal(
+            paid,
+            pay.origin,
+            confirmed,
+            paymentRequired(result as CallToolResult)!,
+        );
+        if (why !== null) {
+            deps.log.warn("pay link refused", { orderId: paid.orderId, why });
+            return result;
+        }
+        if (!pay.payer) return linkPath(paid, result, ctx);
+        orders.markTried(paid.orderId);
+        // Never raced against the client's signal, since pay may have paid by the time it gives up
+        const outcome = await pay.payer.pay(paid, maxPaymentMicros([confirmed!]), () =>
+            progress.note(waitingInPay),
+        );
+        return afterPay(outcome);
+
+        function afterPay(outcome: PayOutcome): Promise<RemoteResult> | RemoteResult {
+            if (outcome.kind === "paid") {
+                orders.markPaid(paid.orderId, "paid");
+                return redeem();
+            }
+            if (
+                outcome.kind === "unknown" ||
+                (outcome.kind === "declined" && spentRefusals.has(outcome.reason))
+            ) {
+                orders.markPaid(paid.orderId, "unknown");
+                return reread();
+            }
+            if (outcome.kind === "declined") return result;
+            return linkPath(paid, result, ctx);
+        }
+
+        async function redeem(): Promise<RemoteResult> {
+            let again: RemoteResult;
+            try {
+                again = await call(
+                    { ...params, arguments: { ...args, orderId: paid.orderId, claim: paid.claim } },
+                    ctx,
+                    progress.relay,
+                );
+            } catch (e) {
+                if (ctx.mcpReq.signal.aborted) throw e;
+                deps.log.warn("gateway call failed", { tool: name, err: errText(e) });
+                return toolError(
+                    "Bugnet's gateway did not answer, a retry may work." + afterPaymentText(paid),
+                );
+            }
+            return settle(orders, again, paid);
+        }
+
+        // Pay may have paid, so the order's own page says whether it did
+        async function reread(): Promise<RemoteResult> {
+            const state = await pay.status(paid.orderId, ctx.mcpReq.signal).catch(() => "?");
+            if (state === "paid") return redeem();
+            if (state === "unpaid") {
+                // The order stays tried, so pay is never started for it again
+                orders.drop(paid.orderId);
+                orders.see(key, paid);
+                orders.markTried(paid.orderId);
+                return result;
+            }
+            if (state === "?" || state === "settling") {
+                return toolError(unpaidText("timeout", paid));
+            }
+            orders.drop(paid.orderId);
+            if (state === "expired") return toolError(unpaidText("expired", paid));
+            if (state === null) return toolError(unpaidText("unknown_order", paid));
+            return toolError(unpaidText("closed", paid));
+        }
     };
 
     const passThrough = async (
@@ -182,28 +361,13 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         ctx: ServerContext,
     ): Promise<CallToolResult | InputRequiredResult> => {
         const params = forwardParams(req, ctx, clientCapabilities(ctx));
+        const progress = progressFor(ctx);
         let result: RemoteResult;
         try {
-            result = await call(params, ctx);
-            if (deps.paymentSigner && !isInputRequiredResult(result)) {
-                const required = paymentRequired(result as CallToolResult);
-                const payment = required
-                    ? await deps.paymentSigner
-                          .sign(
-                              required,
-                              { tool: req.params.name, arguments: req.params.arguments ?? {} },
-                              ctx.mcpReq.signal,
-                          )
-                          .catch((e: unknown) => {
-                              deps.log.warn("payment signer failed", { err: errText(e) });
-                              return null;
-                          })
-                    : null;
-                if (payment !== null && payment !== undefined) {
-                    const meta = { ...(params._meta as object), [paymentMetaKey]: payment };
-                    result = await call({ ...params, _meta: meta }, ctx);
-                }
-            }
+            result =
+                deps.pay && isPaidTool(req.params.name)
+                    ? await payFlow(req, ctx, params, deps.pay, progress)
+                    : await call(params, ctx, progress.relay);
         } catch (e) {
             if (ctx.mcpReq.signal.aborted) throw e;
             // A JSON-RPC error from the gateway reaches the local client as the same error
