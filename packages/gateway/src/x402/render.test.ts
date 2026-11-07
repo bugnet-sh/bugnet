@@ -55,6 +55,7 @@ import {
     x402Text,
     withRefusal,
     type RefusalContext,
+    type SentOrder,
     type ViewInput,
     type X402View,
     type X402ViewService,
@@ -1254,16 +1255,19 @@ describe("orderCallLost", () => {
     const claim = "c".repeat(43);
     const memoId = `ord_${"a".repeat(26)}`;
     const memoPayment = { x402Version: 2, accepted: { extra: { memo: memoId } } };
-    const paid = (what: "extend" | "redeem", id: string, next: string) =>
+    const paid = (what: "extend" | "start", id: string, next: string) =>
         `${what}: order ${id} is paid, but Bugnet could not reach its payment service to apply it. Call ${next} in a minute`;
+    const sent = (over: Partial<SentOrder> = {}): SentOrder => ({
+        orderId: "ord_p",
+        claim: null,
+        retried: false,
+        payment: undefined,
+        handle: true,
+        ...over,
+    });
 
     it("names the order a claim retry, a payment retry or a payment's memo names", () => {
-        const byClaim = orderCallLost("extend", "bugnet_extend", {
-            orderId: "ord_p",
-            claim: { claim, handle: true },
-            retried: true,
-            payment: undefined,
-        });
+        const byClaim = orderCallLost("extend", "bugnet_extend", sent({ claim, retried: true }));
         expect(byClaim?.message).toBe(
             paid(
                 "extend",
@@ -1272,56 +1276,60 @@ describe("orderCallLost", () => {
             ),
         );
         expect(byClaim?.fields).toEqual({ orderId: "ord_p" });
-        const byPayment = orderCallLost("extend", "bugnet_extend", {
-            orderId: "ord_p",
-            claim: null,
-            retried: true,
-            payment: memoPayment,
-        });
+        const byPayment = orderCallLost(
+            "extend",
+            "bugnet_extend",
+            sent({ retried: true, payment: memoPayment }),
+        );
         expect(byPayment?.message).toBe(
             paid(
                 "extend",
                 "ord_p",
-                `bugnet_extend with orderId "ord_p" and the claim from its payment step`,
+                `bugnet_extend with the handle, orderId "ord_p" and the claim from its payment step`,
             ),
         );
-        const memo = orderCallLost("extend", "bugnet_extend", {
-            orderId: "ord_p",
-            claim: null,
-            retried: false,
-            payment: memoPayment,
-        });
-        expect(memo?.message).toContain(`extend: order ${memoId} is paid`);
+        const memo = orderCallLost("extend", "bugnet_extend", sent({ payment: memoPayment }));
+        expect(memo?.message).toBe(
+            paid(
+                "extend",
+                memoId,
+                `bugnet_extend with the handle, orderId "${memoId}" and the claim from its payment step`,
+            ),
+        );
         expect(memo?.fields).toEqual({ orderId: memoId });
-        const given = orderCallLost("extend", "bugnet_extend", {
-            orderId: "ord_p",
-            claim: null,
-            retried: false,
-            payment: { x402Version: 2 },
-        });
+        const given = orderCallLost(
+            "extend",
+            "bugnet_extend",
+            sent({ payment: { x402Version: 2 } }),
+        );
         expect(given?.fields).toEqual({ orderId: "ord_p" });
+        // Start's call names no handle
+        const start = orderCallLost(
+            "start",
+            "bugnet_start",
+            sent({ retried: true, payment: memoPayment, handle: false }),
+        );
+        expect(start?.message).toBe(
+            paid(
+                "start",
+                "ord_p",
+                `bugnet_start with orderId "ord_p" and the claim from its payment step`,
+            ),
+        );
     });
 
     it("says a payment went out when no order can be named, and nothing moved without one", () => {
-        const bare = orderCallLost("extend", "bugnet_extend", {
-            orderId: undefined,
-            claim: null,
-            retried: false,
-            payment: { x402Version: 2 },
-        });
+        const bare = orderCallLost(
+            "extend",
+            "bugnet_extend",
+            sent({ orderId: undefined, payment: { x402Version: 2 } }),
+        );
         expect(bare?.message).toBe(
             "extend: the payment was sent, but Bugnet could not confirm it. Call bugnet_extend again with the same arguments and payment in a minute, and do not pay again",
         );
         expect(bare?.fields).toBeNull();
         expect(paymentUnconfirmed("extend", "bugnet_extend", null).message).toBe(bare?.message);
-        expect(
-            orderCallLost("extend", "bugnet_extend", {
-                orderId: undefined,
-                claim: null,
-                retried: false,
-                payment: undefined,
-            }),
-        ).toBeNull();
+        expect(orderCallLost("extend", "bugnet_extend", sent({ orderId: undefined }))).toBeNull();
     });
 });
 

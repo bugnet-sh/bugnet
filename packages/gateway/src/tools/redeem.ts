@@ -10,6 +10,7 @@ import {
     buildView,
     paidOrderRefusal,
     paidRetryUnreachable,
+    withOrder,
     withRefusal,
     x402Fail,
     x402Lines,
@@ -91,7 +92,10 @@ async function redeemAllowance(
             );
         }
         // No refusal word, so a client keeps the order whose retry by claim enables it for free
-        throw x402Fail("paidNotEnabled", "x402", { amountMicros: order.allowanceMicros });
+        throw withOrder(
+            x402Fail("paidNotEnabled", "x402", { amountMicros: order.allowanceMicros }),
+            id,
+        );
     }
     const view = buildView({
         account: order.x402,
@@ -160,14 +164,15 @@ export const registerRedeemTool: Register = (server, deps) => {
                     );
                 } catch {
                     // A redeem is a retry by claim, so the user may have paid
-                    throw paidRetryUnreachable("redeem", "bugnet_redeem", orderId, {
-                        claim,
-                        ...(quoteId !== undefined
-                            ? { quoteId }
-                            : handle !== undefined
-                              ? { handle: true }
-                              : {}),
-                    });
+                    throw new GatewayError(
+                        "unavailable",
+                        `redeem: Bugnet could not check order ${orderId} right now. Call ` +
+                            "bugnet_redeem again with orderId and claim in a minute, and do not " +
+                            "pay again",
+                        null,
+                        null,
+                        { orderId },
+                    );
                 }
                 if (order.status === "payment_required") {
                     return paymentRequiredResult(order, {

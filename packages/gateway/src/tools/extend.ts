@@ -4,10 +4,15 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { PackageOption, Placement } from "../gen/bugnet/router/v1/router_pb.ts";
-import type { OrderRequest, OrderResult, PaidOrder } from "../payments/port.ts";
+import {
+    paymentMemo,
+    type OrderRequest,
+    type OrderResult,
+    type PaidOrder,
+} from "../payments/port.ts";
 import { toolCallSignal } from "../request.ts";
 import { GatewayError, errorReason, fromRouter } from "../router.ts";
-import { orderCallLost } from "../x402/render.ts";
+import { orderCallLost, paymentUnconfirmed } from "../x402/render.ts";
 import {
     approvalMeta,
     Budget,
@@ -281,6 +286,13 @@ export const registerExtendTool: Register = (server, deps) => {
                         );
                     }
                     if (budget.left() < applyReserveMs + 5_000) {
+                        // A carried payment may be a resend of one Payments already settled
+                        if (payment !== undefined) {
+                            const id = paymentMemo(payment) ?? args.orderId ?? null;
+                            throw paymentUnconfirmed("extend", "bugnet_extend", id, {
+                                handle: true,
+                            });
+                        }
                         throw new GatewayError(
                             "timeout",
                             "extend: Bugnet answered slowly, so nothing was charged. Calling " +
@@ -313,11 +325,10 @@ export const registerExtendTool: Register = (server, deps) => {
                         throw (
                             orderCallLost("extend", "bugnet_extend", {
                                 orderId: args.orderId,
-                                claim: byClaim
-                                    ? { claim: args.claim as string, handle: true }
-                                    : null,
+                                claim: byClaim ? (args.claim as string) : null,
                                 retried: retried !== null,
                                 payment,
+                                handle: true,
                             }) ?? e
                         );
                     }

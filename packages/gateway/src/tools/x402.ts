@@ -37,6 +37,7 @@ import {
     paidRetryUnreachable,
     paymentUnconfirmed,
     paymentsRefusal,
+    withOrder,
     withRefusal,
     x402Fail,
     x402Lines,
@@ -280,13 +281,16 @@ async function paidRetryOrder(c: BudgetCall, retry: PaidRetry): Promise<Applied 
 // Checks every amount and limit, probes and asks the router before Payments charges anything
 async function newOrder(c: BudgetCall): Promise<Applied | CallToolResult> {
     const { deps, args, ctx, budget, h, key, payment, amount, confirm, spend, disable } = c;
+    // A carried payment may be a resend of one Payments already settled
+    const unconfirmed = () =>
+        paymentUnconfirmed("x402", budgetTool, paymentMemo(payment) ?? args.orderId ?? null);
     const unreachable = () =>
-        payment !== undefined
-            ? paymentUnconfirmed("x402", budgetTool, paymentMemo(payment))
-            : x402Fail("unreachable", "x402");
+        payment !== undefined ? unconfirmed() : x402Fail("unreachable", "x402");
     const terms = await readTerms(deps, budget.signal(3_000));
     if (terms === null) throw unreachable();
-    if (!terms.enabled) throw x402Fail("switchedOff", "x402");
+    if (!terms.enabled) {
+        throw payment !== undefined ? unconfirmed() : x402Fail("switchedOff", "x402");
+    }
     let answer: X402AccountAnswer;
     try {
         answer = await deps.payments.x402Account(h, budget.signal(3_000));
@@ -371,6 +375,7 @@ async function newOrder(c: BudgetCall): Promise<Applied | CallToolResult> {
         throw x402RouterError(e, "x402", hosts, terms.maxServices);
     }
     if (budget.left() < enableWaitMs + 5_000) {
+        if (payment !== undefined) throw unconfirmed();
         throw new GatewayError(
             "timeout",
             "x402: Bugnet answered slowly, so nothing was charged. Calling bugnet_x402_budget " +
@@ -525,7 +530,10 @@ async function runBudget(
                 "sandbox_ended",
             );
         }
-        throw x402Fail("paidNotEnabled", "x402", { amountMicros: order.allowanceMicros });
+        throw withOrder(
+            x402Fail("paidNotEnabled", "x402", { amountMicros: order.allowanceMicros }),
+            order.orderId,
+        );
     }
     const view = buildView({
         account: step.account,

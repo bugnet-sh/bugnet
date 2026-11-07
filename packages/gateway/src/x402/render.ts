@@ -11,7 +11,13 @@ import {
 } from "../payments/port.ts";
 import { GatewayError, reasonCode, type GatewayErrorKind } from "../router.ts";
 import { usd } from "../tools/common.ts";
-import { refusalError, retryCall, type OrderTool, type RetryWith } from "../tools/orders.ts";
+import {
+    refusalError,
+    refusalWord,
+    retryCall,
+    type OrderTool,
+    type RetryWith,
+} from "../tools/orders.ts";
 import { exactEntry, type X402Index } from "./index.ts";
 import {
     envLinesFor,
@@ -652,8 +658,13 @@ function plannedHost(c: RefusalContext): string {
 export function withRefusal(e: GatewayError, orderId: string | null, reason: string): GatewayError {
     return new GatewayError(e.kind, e.message, e.retryAfterMs, e.reason, {
         ...(orderId ? { orderId } : {}),
-        refusal: refusalCode.test(reason) ? reason : "unknown",
+        refusal: refusalWord(reason),
     });
+}
+
+// A paid order the call could not finish, named with no refusal word so a client keeps it
+export function withOrder(e: GatewayError, orderId: string): GatewayError {
+    return new GatewayError(e.kind, e.message, e.retryAfterMs, e.reason, { orderId });
 }
 
 export function paymentsRefusal(
@@ -799,8 +810,11 @@ export function paymentUnconfirmed(
     what: PaidWhat,
     tool: OrderTool,
     orderId: string | null,
+    w: RetryWith = {},
 ): GatewayError {
-    if (orderId !== null) return paidRetryUnreachable(what, tool, orderId, { payment: true });
+    if (orderId !== null) {
+        return paidRetryUnreachable(what, tool, orderId, { ...w, payment: true });
+    }
     return x402Error(
         `${what}: the payment was sent, but Bugnet could not confirm it. Call ${tool} again with ` +
             "the same arguments and payment in a minute, and do not pay again",
@@ -810,23 +824,26 @@ export function paymentUnconfirmed(
 
 export interface SentOrder {
     orderId: string | undefined;
-    // How a retry by claim is called again, null when the call sent no claim
-    claim: RetryWith | null;
+    // The claim of a retry by claim, null when the call sent none
+    claim: string | null;
     // A paid retry by payment, whose orderId the call named
     retried: boolean;
     payment: unknown;
+    // The call that finishes the order names the sandbox's handle
+    handle: boolean;
 }
 
 // An order call that threw after a claim or a payment went out, null when no money can have moved
 export function orderCallLost(what: PaidWhat, tool: OrderTool, s: SentOrder): GatewayError | null {
+    const w: RetryWith = s.handle ? { handle: true } : {};
     if (s.claim !== null && s.orderId !== undefined) {
-        return paidRetryUnreachable(what, tool, s.orderId, s.claim);
+        return paidRetryUnreachable(what, tool, s.orderId, { ...w, claim: s.claim });
     }
     if (s.retried && s.orderId !== undefined) {
-        return paidRetryUnreachable(what, tool, s.orderId, { payment: true });
+        return paidRetryUnreachable(what, tool, s.orderId, { ...w, payment: true });
     }
     if (s.payment === undefined) return null;
-    return paymentUnconfirmed(what, tool, paymentMemo(s.payment) ?? s.orderId ?? null);
+    return paymentUnconfirmed(what, tool, paymentMemo(s.payment) ?? s.orderId ?? null, w);
 }
 
 // The payment also covered the package and the fee, so the line names the allowance alone

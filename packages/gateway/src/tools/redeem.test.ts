@@ -322,8 +322,8 @@ describe("bugnet_redeem", () => {
 });
 
 describe("bugnet_redeem when Payments cannot answer", () => {
-    const paidUnreachable = (id: string, next: string) =>
-        `redeem: order ${id} is paid, but Bugnet could not reach its payment service to apply it. Call bugnet_redeem ${next} in a minute.`;
+    const unchecked = (id: string) =>
+        `redeem: Bugnet could not check order ${id} right now. Call bugnet_redeem again with orderId and claim in a minute, and do not pay again.`;
     const failures: unknown[] = [
         new Error("down"),
         new DOMException("timed out", "TimeoutError"),
@@ -333,26 +333,20 @@ describe("bugnet_redeem when Payments cannot answer", () => {
         ),
     ];
 
-    it("names the order and the call that finishes it, and never says nothing was charged", async () => {
+    it("names the order, says to call again, and never says nothing was charged", async () => {
         for (const err of failures) {
             const { client, deps } = await setup(
                 {},
                 testPayments(() => Promise.reject(err)),
             );
-            const quoteId = quote(deps);
-            const rows: [Record<string, unknown>, string][] = [
-                [{ quoteId }, `with orderId "ord_r", claim "${claim}" and quoteId "${quoteId}"`],
-                [{ handle: testHandle }, `with the handle, orderId "ord_r" and claim "${claim}"`],
-                [{}, `with orderId "ord_r" and claim "${claim}"`],
-            ];
-            for (const [extra, next] of rows) {
+            for (const extra of [{ quoteId: quote(deps) }, { handle: testHandle }, {}]) {
                 const r = await callTool(client, "bugnet_redeem", {
                     orderId: "ord_r",
                     claim,
                     ...extra,
                 });
                 expect(r.isError).toBe(true);
-                expect(r.text).toBe(paidUnreachable("ord_r", next));
+                expect(r.text).toBe(unchecked("ord_r"));
                 expect(r.structured).toEqual({ message: r.text, orderId: "ord_r" });
                 expect(r.text).not.toContain("othing was charged");
             }
@@ -555,7 +549,8 @@ describe("bugnet_redeem with an allowance order", () => {
                 handle: testHandle,
             });
             expect(r.text).toBe(freeRetry);
-            expect(r.structured).toEqual({});
+            // No refusal word, so the bridge keeps the order
+            expect(r.structured).toEqual({ message: r.text, orderId });
             expect(payments.abandoned).toEqual([]);
         }
     });

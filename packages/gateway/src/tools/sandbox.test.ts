@@ -2594,6 +2594,46 @@ describe("bugnet_start on a router with PricePackage", () => {
         expect(payments.orders).toEqual([]);
     });
 
+    // A carried payment may be a resend of one Payments already settled
+    it("names the order when a call carrying a payment answers slowly", async () => {
+        const rows: [Record<string, unknown>, Record<string, unknown>, string, string | null][] = [
+            [
+                {},
+                { "x402/payment": memoPayment },
+                paidUnreachable(memoId, fromStep(memoId)),
+                memoId,
+            ],
+            [
+                { orderId: "ord_paid", payment: { x402Version: 2 } },
+                {},
+                paidUnreachable("ord_paid", fromStep("ord_paid")),
+                "ord_paid",
+            ],
+            [{}, { "x402/payment": { x402Version: 2 } }, startUnconfirmed, null],
+        ];
+        for (const [extra, meta, text, orderId] of rows) {
+            const clock = { now: testNow };
+            const { client, deps, payments } = await setup(
+                priced(fresh(), {
+                    pricePackage: (req) => {
+                        clock.now += 30_000;
+                        return { option: packageOption(req.packageId, 50_000n) };
+                    },
+                }),
+            );
+            deps.now = () => clock.now;
+            const r = await callTool(
+                client,
+                "bugnet_start",
+                { ...startArgs(signed(deps)), ...extra },
+                { meta },
+            );
+            expect(r.text).toBe(text);
+            expect(r.structured).toEqual(orderId ? { message: r.text, orderId } : {});
+            expect(payments.orders).toEqual([]);
+        }
+    });
+
     it("tells the user an order was paid when the start's answer is lost", async () => {
         const { client, deps, payments } = await setup(
             priced(fresh(), {

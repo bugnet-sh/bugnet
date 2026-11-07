@@ -334,6 +334,49 @@ describe("bugnet_extend", () => {
         expect(payments.orders).toEqual([]);
     });
 
+    // A carried payment may be a resend of one Payments already settled
+    it("names the order when a call carrying a payment answers slowly", async () => {
+        const memoId = `ord_${"a".repeat(26)}`;
+        const memoPayment = { x402Version: 2, accepted: { extra: { memo: memoId } } };
+        const paid = (id: string) =>
+            `extend: order ${id} is paid, but Bugnet could not reach its payment service to apply it. Call bugnet_extend with the handle, orderId "${id}" and the claim from its payment step in a minute.`;
+        const rows: [Record<string, unknown>, Record<string, unknown>, string, string | null][] = [
+            [{}, { "x402/payment": memoPayment }, paid(memoId), memoId],
+            [
+                { orderId: "ord_paid", payment: { x402Version: 2 } },
+                {},
+                paid("ord_paid"),
+                "ord_paid",
+            ],
+            [
+                {},
+                { "x402/payment": { x402Version: 2 } },
+                "extend: the payment was sent, but Bugnet could not confirm it. Call bugnet_extend again with the same arguments and payment in a minute, and do not pay again.",
+                null,
+            ],
+        ];
+        for (const [extra, meta, text, orderId] of rows) {
+            const payments = testPayments();
+            const clock = { now: testNow };
+            const deps = testDeps({
+                payments,
+                now: () => clock.now,
+                router: fakeRouter({
+                    ...checked,
+                    checkExtendPlacement: () => {
+                        clock.now += 30_000;
+                        return { placement: placement(), package: more };
+                    },
+                }),
+            });
+            const client = await connectTools(deps);
+            const r = await callTool(client, "bugnet_extend", { ...args(), ...extra }, { meta });
+            expect(r.text).toBe(text);
+            expect(r.structured).toEqual(orderId ? { message: r.text, orderId } : {});
+            expect(payments.orders).toEqual([]);
+        }
+    });
+
     it("caps the payment so ExtendPlacement keeps its reserve", async () => {
         const real = AbortSignal.timeout.bind(AbortSignal);
         const given = new WeakMap<AbortSignal, number>();
@@ -712,7 +755,8 @@ describe("bugnet_extend when Payments cannot answer after money may have moved",
     const memoPayment = { x402Version: 2, accepted: { extra: { memo: memoId } } };
     const paidUnreachable = (id: string, next: string) =>
         `extend: order ${id} is paid, but Bugnet could not reach its payment service to apply it. Call bugnet_extend ${next} in a minute.`;
-    const fromStep = (id: string) => `with orderId "${id}" and the claim from its payment step`;
+    const fromStep = (id: string) =>
+        `with the handle, orderId "${id}" and the claim from its payment step`;
     const byClaimText = (id: string) =>
         paidUnreachable(id, `with the handle, orderId "${id}" and claim "${claim}"`);
     const unconfirmed =

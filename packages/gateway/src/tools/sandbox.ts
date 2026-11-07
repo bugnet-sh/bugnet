@@ -466,9 +466,10 @@ function orderLost(
     // With [x402] off an orderId beside a payment makes a first call for that order
     const lost = orderCallLost("start", startTool, {
         orderId: args.orderId,
-        claim: byClaim ? { claim: args.claim as string } : null,
+        claim: byClaim ? (args.claim as string) : null,
         retried: retried !== null,
         payment,
+        handle: false,
     });
     return lost ?? (args.x402 ? x402Fail("unreachable", "start") : e);
 }
@@ -738,6 +739,11 @@ export const registerSandboxTools: Register = (server, deps) => {
                         }
                     }
                     if (budget.left() < reserve + 5_000) {
+                        // A carried payment may be a resend of one Payments already settled
+                        if (payment !== undefined) {
+                            const id = paymentMemo(payment) ?? args.orderId ?? null;
+                            throw paymentUnconfirmed("start", startTool, id);
+                        }
                         throw new GatewayError(
                             "timeout",
                             "start: Bugnet answered slowly, so nothing was charged. Calling " +

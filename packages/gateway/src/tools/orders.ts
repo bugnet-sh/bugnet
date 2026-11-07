@@ -122,6 +122,9 @@ export function retryCall(tool: OrderTool, orderId: string, w: RetryWith): strin
         return `${tool} with the handle, orderId "${orderId}" and claim "${w.claim}"`;
     }
     if (w.claim) return `${tool} with orderId "${orderId}" and claim "${w.claim}"`;
+    if (w.payment && w.handle) {
+        return `${tool} with the handle, orderId "${orderId}" and the claim from its payment step`;
+    }
     if (w.payment) return `${tool} with orderId "${orderId}" and the claim from its payment step`;
     return `${tool} with orderId "${orderId}"`;
 }
@@ -183,6 +186,13 @@ export function allowanceOrderError(
     );
 }
 
+// The 6.13 refusal code shape, so Payments' free text never reaches the model
+const refusalCode = /^[a-z0-9_]{1,40}$/;
+
+export function refusalWord(reason: string): string {
+    return refusalCode.test(reason) ? reason : "unknown";
+}
+
 export function refusalError(
     r: RefusedOrder,
     what: "start" | "extend" | "redeem" | "x402",
@@ -195,7 +205,8 @@ export function refusalError(
     } = {},
 ): GatewayError {
     const id = r.orderId ?? opts.sentOrderId;
-    const fields = { ...(id ? { orderId: id } : {}), refusal: r.reason };
+    const word = refusalWord(r.reason);
+    const fields = { ...(id ? { orderId: id } : {}), refusal: word };
     const error = (
         kind: ConstructorParameters<typeof GatewayError>[0],
         text: string,
@@ -246,7 +257,7 @@ export function refusalError(
             default:
         }
     }
-    const text = `payment refused: ${r.reason}`;
+    const text = `payment refused: ${word}`;
     if (unavailableRefusals.has(r.reason)) {
         return error("unavailable", `${text}, retry in a few seconds`);
     }

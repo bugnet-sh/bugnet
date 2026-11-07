@@ -590,6 +590,48 @@ describe("bugnet_x402_budget", () => {
         }
     });
 
+    // A carried payment may be a resend of one Payments already settled
+    it("names the order when a call carrying a payment answers slowly or finds x402 off", async () => {
+        const paidText = (id: string) =>
+            `x402: order ${id} is paid, but Bugnet could not reach its payment service to apply it. Call bugnet_x402_budget with orderId "${id}" and the claim from its payment step in a minute.`;
+        const rows: [unknown, string, string | null][] = [
+            [memoPayment, paidText(memoId), memoId],
+            [{ x402Version: 2 }, unconfirmedText, null],
+        ];
+        for (const [payment, text, orderId] of rows) {
+            const slow = await setup({
+                router: {
+                    checkX402: () => {
+                        slow.clock.now += 30_000;
+                        return {};
+                    },
+                },
+            });
+            const r = await callTool(slow.client, budget, args({ payment }));
+            expect(r.text).toBe(text);
+            expect(r.structured).toEqual(orderId ? { message: r.text, orderId } : {});
+            expect(slow.payments.orders).toEqual([]);
+            const off = await setup({
+                payments: testPayments(undefined, { terms: { enabled: false } }),
+            });
+            const o = await callTool(off.client, budget, args({ payment }));
+            expect(o.text).toBe(text);
+            expect(o.structured).toEqual(orderId ? { message: o.text, orderId } : {});
+            expect(off.payments.orders).toEqual([]);
+        }
+        const plain = await setup({
+            router: {
+                checkX402: () => {
+                    plain.clock.now += 30_000;
+                    return {};
+                },
+            },
+        });
+        expect((await callTool(plain.client, budget, args())).text).toBe(
+            "x402: Bugnet answered slowly, so nothing was charged. Calling bugnet_x402_budget again applies it.",
+        );
+    });
+
     it("reads the order from the payment's memo only when it has an order id's shape", () => {
         expect(paymentMemo(memoPayment)).toBe(memoId);
         for (const p of [
@@ -1167,7 +1209,8 @@ describe("bugnet_x402_budget", () => {
         // The order is applied, so a call by claim enables it at no charge and the bridge keeps it
         const down = await failing(routerError(Code.Unavailable));
         expect(down.text).toContain("but the services were not enabled yet");
-        expect(down.structured).toEqual({});
+        expect(down.structured).toEqual({ message: down.text, orderId: expect.any(String) });
+        expect(down.structured).not.toHaveProperty("refusal");
     });
 
     it("says the payment with no amount when a retry by claim is refused at the paid check", async () => {
