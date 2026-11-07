@@ -85,6 +85,59 @@ const settingsSchema = z
             })
             .strict()
             .prefault({}),
+        x402: z
+            .object({
+                enabled: z.boolean().default(false),
+                cdp_search_url: z
+                    .url()
+                    .default("https://api.cdp.coinbase.com/platform/v2/x402/discovery/search"),
+                payai_resources_url: z
+                    .url()
+                    .default("https://facilitator.payai.network/discovery/resources"),
+                hosts_seen_file: z.string().max(4096).default(""),
+                search_timeout: duration.prefault("4s"),
+                probe_timeout: duration.prefault("3s"),
+                probe_concurrency: z.int().min(1).max(32).default(8),
+                probe_max_bytes: z.int().min(1024).max(1048576).default(65536),
+                search_cache_ttl: duration.prefault("10m"),
+                probe_cache_ttl: duration.prefault("2m"),
+                payai_refresh: duration.prefault("1h"),
+                max_results: z.int().min(1).max(5).default(5),
+                default_max_price_usd: z
+                    .string()
+                    .regex(/^\d{1,3}(\.\d{1,6})?$/, "a dollar amount such as 0.10")
+                    .default("0.10"),
+                shared_hosting_suffixes: z
+                    .array(
+                        z
+                            .string()
+                            .regex(
+                                /^[a-z0-9-]+(\.[a-z0-9-]+)+$/,
+                                "a lower-case domain such as workers.dev",
+                            ),
+                    )
+                    .max(100)
+                    .default([
+                        "workers.dev",
+                        "onrender.com",
+                        "vercel.app",
+                        "netlify.app",
+                        "pages.dev",
+                        "herokuapp.com",
+                        "fly.dev",
+                        "up.railway.app",
+                        "replit.app",
+                        "ngrok-free.app",
+                        "ngrok.io",
+                        "trycloudflare.com",
+                        "github.io",
+                        "glitch.me",
+                        "deno.dev",
+                        "web.app",
+                    ]),
+            })
+            .strict()
+            .prefault({}),
         telemetry: z
             .object({
                 traces: z.boolean().default(false),
@@ -310,6 +363,33 @@ function checkTelemetry(t: Settings["telemetry"]): void {
     }
 }
 
+export type X402Settings = Settings["x402"];
+
+export function checkX402(x: X402Settings): void {
+    const seen = new Set<string>();
+    for (const suffix of x.shared_hosting_suffixes) {
+        if (seen.has(suffix)) {
+            throw new ConfigError(`x402.shared_hosting_suffixes holds ${suffix} twice`);
+        }
+        seen.add(suffix);
+    }
+    if (new URL(x.cdp_search_url).protocol !== "https:") {
+        throw new ConfigError("x402.cdp_search_url must be https");
+    }
+    if (new URL(x.payai_resources_url).protocol !== "https:") {
+        throw new ConfigError("x402.payai_resources_url must be https");
+    }
+    for (const key of ["search_timeout", "probe_timeout"] as const) {
+        if (x[key] < 500 || x[key] > 10_000) {
+            throw new ConfigError(`x402.${key} must be 500ms to 10s`);
+        }
+    }
+    if (x.payai_refresh < 60_000) throw new ConfigError("x402.payai_refresh must be 1m or more");
+    if (!/[1-9]/.test(x.default_max_price_usd)) {
+        throw new ConfigError("x402.default_max_price_usd must be above 0");
+    }
+}
+
 // bugnet_start keeps 12 s to place a paid sandbox, 5 s to pay, a price check and 4 s to answer
 const minToolBudgetMs = 25_000;
 
@@ -327,6 +407,7 @@ export function checkSettings(s: Settings): void {
     }
     checkFront(s);
     checkTelemetry(s.telemetry);
+    checkX402(s.x402);
     // A preview shares the links domain, so its pages must never count as a hosted client
     const domain = s.router.links_domain;
     for (const o of s.allowed_origins) {

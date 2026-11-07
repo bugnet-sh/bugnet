@@ -12,6 +12,7 @@ import {
 import { fromRouter, safeMessage } from "./router.ts";
 import { cleanText, looksLikeText, tail } from "./sanitize.ts";
 import vectors from "./testing/sanitize-vectors.json" with { type: "json" };
+import { x402Vector } from "./testing/vectors.ts";
 import { secretLooking } from "./tools/jobs.ts";
 import { recommend } from "./tools/quote.ts";
 import type { QuotedPackage } from "./quote.ts";
@@ -104,6 +105,103 @@ describe("config", () => {
             "utf8",
         );
         expect(parseSettings(example, "example.toml").payments).toEqual(parseSettings("").payments);
+    });
+});
+
+const sixteen = [
+    "workers.dev",
+    "onrender.com",
+    "vercel.app",
+    "netlify.app",
+    "pages.dev",
+    "herokuapp.com",
+    "fly.dev",
+    "up.railway.app",
+    "replit.app",
+    "ngrok-free.app",
+    "ngrok.io",
+    "trycloudflare.com",
+    "github.io",
+    "glitch.me",
+    "deno.dev",
+    "web.app",
+];
+// Dev payments on loopback pass every other checkSettings rule, so only the x402 checks can throw
+const devX402 = (lines: string) => parseSettings(`[payments]\nmode = "dev"\n[x402]\n${lines}`);
+
+describe("x402 settings", () => {
+    it("defaults every [x402] key as spec 5.1 gives it", () => {
+        expect(parseSettings("").x402).toEqual({
+            enabled: false,
+            cdp_search_url: "https://api.cdp.coinbase.com/platform/v2/x402/discovery/search",
+            payai_resources_url: "https://facilitator.payai.network/discovery/resources",
+            hosts_seen_file: "",
+            search_timeout: 4_000,
+            probe_timeout: 3_000,
+            probe_concurrency: 8,
+            probe_max_bytes: 65_536,
+            search_cache_ttl: 600_000,
+            probe_cache_ttl: 120_000,
+            payai_refresh: 3_600_000,
+            max_results: 5,
+            default_max_price_usd: "0.10",
+            shared_hosting_suffixes: sixteen,
+        });
+    });
+    it("keeps the shared-hosting list equal to the shared vector the router reads", () => {
+        expect(parseSettings("").x402.shared_hosting_suffixes).toEqual(
+            (x402Vector("shared-hosting-suffixes.json") as { suffixes: string[] }).suffixes,
+        );
+    });
+    it("names an unknown x402 key, an index file among them", () => {
+        expect(() => parseSettings("[x402]\nfoo = 1")).toThrow(/unknown key x402\.foo/);
+        expect(() => parseSettings('[x402]\nindex_file = "/tmp/x402-index.json"')).toThrow(
+            /unknown key x402\.index_file/,
+        );
+    });
+    it.each([
+        [
+            'shared_hosting_suffixes = ["a.dev", "b.dev", "a.dev"]',
+            "x402.shared_hosting_suffixes holds a.dev twice",
+        ],
+        ['cdp_search_url = "http://search.example/s"', "x402.cdp_search_url must be https"],
+        [
+            'payai_resources_url = "http://payai.example/r"',
+            "x402.payai_resources_url must be https",
+        ],
+        ['search_timeout = "499ms"', "x402.search_timeout must be 500ms to 10s"],
+        ['search_timeout = "11s"', "x402.search_timeout must be 500ms to 10s"],
+        ['probe_timeout = "499ms"', "x402.probe_timeout must be 500ms to 10s"],
+        ['probe_timeout = "11s"', "x402.probe_timeout must be 500ms to 10s"],
+        ['payai_refresh = "59s"', "x402.payai_refresh must be 1m or more"],
+        ['default_max_price_usd = "0.000000"', "x402.default_max_price_usd must be above 0"],
+    ])("refuses %s", (line, message) => {
+        expect(() => checkSettings(devX402(line))).toThrow(new ConfigError(message));
+    });
+    it("takes the bounds themselves", () => {
+        const s = devX402(
+            'search_timeout = "500ms"\nprobe_timeout = "10s"\npayai_refresh = "1m"\ndefault_max_price_usd = "0.000001"',
+        );
+        expect(() => checkSettings(s)).not.toThrow();
+        expect(() => checkSettings(devX402(""))).not.toThrow();
+    });
+    it.each([
+        ["probe_concurrency = 0", /x402\.probe_concurrency/],
+        ["probe_concurrency = 33", /x402\.probe_concurrency/],
+        ["probe_max_bytes = 1023", /x402\.probe_max_bytes/],
+        ["max_results = 6", /x402\.max_results/],
+        ['default_max_price_usd = "$0.10"', /a dollar amount such as 0\.10/],
+        ['shared_hosting_suffixes = ["Workers.dev"]', /a lower-case domain such as workers\.dev/],
+    ])("refuses the value %s", (line, message) => {
+        expect(() => parseSettings(`[x402]\n${line}`)).toThrow(message);
+    });
+    it("lists [x402] at its defaults in config/example.toml", () => {
+        const example = readFileSync(
+            new URL("../../../config/example.toml", import.meta.url),
+            "utf8",
+        );
+        expect(example).toContain("\n[x402]\n");
+        expect(parseSettings(example, "example.toml").x402).toEqual(parseSettings("").x402);
     });
 });
 

@@ -46,6 +46,22 @@ cache_ttl = "10m"                       # how long one replica reuses an assessm
 max_file_bytes = 262144                 # largest file read for scanning
 scan_urls = true                        # fetch and scan script URLs agents pass to bugnet_assess
 
+[x402]
+enabled = false                         # true once egress x402 and the Payments signer are live
+cdp_search_url = "https://api.cdp.coinbase.com/platform/v2/x402/discovery/search" # the Bazaar search, https
+payai_resources_url = "https://facilitator.payai.network/discovery/resources" # PayAI's resource list, https
+hosts_seen_file = ""                    # empty uses the built-in first-seen dates
+search_timeout = "4s"                   # each search source, 500ms to 10s
+probe_timeout = "3s"                    # each unpaid probe, 500ms to 10s
+probe_concurrency = 8                   # probes at once, 1 to 32
+probe_max_bytes = 65536                 # most bytes a probe reads, 1 KiB to 1 MiB
+search_cache_ttl = "10m"                # one search answer per api, key name and price
+probe_cache_ttl = "2m"                  # one probe answer per method and URL
+payai_refresh = "1h"                    # how often PayAI's list is fetched again, 1m or more
+max_results = 5                         # services find returns, 1 to 5
+default_max_price_usd = "0.10"          # find's price cap a call when the agent gives none
+shared_hosting_suffixes = ["workers.dev", "onrender.com", "vercel.app", "netlify.app", "pages.dev", "herokuapp.com", "fly.dev", "up.railway.app", "replit.app", "ngrok-free.app", "ngrok.io", "trycloudflare.com", "github.io", "glitch.me", "deno.dev", "web.app"] # hosts refused unless the index lists them, the router's list
+
 [telemetry]
 traces = false                          # export spans over OTLP and send traceparent to the router, nothing is built or sent while false
 otlp_endpoint = ""                      # the full traces URL, https, or http to a loopback host only
