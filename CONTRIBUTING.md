@@ -25,7 +25,7 @@ out, and what a pull request needs. What Bugnet is and how people install it is 
 | `eval/intent`                     | Labelled prompts and commands, dev and held-out test splits, and the offline judge                     |
 | `eval/agent`                      | The live judge: real Claude Code sessions with and without Bugnet                                      |
 | `config`                          | `example.toml` with every setting, `dev.toml` for a local run                                          |
-| `deploy`                          | The systemd unit the server runs the gateway with                                                      |
+| `deploy`                          | The systemd units the server runs the gateway and its daily x402 crawl with                            |
 
 The gateway is a stateless TypeScript MCP server. It checks quotes, asks the Payments service for
 an order, calls the router (Bugnet's backend, which places and drives sandboxes) over Connect, and
@@ -285,6 +285,16 @@ setting points the gateway at another. Each deploy copies it to Payments first, 
 `/etc/bugnet/payments/x402-index.json`, then sends Payments `SIGHUP`, and writes its hosts that
 sit under a shared-hosting suffix into the router's `[x402] allowed_shared_hosts`, all before the
 gateway itself moves to the new version, so the three copies stay one list.
+
+`deploy/bugnet-x402-crawl@.service` and its timer run `packages/gateway/scripts/x402-crawl.ts`
+once a day at a random time within the hour, as the same user. It pages through the Bazaar's
+and PayAI's x402 listings and writes the first date each host appeared to
+`/var/lib/bugnet-gateway/hosts-seen.json`, which the gateway rereads when it changes. Point the
+gateway at it with `hosts_seen_file = "/var/lib/bugnet-gateway/hosts-seen.json"` in `[x402]`, and
+move the timer with each deploy: `systemctl enable --now bugnet-x402-crawl@<version>.timer`, then
+disable the previous version's. A failed crawl leaves the file as it was and exits 1. To run it
+by hand: `node_modules/.bin/tsx packages/gateway/scripts/x402-crawl.ts -config config/dev.toml
+--out /tmp/hosts-seen.json`.
 
 ## Style
 

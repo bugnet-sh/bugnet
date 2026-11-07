@@ -1,0 +1,27 @@
+# The daily x402 host crawl for the gateway of the same version, started by its timer
+[Unit]
+Description=Bugnet x402 host crawl %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=bugnet-gateway
+Group=bugnet-gateway
+WorkingDirectory=/opt/bugnet/gateway/%i
+ExecStart=/usr/bin/node /opt/bugnet/gateway/%i/packages/gateway/dist/x402-crawl.js -config /etc/bugnet/gateway.toml
+StateDirectory=bugnet-gateway
+TimeoutStartSec=30min
+CapabilityBoundingSet=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=yes
+# No MemoryDenyWriteExecute, which Node's JIT cannot run under
+LimitCORE=0
