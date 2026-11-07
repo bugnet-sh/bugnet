@@ -80,7 +80,8 @@ export async function waitPaid(
         deps.sleep ?? ((ms: number, s: AbortSignal) => sleepFor(ms, undefined, { signal: s }));
     const start = deps.now();
     let noted: number | undefined;
-    for (;;) {
+    // The read count caps the poll too, so a stopped clock cannot keep it going
+    for (let read = 0; read < Math.ceil(pollForMs / pollEveryMs); read++) {
         if (deps.now() - start >= pollForMs) return "timeout";
         if (noted === undefined || deps.now() - noted >= progressEveryMs) {
             noted = deps.now();
@@ -100,6 +101,7 @@ export async function waitPaid(
         if (state === "refunded" || state === "review") return "closed";
         await sleep(pollEveryMs, signal);
     }
+    return "timeout";
 }
 
 // The gateway's payment step for the order, worded as its own tool words it

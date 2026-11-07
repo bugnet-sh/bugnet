@@ -201,3 +201,22 @@ it("rebuilds the payment step as the gateway words it", () => {
             "without them opens a new order the user would pay again.",
     );
 });
+
+it("ends as a timeout after 240 reads even when the clock never moves", async () => {
+    let reads = 0;
+    const out = await waitPaid(
+        step.orderId,
+        {
+            status: async () => {
+                reads += 1;
+                return "unpaid";
+            },
+            sleep: async () => {},
+            now: () => 1_000_000,
+        },
+        signal,
+        () => {},
+    );
+    expect(out).toBe("timeout");
+    expect(reads).toBe(240);
+});

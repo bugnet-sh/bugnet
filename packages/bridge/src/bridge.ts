@@ -296,34 +296,42 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             return settle(orders, again, paid);
         };
         // Polls the order's page until it is paid, and redeems it then
-        const waitAndRedeem = async (paid: PaymentStep): Promise<RemoteResult> => {
-            let outcome: LinkOutcome;
-            try {
-                outcome = await waitPaid(
-                    paid.orderId,
-                    {
-                        status: pay.status,
-                        ...(pay.sleep ? { sleep: pay.sleep } : {}),
-                        now: deps.now,
-                    },
-                    ctx.mcpReq.signal,
-                    () => progress.note(`waiting for order ${paid.orderId} to be paid`),
-                );
-            } catch (e) {
-                // The client gave up, so the next call reads the page and redeems if it was paid
-                orders.markPaid(paid.orderId, "unknown");
-                throw e;
-            }
-            if (outcome === "paid") {
-                orders.markPaid(paid.orderId, "paid");
-                return redeemOrder(paid);
-            }
-            // A timeout or a review may still end in a payment, so the hold stays
-            if (outcome === "timeout" || outcome === "closed")
-                orders.markPaid(paid.orderId, "unknown");
-            else orders.forget(paid.orderId);
+        const waitAndRedeem = async (paid: PaymentStep, link: boolean): Promise<RemoteResult> => {
+            // The hold is set inside the poll before it ends, as a pay's outcome is
+            const poll = waitPaid(
+                paid.orderId,
+                { status: pay.status, ...(pay.sleep ? { sleep: pay.sleep } : {}), now: deps.now },
+                ctx.mcpReq.signal,
+                () => progress.note(`waiting for order ${paid.orderId} to be paid`),
+            ).then(
+                (o) => {
+                    // A timeout or a review may still end in a payment, so the hold stays
+                    if (o === "paid") orders.markPaid(paid.orderId, "paid");
+                    else if (o === "timeout" || o === "closed")
+                        orders.markPaid(paid.orderId, "unknown");
+                    else orders.forget(paid.orderId);
+                    return o;
+                },
+                (e: unknown) => {
+                    // The client gave up, so the next call reads the page and redeems if paid
+                    orders.markPaid(paid.orderId, "unknown");
+                    throw e;
+                },
+            );
+            if (link) orders.markLink(paid.orderId);
+            orders.markPaying(
+                paid.orderId,
+                poll.catch(() => {}),
+            );
+            const outcome: LinkOutcome = await poll;
+            if (outcome === "paid") return redeemOrder(paid);
             return toolError(unpaidText(outcome, paid));
         };
+        // The same order's link again, since the user can still pay it in their browser
+        const sameLink = (held: PaymentStep): RemoteResult =>
+            canElicitUrl(clientCapabilities(ctx))
+                ? payLinkRequest(held, deps.now())
+                : paymentStepResult(held, quoteIdOf(args));
         const linkReturn = ctx.mcpReq.requestState();
         if (isLinkState(linkReturn)) {
             const link = readLinkState(linkReturn, name, deps.now());
@@ -339,7 +347,7 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             if (answer.kind !== "elicit" || answer.action !== "accept") {
                 return paymentStepResult(step, quoteIdOf(args));
             }
-            return waitAndRedeem(step);
+            return waitAndRedeem(step, true);
         }
         let held: PaymentStep | undefined;
         let forwarded = params;
@@ -378,7 +386,9 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
                     if (state === "expired") return toolError(unpaidText("expired", holding));
                     if (state === null) return toolError(unpaidText("unknown_order", holding));
                     return toolError(unpaidText("closed", holding));
-                } else orders.forget(holding.orderId);
+                } else if (orders.linkOpened(holding.orderId) && state === "unpaid")
+                    return sameLink(holding);
+                else orders.forget(holding.orderId);
             }
             if (use) {
                 held = holding;
@@ -400,7 +410,6 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         const paid: PaymentStep = step;
         orders.see(key, paid);
         if (name === "bugnet_start") relayed.add(paid.orderId);
-        if (orders.tried(paid.orderId)) return linkPath(paid, result, ctx);
         const confirmed = priceMicros(args.confirmPriceUsd);
         const why = payRefusal(
             paid,
@@ -412,6 +421,7 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             deps.log.warn("pay link refused", { orderId: paid.orderId, why });
             return result;
         }
+        if (orders.tried(paid.orderId)) return linkPath(paid, result, ctx);
         if (!pay.payer) return linkPath(paid, result, ctx);
         orders.markTried(paid.orderId);
         // Never raced against the client's signal, since pay may have paid by the time it gives up
@@ -457,7 +467,12 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
                 orders.forget(paid.orderId);
                 return result;
             }
-            if (state === "settling") return waitAndRedeem(paid);
+            if (state === "settling") return waitAndRedeem(paid, false);
+            if (state === "review") {
+                // A payment under manual review may still land, so the hold stays
+                orders.markPaid(paid.orderId, "unknown");
+                return toolError(unpaidText("closed", paid));
+            }
             if (state === "?") return toolError(unpaidText("timeout", paid));
             orders.forget(paid.orderId);
             if (state === "expired") return toolError(unpaidText("expired", paid));

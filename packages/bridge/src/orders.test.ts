@@ -26,6 +26,18 @@ const step: PaymentStep = {
 };
 const sig = () => AbortSignal.timeout(5_000);
 
+it("remembers that an order's pay link was opened, across a second sight of it", () => {
+    const orders = new PaidOrders(() => 1_000);
+    const key = "start\0small-10m";
+    orders.see(key, step);
+    orders.markPaid(orderId, "unknown");
+    expect(orders.linkOpened(orderId)).toBe(false);
+    orders.markLink(orderId);
+    orders.see(key, step);
+    expect(orders.linkOpened(orderId)).toBe(true);
+    expect(orders.heldFor(key)?.state).toBe("unknown");
+});
+
 it("keys a start by package and an extend by sandbox and package", () => {
     expect(orderKey("bugnet_start", { quoteId: "q", packageId: "small-10m" })).toBe(
         "start\0small-10m",

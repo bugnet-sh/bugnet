@@ -27,6 +27,8 @@ interface Entry {
     step: PaymentStep;
     state: "seen" | "paying" | "paid" | "unknown";
     tried: boolean;
+    // The order's pay link was opened for the user, so it stays payable there
+    link: boolean;
     at: number;
 }
 
@@ -54,6 +56,7 @@ export class PaidOrders {
             step,
             state: e?.state ?? "seen",
             tried: e?.tried ?? false,
+            link: e?.link ?? false,
             at: this.now(),
         });
     }
@@ -92,6 +95,15 @@ export class PaidOrders {
         e.tried = true;
         e.at = this.now();
         this.flights.set(orderId, flight);
+    }
+
+    linkOpened(orderId: string): boolean {
+        return this.entries.get(orderId)?.link ?? false;
+    }
+
+    markLink(orderId: string): void {
+        const e = this.entries.get(orderId);
+        if (e) e.link = true;
     }
 
     flight(orderId: string): Promise<unknown> | undefined {

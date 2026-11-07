@@ -1077,6 +1077,128 @@ describe.each(["legacy", "modern"] as const)("paying by link, %s client", (era) 
         expect(gw.payments.orders.filter((o) => o.orderId === undefined)).toHaveLength(1);
     });
 
+    // The poll reads the dev page for real, slowed by a short real sleep so a test can step in
+    const slowPay = (gw: { payments: TestPayments }, over: Partial<BridgePay> = {}) =>
+        devPay(gw.payments, null, {
+            status: async (id) => {
+                const a = gw.payments.dev.status(id);
+                return a.status === 404 ? null : (a.body.state as PublicOrderState);
+            },
+            sleep: (_ms, signal) =>
+                new Promise<void>((resolve, reject) => {
+                    if (signal.aborted) return reject(signal.reason);
+                    const t = setTimeout(resolve, 20);
+                    signal.addEventListener(
+                        "abort",
+                        () => {
+                            clearTimeout(t);
+                            reject(signal.reason);
+                        },
+                        { once: true },
+                    );
+                }),
+            ...over,
+        });
+
+    it("makes a second call for the package wait for the link poll and redeem by claim", async () => {
+        const gw = await gateway(requirePayments());
+        let reads = 0;
+        const base = slowPay(gw);
+        const pay = {
+            ...base,
+            status: async (id: string, s: AbortSignal) => (reads++, base.status(id, s)),
+        };
+        const b = await bridge({
+            gateway: gw.url,
+            era,
+            elicitUrl: () => ({ action: "accept" }),
+            deps: { pay },
+        });
+        const args = startArgs(await quoteId(b.client));
+        const first = b.client.callTool({ name: "bugnet_start", arguments: args });
+        await vi.waitFor(() => expect(reads).toBeGreaterThan(0), { timeout: 2_000 });
+        const second = b.client.callTool({ name: "bugnet_start", arguments: args });
+        await new Promise((r) => setTimeout(r, 100));
+        expect(gw.payments.orders.filter((o) => o.orderId === undefined)).toHaveLength(1);
+        gw.payments.dev.pay(b.urls[0]!.split("/o/")[1]!);
+        const [a, c] = await Promise.all([first, second]);
+        expect((a.structuredContent as { handle: string }).handle).toBe(testHandle);
+        expect((c.structuredContent as { handle: string }).handle).toBe(testHandle);
+        expect(gw.payments.orders.filter((o) => o.orderId === undefined)).toHaveLength(1);
+        expect(b.urls).toHaveLength(1);
+    });
+
+    it("gives the same order's link back when the client gave up and the page reads unpaid", async () => {
+        const gw = await gateway(requirePayments());
+        let reads = 0;
+        const base = slowPay(gw);
+        const pay = {
+            ...base,
+            status: async (id: string, s: AbortSignal) => (reads++, base.status(id, s)),
+        };
+        let answers = 0;
+        const b = await bridge({
+            gateway: gw.url,
+            era,
+            elicitUrl: () => ({ action: answers++ === 0 ? "accept" : "decline" }),
+            deps: { pay },
+        });
+        const args = startArgs(await quoteId(b.client));
+        const giveUp = new AbortController();
+        const first = b.client.callTool(
+            { name: "bugnet_start", arguments: args },
+            { signal: giveUp.signal },
+        );
+        await vi.waitFor(() => expect(reads).toBeGreaterThan(0), { timeout: 2_000 });
+        giveUp.abort();
+        await expect(first).rejects.toThrow();
+        await vi.waitFor(() => expect(pay.orders.heldFor(key)?.state).toBe("unknown"), {
+            timeout: 2_000,
+        });
+        const id = b.urls[0]!.split("/o/")[1]!;
+        const r = await b.client.callTool({ name: "bugnet_start", arguments: args });
+        expect(r.structuredContent).toEqual(expect.objectContaining({ orderId: id }));
+        expect(b.urls).toEqual([`${testPayOrigin}/o/${id}`, `${testPayOrigin}/o/${id}`]);
+        expect(gw.payments.orders.filter((o) => o.orderId === undefined)).toHaveLength(1);
+    });
+
+    it("holds an order whose page reads review straight after an unsure pay", async () => {
+        const gw = await gateway(requirePayments());
+        const payer = payingPayer(gw.payments, { outcome: { kind: "unknown" }, pays: false });
+        const pay = devPay(gw.payments, payer, { status: async () => "review" });
+        const b = await bridge({ gateway: gw.url, era, deps: { pay } });
+        const r = await b.client.callTool({
+            name: "bugnet_start",
+            arguments: startArgs(await quoteId(b.client)),
+        });
+        expect(r.isError).toBe(true);
+        expect((r.content as { text: string }[]).at(-1)!.text).toBe(
+            unpaidText("closed", payer.calls[0]!.step),
+        );
+        expect(pay.orders.heldFor(key)?.state).toBe("unknown");
+    });
+
+    it("never opens a link whose url is off the pay origin, even for a tried order", async () => {
+        const evil = `https://pay.evil.example/o/${standInOrder}`;
+        let n = 0;
+        const remote = fakeRemote(() => stepResult(n++ === 0 ? {} : { payUrl: evil }));
+        const payer = payingPayer(testPayments(), {
+            outcome: { kind: "unavailable", reason: "start" },
+            pays: false,
+        });
+        const b = await bridge({
+            remote,
+            era,
+            elicitUrl: () => ({ action: "decline" }),
+            deps: { pay: devPay(testPayments(), payer) },
+        });
+        await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
+        expect(b.urls).toEqual([`${testPayOrigin}/o/${standInOrder}`]);
+        const r = await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
+        expect(r.structuredContent).toEqual(stepResult({ payUrl: evil }).structuredContent);
+        expect(b.urls).toHaveLength(1);
+    });
+
     it("forwards neither the link state nor the answer to the gateway", async () => {
         const remote = fakeRemote(handled);
         const b = await bridge({
