@@ -187,6 +187,12 @@ describe("bugnet_extend", () => {
         expect(r.text).toMatch(/^extend: the paying wallet is blocked/);
         expect(r.text).toMatch(/not applied and the payment is refunded/);
         expect(payments.abandoned).toEqual([{ orderId: "toolu_x", reason: "not_applied" }]);
+        // The bridge reads the refusal, so it never keeps an abandoned order as paid
+        expect(r.structured).toEqual({
+            message: r.text,
+            orderId: "toolu_x",
+            refusal: "abandoned",
+        });
     });
 
     it("keeps the refund wording when the refusal is a bare NotFound", async () => {
@@ -416,6 +422,55 @@ describe("bugnet_extend", () => {
                 "not applied and the payment is refunded.",
         );
         expect(payments.abandoned).toEqual([{ orderId, reason: "not_applied" }]);
+        expect(r.structured).toEqual({ message: r.text, orderId, refusal: "abandoned" });
+    });
+
+    it("redeems by the claim sent beside a payment once Payments asks for it", async () => {
+        const {
+            client,
+            payments,
+            orderId,
+            claim: own,
+        } = await paidSetup({
+            ...checked,
+            extendPlacement: () => ({ placement: extended }),
+        });
+        const payment = { accepted: { extra: { memo: orderId } }, payload: { tx: "late" } };
+        const r = await callTool(client, "bugnet_extend", {
+            ...args(),
+            orderId,
+            claim: own,
+            payment,
+        });
+        expect(r.isError).toBe(false);
+        expect(r.text).toMatch(/^Extended by 10 min\./);
+        expect(payments.orders).toHaveLength(2);
+        expect(payments.orders[0]).not.toHaveProperty("claim");
+        expect(payments.orders[1]).toEqual({
+            orderId,
+            claim: own,
+            handleSha256: handleHash(testHandle),
+        });
+    });
+
+    it("points a paid retry naming a start order to bugnet_redeem", async () => {
+        const { client, payments } = await paidSetup({});
+        const { orderId, claim } = await devOrder(payments, {
+            kind: "start",
+            packageId: "small-10m",
+            amountMicros: 50_000,
+            description: "d",
+        });
+        const r = await callTool(client, "bugnet_extend", { ...args(), orderId, claim });
+        expect(r.isError).toBe(true);
+        expect(r.text).toBe(
+            `extend: order ${orderId} is not for this sandbox. If it starts a new sandbox, call ` +
+                `bugnet_redeem with orderId "${orderId}" and claim "${claim}", plus the quoteId ` +
+                "bugnet_start was called with. Otherwise check the handle.",
+        );
+        expect(r.structured).toEqual(
+            expect.objectContaining({ orderId, refusal: "terms_mismatch" }),
+        );
     });
 
     // Skew numbers as in the stalled and unsent extension tests above

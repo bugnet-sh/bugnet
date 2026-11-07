@@ -29,6 +29,8 @@ import {
     withProgress,
 } from "./common.ts";
 import {
+    abandonedFields,
+    claimAsked,
     claimInput,
     isPaidRetry,
     paymentRequiredResult,
@@ -280,6 +282,13 @@ export async function startPaid(
             await deps.payments
                 .abandon(order.orderId, err.kind, budget.lastSignal(10_000))
                 .catch((x) => deps.log.error("abandon failed", { err: String(x) }));
+            throw new GatewayError(
+                err.kind,
+                err.message,
+                err.retryAfterMs,
+                err.reason,
+                abandonedFields(order.orderId),
+            );
         }
         throw afterPayment(err, order.orderId, opts.retry);
     }
@@ -415,10 +424,23 @@ export const registerSandboxTools: Register = (server, deps) => {
                         ...(key ? { idempotencyKey: key } : {}),
                     };
                 }
-                const order = await deps.payments.order(
+                let order = await deps.payments.order(
                     request,
                     budget.signal(30_000, placeReserveMs),
                 );
+                let byClaim = paidRetry;
+                if (claimAsked(order, args, payment)) {
+                    // Asking with the claim alone moves no money
+                    order = await deps.payments.order(
+                        {
+                            orderId: args.orderId,
+                            claim: args.claim,
+                            ...(key ? { idempotencyKey: key } : {}),
+                        },
+                        budget.signal(30_000, placeReserveMs),
+                    );
+                    byClaim = true;
+                }
                 if (order.status === "payment_required") {
                     return paymentRequiredResult(order, {
                         tool: "bugnet_start",
@@ -437,14 +459,14 @@ export const registerSandboxTools: Register = (server, deps) => {
                     const next = retryCall(
                         "bugnet_extend",
                         order.orderId,
-                        paidRetry ? { claim: args.claim, handle: true } : { payment: true },
+                        byClaim ? { claim: args.claim, handle: true } : { payment: true },
                     );
                     throw new GatewayError(
                         "invalid",
                         `start: order ${order.orderId} adds time to a sandbox, call ${next}`,
                     );
                 }
-                const retry = paidRetry
+                const retry = byClaim
                     ? retryCall("bugnet_start", order.orderId, { claim: args.claim })
                     : payment !== undefined
                       ? retryCall("bugnet_start", order.orderId, { payment: true })

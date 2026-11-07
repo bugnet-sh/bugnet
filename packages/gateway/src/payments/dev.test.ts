@@ -287,6 +287,11 @@ describe("DevPayments asking for payment", () => {
             }),
         ).toEqual({ status: "refused", orderId: a.orderId, reason: "payment_order_mismatch" });
         expect(dev.status(a.orderId).body.state).toBe("unpaid");
+        // As Payments' pay route, which checks the memo of any payment for an unpaid order
+        expect(
+            await dev.order({ ...start, orderId: a.orderId, payment: { accepted: { extra: {} } } }),
+        ).toEqual({ status: "refused", orderId: a.orderId, reason: "payment_order_mismatch" });
+        expect(dev.status(a.orderId).body.state).toBe("unpaid");
         const elsewhere = { accepted: { extra: { memo: `ord_${"c".repeat(26)}` } } };
         expect(await dev.order({ ...start, orderId: a.orderId, payment: elsewhere })).toEqual({
             status: "refused",
@@ -304,6 +309,7 @@ describe("DevPayments asking for payment", () => {
             orderId: a.orderId,
             claim: "x".repeat(43),
             payment,
+            idempotencyKey: key16,
         } as unknown as OrderRequest;
         expect(await dev.order(both)).toEqual({
             status: "refused",
@@ -311,24 +317,48 @@ describe("DevPayments asking for payment", () => {
             reason: "claim_mismatch",
         });
         expect(dev.status(a.orderId).body.state).toBe("paid");
-        expect(await dev.order({ ...start, orderId: a.orderId, payment })).toEqual(
-            expect.objectContaining({ status: "paid", orderId: a.orderId }),
-        );
-    });
-
-    it("gives the token only to the claim or the payment that paid the order (port §6)", async () => {
-        const dev = requiring(clock);
-        const a = created(await dev.order(start));
-        const first = { accepted: { extra: { memo: a.orderId } }, payload: { tx: "one" } };
-        const other = { accepted: { extra: { memo: a.orderId } }, payload: { tx: "two" } };
-        const paid = await dev.order({ ...start, payment: first });
-        expect(paid).toEqual(expect.objectContaining({ status: "paid", orderId: a.orderId }));
-        expect(await dev.order({ ...start, payment: other })).toEqual({
+        expect(await dev.order({ ...start, orderId: a.orderId, payment })).toEqual({
             status: "refused",
             orderId: a.orderId,
             reason: "paid_claim_required",
         });
-        expect(await dev.order({ ...start, payment: first })).toEqual(paid);
+        expect(
+            await dev.order({ ...start, orderId: a.orderId, payment, idempotencyKey: key16 }),
+        ).toEqual(expect.objectContaining({ status: "paid", orderId: a.orderId }));
+    });
+
+    it("gives the token to the claim, or a payment shown under its key (port §2)", async () => {
+        const dev = requiring(clock);
+        const a = created(await dev.order(start));
+        const first = { accepted: { extra: { memo: a.orderId } }, payload: { tx: "one" } };
+        const other = { accepted: { extra: { memo: a.orderId } }, payload: { tx: "two" } };
+        const paid = await dev.order({ ...start, payment: first, idempotencyKey: key16 });
+        expect(paid).toEqual(expect.objectContaining({ status: "paid", orderId: a.orderId }));
+        const refusedAgain = {
+            status: "refused",
+            orderId: a.orderId,
+            reason: "paid_claim_required",
+        };
+        expect(await dev.order({ ...start, payment: other, idempotencyKey: key16 })).toEqual(
+            refusedAgain,
+        );
+        expect(await dev.order({ ...start, payment: first })).toEqual(refusedAgain);
+        expect(
+            await dev.order({ ...start, payment: first, idempotencyKey: "j".repeat(16) }),
+        ).toEqual(refusedAgain);
+        expect(await dev.order({ ...start, payment: first, idempotencyKey: key16 })).toEqual(paid);
+        expect(await dev.order({ orderId: a.orderId, claim: a.claim! })).toEqual(paid);
+        // A payment that paid under no key has no key to show again
+        const c = created(await dev.order(start));
+        const unkeyed = { accepted: { extra: { memo: c.orderId } }, payload: { tx: "three" } };
+        expect(await dev.order({ ...start, payment: unkeyed })).toEqual(
+            expect.objectContaining({ status: "paid", orderId: c.orderId }),
+        );
+        expect(await dev.order({ ...start, payment: unkeyed })).toEqual({
+            status: "refused",
+            orderId: c.orderId,
+            reason: "paid_claim_required",
+        });
         const b = created(await dev.order(start));
         dev.pay(b.orderId);
         expect(

@@ -323,6 +323,12 @@ describe("bugnet_start", () => {
             expect(r.isError).toBe(true);
             expect(r.text).toMatch(/^start: the (paying wallet is blocked|order named no)/);
             expect(payments.abandoned).toEqual([{ orderId: "toolu_w", reason: "denied" }]);
+            // The bridge reads the refusal, so it never keeps an abandoned order as paid
+            expect(r.structured).toEqual({
+                message: r.text,
+                orderId: "toolu_w",
+                refusal: "abandoned",
+            });
         },
     );
 
@@ -435,6 +441,77 @@ describe("bugnet_start", () => {
         });
         expect(r.text).toMatch(/^start: the paying wallet is blocked/);
         expect(payments.abandoned).toEqual([{ orderId, reason: "denied" }]);
+        expect(r.structured).toEqual({ message: r.text, orderId, refusal: "abandoned" });
+    });
+
+    it("names the claim, never the payment, when an order paid by payment may start", async () => {
+        const payments = testPayments(undefined, { requirePayment: true });
+        const { client, deps } = await setup(
+            {
+                ...startRouter({ waits: [] }),
+                createPlacement() {
+                    throw routerError(Code.Unavailable);
+                },
+            },
+            payments,
+        );
+        const { orderId } = await devOrder(payments, startTerms, { paid: false });
+        const r = await callTool(
+            client,
+            "bugnet_start",
+            {
+                ...startArgs(signed(deps)),
+                orderId,
+                payment: { accepted: { extra: { memo: orderId } } },
+            },
+            { toolUseId: "toolu_paid_by_payment" },
+        );
+        expect(r.text).toBe(
+            `start: the sandbox service is unavailable. Order ${orderId} was paid and may still ` +
+                "start a sandbox, so tell the user before starting another. Calling bugnet_start " +
+                `with orderId "${orderId}" and the claim from its payment step within 10 minutes ` +
+                "returns its handle.",
+        );
+    });
+
+    it("redeems by the claim sent beside a payment once Payments asks for it", async () => {
+        const payments = testPayments(undefined, { requirePayment: true });
+        const { client, deps } = await setup(startRouter({ waits: [] }), payments);
+        // Paid at its link, so the payment the model shows proves nothing
+        const { orderId, claim: own } = await devOrder(payments, startTerms);
+        const payment = { accepted: { extra: { memo: orderId } }, payload: { tx: "late" } };
+        const r = await callTool(
+            client,
+            "bugnet_start",
+            { ...startArgs(signed(deps)), orderId, claim: own, payment },
+            { toolUseId: "toolu_claim_beside" },
+        );
+        expect(r.isError).toBe(false);
+        expect(r.structured).toEqual(expect.objectContaining({ handle: testHandle, orderId }));
+        expect(payments.orders).toHaveLength(2);
+        expect(payments.orders[0]).toEqual(expect.objectContaining({ orderId, payment }));
+        expect(payments.orders[0]).not.toHaveProperty("claim");
+        expect(payments.orders[1]).toEqual({
+            orderId,
+            claim: own,
+            idempotencyKey: "toolu_claim_beside",
+        });
+    });
+
+    it("asks Payments once when a payment without a claim is refused", async () => {
+        const payments = testPayments(undefined, { requirePayment: true });
+        const { client, deps } = await setup(startRouter({ waits: [] }), payments);
+        const { orderId } = await devOrder(payments, startTerms);
+        const payment = { accepted: { extra: { memo: orderId } }, payload: { tx: "late" } };
+        const r = await callTool(client, "bugnet_start", {
+            ...startArgs(signed(deps)),
+            orderId,
+            payment,
+        });
+        expect(r.structured).toEqual(
+            expect.objectContaining({ orderId, refusal: "paid_claim_required" }),
+        );
+        expect(payments.orders).toHaveLength(1);
     });
 
     it("names the claim when a paid order may still start a sandbox", async () => {

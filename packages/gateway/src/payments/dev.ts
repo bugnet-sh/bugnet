@@ -34,9 +34,10 @@ interface StoredOrder extends OrderTerms {
     claim: string | null;
     state: "unpaid" | "paid" | "redeemed";
     createdAt: number;
-    idempotencyKey: string | null;
     // The JSON of the payment that paid it, null when paid at the pay link
     paidBy: string | null;
+    // The idempotencyKey of the call whose payment paid it
+    paidKey: string | null;
     token: PaidOrder | null;
     tokenExpiresAt: number | null;
 }
@@ -109,8 +110,8 @@ export class DevPayments implements Payments {
             claim: null,
             state: "paid",
             createdAt: this.now(),
-            idempotencyKey: null,
             paidBy: null,
+            paidKey: null,
             token: null,
             tokenExpiresAt: null,
             ...extra,
@@ -196,7 +197,6 @@ export class DevPayments implements Payments {
             const created = this.store(orderId, req as OrderTerms, {
                 state: "unpaid",
                 claim: randomBytes(32).toString("base64url"),
-                idempotencyKey: keyed,
             });
             if (keyed !== null) this.byKey.set(keyed, orderId);
             return this.awaiting(created, true);
@@ -211,7 +211,9 @@ export class DevPayments implements Payments {
         // The payment settles first and the claim is checked after it (port §2)
         let authorized = false;
         if (req.payment !== undefined) {
-            if (memo === null && replay) return this.refuse(stored, "payment_order_mismatch");
+            // Payments checks the memo of a payment for an unpaid order before anything else
+            const unpaid = stored.state === "unpaid" && !this.expired(stored);
+            if (memo === null && unpaid) return this.refuse(stored, "payment_order_mismatch");
             if (memo !== null) {
                 if (memo !== stored.orderId) return this.refuse(stored, "payment_order_mismatch");
                 const json = JSON.stringify(req.payment);
@@ -219,11 +221,15 @@ export class DevPayments implements Payments {
                     if (!this.expired(stored)) {
                         stored.state = "paid";
                         stored.paidBy = json;
+                        stored.paidKey = keyed;
                     }
                     authorized = true;
                 } else {
-                    // Port §6, the token goes only to the claim or the payment that paid it
-                    authorized = stored.paidBy === json;
+                    // Port §2, a public settled payment proves nothing without its own call's key
+                    authorized =
+                        stored.paidBy === json &&
+                        stored.paidKey !== null &&
+                        stored.paidKey === keyed;
                 }
             }
         }

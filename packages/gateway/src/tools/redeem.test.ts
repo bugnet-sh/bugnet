@@ -1,4 +1,5 @@
 import { timestampFromMs } from "@bufbuild/protobuf/wkt";
+import { Code } from "@connectrpc/connect";
 import { describe, expect, it } from "vitest";
 import {
     PlacementState,
@@ -13,6 +14,7 @@ import {
     fakeRouter,
     placement,
     recordingLog,
+    routerError,
     testDeps,
     testHandle,
     testNow,
@@ -248,6 +250,38 @@ describe("bugnet_redeem", () => {
         expect(created).toHaveLength(2);
         expect(created[1]?.orderToken).toBe(created[0]?.orderToken);
         expect(payments.abandoned).toEqual([]);
+    });
+
+    it("marks an order the router refused outright as abandoned", async () => {
+        const refuse = () => {
+            throw routerError(Code.PermissionDenied, "WALLET_BLOCKED");
+        };
+        const { client, deps, payments } = await setup({
+            createPlacement: refuse,
+            extendPlacement: refuse,
+        });
+        const started = await devOrder(payments, startTerms);
+        const s = await callTool(client, "bugnet_redeem", {
+            ...started,
+            quoteId: quote(deps),
+        });
+        expect(s.structured).toEqual({
+            message: s.text,
+            orderId: started.orderId,
+            refusal: "abandoned",
+        });
+        const extended = await devOrder(payments, extendTerms);
+        const e = await callTool(client, "bugnet_redeem", { ...extended, handle: testHandle });
+        expect(e.text).toMatch(/not applied and the payment is refunded/);
+        expect(e.structured).toEqual({
+            message: e.text,
+            orderId: extended.orderId,
+            refusal: "abandoned",
+        });
+        expect(payments.abandoned.map((a) => a.orderId)).toEqual([
+            started.orderId,
+            extended.orderId,
+        ]);
     });
 
     it("keeps orderId and claim in a bad quoteId's answer and redeems nothing", async () => {

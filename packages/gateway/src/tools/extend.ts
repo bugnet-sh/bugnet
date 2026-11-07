@@ -22,6 +22,8 @@ import {
     handleInput,
 } from "./common.ts";
 import {
+    abandonedFields,
+    claimAsked,
     claimInput,
     isPaidRetry,
     paymentRequiredResult,
@@ -138,6 +140,9 @@ export async function extendPaid(
         throw new GatewayError(
             err.kind === "not_ready" ? "precondition" : err.kind,
             `${err.message}. The extension was not applied and the payment is refunded`,
+            null,
+            null,
+            abandonedFields(order.orderId),
         );
     }
     if ("unsent" in applied) {
@@ -296,10 +301,24 @@ export const registerExtendTool: Register = (server, deps) => {
                         ...(key ? { idempotencyKey: key } : {}),
                     };
                 }
-                const order = await deps.payments.order(
+                let order = await deps.payments.order(
                     request,
                     budget.signal(30_000, applyReserveMs),
                 );
+                let byClaim = paidRetry;
+                if (claimAsked(order, args, payment)) {
+                    // Asking with the claim alone moves no money
+                    order = await deps.payments.order(
+                        {
+                            orderId: args.orderId,
+                            claim: args.claim,
+                            handleSha256: handleHash(args.handle),
+                            ...(key ? { idempotencyKey: key } : {}),
+                        },
+                        budget.signal(30_000, applyReserveMs),
+                    );
+                    byClaim = true;
+                }
                 if (order.status === "payment_required") {
                     return paymentRequiredResult(order, {
                         tool: "bugnet_extend",
@@ -311,12 +330,13 @@ export const registerExtendTool: Register = (server, deps) => {
                 if (order.status === "refused") {
                     throw refusalError(order, "extend", "bugnet_extend", {
                         ...(args.orderId ? { sentOrderId: args.orderId } : {}),
+                        ...(args.claim ? { sentClaim: args.claim } : {}),
                         paymentSent: payment !== undefined,
                     });
                 }
                 const id = order.orderId;
                 if (order.kind !== "extend") {
-                    const next = paidRetry
+                    const next = byClaim
                         ? retryCall("bugnet_redeem", id, { claim: args.claim }) +
                           ", plus the quoteId bugnet_start was called with"
                         : retryCall("bugnet_start", id, { payment: true });
@@ -336,7 +356,7 @@ export const registerExtendTool: Register = (server, deps) => {
                     retry: retryCall(
                         "bugnet_extend",
                         id,
-                        paidRetry
+                        byClaim
                             ? { claim: args.claim }
                             : payment !== undefined
                               ? { payment: true }

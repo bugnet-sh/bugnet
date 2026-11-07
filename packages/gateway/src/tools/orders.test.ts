@@ -6,6 +6,7 @@ import {
     paymentRequiredResult,
     refusalError,
     retryCall,
+    type OrderTool,
 } from "./orders.ts";
 
 const claim = "C".repeat(43);
@@ -139,8 +140,9 @@ describe("retryCall", () => {
         expect(retryCall("bugnet_start", "ord_1", { claim })).toBe(
             `bugnet_start with orderId "ord_1" and claim "${claim}"`,
         );
+        // Port §2, a payment shown again by another call is no proof
         expect(retryCall("bugnet_start", "ord_1", { payment: true })).toBe(
-            'bugnet_start with orderId "ord_1" and the same payment',
+            'bugnet_start with orderId "ord_1" and the claim from its payment step',
         );
         expect(retryCall("bugnet_extend", "ord_1", {})).toBe('bugnet_extend with orderId "ord_1"');
     });
@@ -183,13 +185,13 @@ describe("refusalError", () => {
             refusalError(refused("settling", { retryAfterSeconds: 5 }), "start", "bugnet_start")
                 .retryAfterMs,
         ).toBe(5000);
-        // Port §2, a payment proves the order on its own, so its retry names no claim
+        // Port §2, a payment shown again by another call is no proof
         expect(
             refusalError(refused("settling"), "start", "bugnet_start", { paymentSent: true })
                 .message,
         ).toBe(
             "start: the payment for order ord_1 is still confirming. Call again with the same " +
-                "orderId and payment, and do not pay again",
+                "orderId and its claim, and do not pay again",
         );
         expect(
             refusalError(refused("terms_mismatch"), "redeem", "bugnet_redeem", { handleSent: true })
@@ -202,6 +204,79 @@ describe("refusalError", () => {
         expect([terms.kind, terms.message]).toEqual([
             "invalid",
             "start: order ord_1 is for another package or sandbox",
+        ]);
+    });
+
+    it("gives a spent order's refusal a next step", () => {
+        const fresh =
+            "Start a new order with bugnet_start and no orderId, once the user agrees to its price";
+        const words = (reason: RefusalReason, tool: OrderTool = "bugnet_start") => {
+            const e = refusalError(refused(reason), "start", tool);
+            return [e.kind, e.message, e.fields];
+        };
+        expect(words("order_expired")).toEqual([
+            "denied",
+            `payment refused: order_expired. Order ord_1 can no longer be paid. ${fresh}`,
+            { orderId: "ord_1", refusal: "order_expired" },
+        ]);
+        expect(words("order_unknown")[1]).toBe(
+            `payment refused: order_unknown. Order ord_1 can no longer be paid. ${fresh}`,
+        );
+        expect(words("order_unknown", "bugnet_redeem")[1]).toBe(
+            "payment refused: order_unknown. Order ord_1 can no longer be paid. Start a new " +
+                "order with bugnet_start or bugnet_extend and no orderId, once the user agrees " +
+                "to its price",
+        );
+        expect(words("payment_late")[1]).toBe(
+            "payment refused: payment_late. Order ord_1 expired before its payment landed, so " +
+                `that payment is refunded automatically. Do not pay it again. ${fresh}`,
+        );
+        expect(words("token_expired")[1]).toBe(
+            "payment refused: token_expired. Order ord_1 was already used and can no longer be " +
+                "redeemed. If it was paid and never started a sandbox or added time, it is " +
+                "refunded automatically, so do not pay it again",
+        );
+        expect(words("order_closed")[1]).toBe(
+            "payment refused: order_closed. Order ord_1 is closed: its payment was refunded or " +
+                "is being checked by hand. Do not pay it again, and tell the user before " +
+                "starting a new order",
+        );
+        const none = refusalError(
+            { status: "refused", reason: "order_unknown" },
+            "start",
+            "bugnet_start",
+        );
+        expect(none.message).toBe(
+            `payment refused: order_unknown. This order can no longer be paid. ${fresh}`,
+        );
+    });
+
+    it("asks for a retry in a few seconds while Payments cannot settle (port §2)", () => {
+        for (const reason of [
+            "router_unavailable",
+            "rpc_unavailable",
+            "settlement_unavailable",
+        ] as const) {
+            const e = refusalError(refused(reason), "start", "bugnet_start");
+            expect([e.kind, e.message, e.retryAfterMs, e.fields], reason).toEqual([
+                "unavailable",
+                `payment refused: ${reason}, retry in a few seconds`,
+                null,
+                { orderId: "ord_1", refusal: reason },
+            ]);
+        }
+    });
+
+    it("points a paid extend retry on a start order to bugnet_redeem", () => {
+        const e = refusalError(refused("terms_mismatch"), "extend", "bugnet_extend", {
+            sentClaim: claim,
+        });
+        expect([e.kind, e.message, e.fields]).toEqual([
+            "invalid",
+            "extend: order ord_1 is not for this sandbox. If it starts a new sandbox, call " +
+                `bugnet_redeem with orderId "ord_1" and claim "${claim}", plus the quoteId ` +
+                "bugnet_start was called with. Otherwise check the handle",
+            { orderId: "ord_1", refusal: "terms_mismatch" },
         ]);
     });
 

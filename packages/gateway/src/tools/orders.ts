@@ -1,7 +1,12 @@
 // Payment steps, paid retries and Payments refusals shared by bugnet_start, bugnet_extend and bugnet_redeem
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { claimPattern, type AwaitingPayment, type RefusedOrder } from "../payments/port.ts";
+import {
+    claimPattern,
+    type AwaitingPayment,
+    type OrderResult,
+    type RefusedOrder,
+} from "../payments/port.ts";
 import { GatewayError } from "../router.ts";
 
 export type OrderTool = "bugnet_start" | "bugnet_extend" | "bugnet_redeem";
@@ -16,6 +21,21 @@ export function isPaidRetry(
     payment: unknown,
 ): args is { orderId: string; claim: string } {
     return args.orderId !== undefined && args.claim !== undefined && payment === undefined;
+}
+
+// A claim sent beside a payment is held back, so a paid order that asks for it gets it next
+export function claimAsked(
+    order: OrderResult,
+    args: { orderId?: string | undefined; claim?: string | undefined },
+    payment: unknown,
+): args is { orderId: string; claim: string } {
+    return (
+        order.status === "refused" &&
+        order.reason === "paid_claim_required" &&
+        payment !== undefined &&
+        args.orderId !== undefined &&
+        args.claim !== undefined
+    );
 }
 
 export interface PaymentStepContext {
@@ -71,6 +91,11 @@ export function paymentRequiredResult(r: AwaitingPayment, c: PaymentStepContext)
     };
 }
 
+// The order was abandoned to Payments, so a client that holds it treats it as spent
+export function abandonedFields(orderId: string): Record<string, unknown> {
+    return { orderId, refusal: "abandoned" };
+}
+
 export interface RetryWith {
     claim?: string;
     payment?: boolean;
@@ -87,15 +112,57 @@ export function retryCall(tool: OrderTool, orderId: string, w: RetryWith): strin
         return `${tool} with the handle, orderId "${orderId}" and claim "${w.claim}"`;
     }
     if (w.claim) return `${tool} with orderId "${orderId}" and claim "${w.claim}"`;
-    if (w.payment) return `${tool} with orderId "${orderId}" and the same payment`;
+    if (w.payment) return `${tool} with orderId "${orderId}" and the claim from its payment step`;
     return `${tool} with orderId "${orderId}"`;
+}
+
+const unavailableRefusals: ReadonlySet<string> = new Set([
+    "router_unavailable",
+    "rpc_unavailable",
+    "settlement_unavailable",
+]);
+
+// The skill forbids a call without the orderId, so a spent order's refusal names the next step
+function spentStep(reason: string, id: string | undefined, tool: OrderTool): string | null {
+    const order = id ? `Order ${id}` : "This order";
+    const paid = tool === "bugnet_redeem" ? "bugnet_start or bugnet_extend" : tool;
+    const fresh =
+        `Start a new order with ${paid} and no orderId, ` + "once the user agrees to its price";
+    switch (reason) {
+        case "order_expired":
+        case "order_unknown":
+            return `${order} can no longer be paid. ${fresh}`;
+        case "payment_late":
+            return (
+                `${order} expired before its payment landed, so that payment is refunded ` +
+                `automatically. Do not pay it again. ${fresh}`
+            );
+        case "token_expired":
+            return (
+                `${order} was already used and can no longer be redeemed. If it was paid and ` +
+                "never started a sandbox or added time, it is refunded automatically, so do not " +
+                "pay it again"
+            );
+        case "order_closed":
+            return (
+                `${order} is closed: its payment was refunded or is being checked by hand. Do ` +
+                "not pay it again, and tell the user before starting a new order"
+            );
+        default:
+            return null;
+    }
 }
 
 export function refusalError(
     r: RefusedOrder,
     what: "start" | "extend" | "redeem",
     tool: OrderTool,
-    opts: { sentOrderId?: string; handleSent?: boolean; paymentSent?: boolean } = {},
+    opts: {
+        sentOrderId?: string;
+        sentClaim?: string;
+        handleSent?: boolean;
+        paymentSent?: boolean;
+    } = {},
 ): GatewayError {
     const id = r.orderId ?? opts.sentOrderId;
     const fields = { ...(id ? { orderId: id } : {}), refusal: r.reason };
@@ -123,22 +190,38 @@ export function refusalError(
                 return error(
                     "unavailable",
                     `${what}: the payment for order ${id} is still confirming. Call again with ` +
-                        `the same orderId and ${opts.paymentSent ? "payment" : "claim"}, and do ` +
-                        "not pay again",
+                        `the same orderId and ${opts.paymentSent ? "its " : ""}claim, and do not ` +
+                        "pay again",
                     1000 * (r.retryAfterSeconds ?? 3),
                 );
             case "terms_mismatch":
-                return error(
-                    "invalid",
-                    opts.handleSent
-                        ? `redeem: order ${id} is not for that sandbox. Check the handle, and ` +
-                              "leave it out when the order starts a new sandbox"
-                        : `${what}: order ${id} is for another package or sandbox`,
-                );
+                if (opts.handleSent) {
+                    return error(
+                        "invalid",
+                        `redeem: order ${id} is not for that sandbox. Check the handle, and ` +
+                            "leave it out when the order starts a new sandbox",
+                    );
+                }
+                // A paid extend retry sends the handle's hash, which a start order never has
+                if (tool === "bugnet_extend" && opts.sentClaim) {
+                    const redeem = retryCall("bugnet_redeem", id, { claim: opts.sentClaim });
+                    return error(
+                        "invalid",
+                        `${what}: order ${id} is not for this sandbox. If it starts a new ` +
+                            `sandbox, call ${redeem}, plus the quoteId bugnet_start was called ` +
+                            "with. Otherwise check the handle",
+                    );
+                }
+                return error("invalid", `${what}: order ${id} is for another package or sandbox`);
             default:
         }
     }
     const text = `payment refused: ${r.reason}`;
+    if (unavailableRefusals.has(r.reason)) {
+        return error("unavailable", `${text}, retry in a few seconds`);
+    }
+    const step = spentStep(r.reason, id, tool);
+    if (step !== null) return error("denied", `${text}. ${step}`);
     return r.retryAfterSeconds !== undefined
         ? new GatewayError("rate_limited", text, 1000 * r.retryAfterSeconds, null, fields)
         : error("denied", text);
