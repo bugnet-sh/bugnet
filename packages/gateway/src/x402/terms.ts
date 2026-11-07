@@ -22,10 +22,11 @@ function stateOf(deps: TermsDeps): TermsState {
     return s;
 }
 
-function fetchTerms(deps: TermsDeps, state: TermsState, signal: AbortSignal) {
+// The shared read has its own time limit, so no caller's signal can fail the others
+function fetchTerms(deps: TermsDeps, state: TermsState) {
     if (state.inflight) return state.inflight;
-    const read = deps.payments
-        .x402Terms(signal)
+    const read = Promise.resolve()
+        .then(() => deps.payments.x402Terms(AbortSignal.timeout(10_000)))
         .then((terms) => {
             state.copy = { terms, at: deps.now() };
             return terms;
@@ -48,13 +49,22 @@ export function readTerms(deps: TermsDeps, signal: AbortSignal): Promise<X402Ter
     if (state.copy && deps.now() - state.copy.at < termsMaxAgeMs) {
         return Promise.resolve(state.copy.terms);
     }
-    return fetchTerms(deps, state, signal);
+    if (signal.aborted) return Promise.resolve(null);
+    const read = fetchTerms(deps, state);
+    return new Promise((resolve) => {
+        const stop = () => resolve(null);
+        signal.addEventListener("abort", stop, { once: true });
+        void read.then((terms) => {
+            signal.removeEventListener("abort", stop);
+            resolve(terms);
+        });
+    });
 }
 
 // Reads at once and every termsMaxAgeMs with an unref'd timer, the returned function stops it
 export function pollTerms(deps: TermsDeps): () => void {
     const state = stateOf(deps);
-    const tick = () => void fetchTerms(deps, state, AbortSignal.timeout(10_000));
+    const tick = () => void fetchTerms(deps, state);
     tick();
     const timer = setInterval(tick, termsMaxAgeMs);
     timer.unref();

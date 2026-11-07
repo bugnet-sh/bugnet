@@ -18,6 +18,8 @@ function counted(answer: () => Promise<X402Terms>) {
     return { payments, reads: () => reads };
 }
 
+const tick = () => new Promise((r) => setImmediate(r));
+
 afterEach(() => {
     vi.useRealTimers();
 });
@@ -50,9 +52,67 @@ describe("terms cache", () => {
             readTerms(deps, AbortSignal.timeout(2_000)),
             readTerms(deps, AbortSignal.timeout(2_000)),
         ]);
+        await tick();
         release(testTerms());
         expect(await both).toEqual([testTerms(), testTerms()]);
         expect(c.reads()).toBe(1);
+    });
+
+    it("answers a joiner's own short abort with null, leaving the starter and the cache alone", async () => {
+        let release!: (t: X402Terms) => void;
+        const c = counted(
+            () =>
+                new Promise((r) => {
+                    release = r;
+                }),
+        );
+        const { log, lines } = recordingLog();
+        const deps = { payments: c.payments, now: () => testNow, log };
+        const starter = readTerms(deps, AbortSignal.timeout(5_000));
+        const joiner = new AbortController();
+        const joined = readTerms(deps, joiner.signal);
+        joiner.abort();
+        expect(await joined).toBeNull();
+        await tick();
+        release(testTerms());
+        expect(await starter).toEqual(testTerms());
+        expect(await readTerms(deps, AbortSignal.timeout(2_000))).toEqual(testTerms());
+        expect(c.reads()).toBe(1);
+        expect(lines.some((l) => l.includes("x402 terms unavailable"))).toBe(false);
+    });
+
+    it("keeps the read for a joiner when the starter aborts", async () => {
+        let release!: (t: X402Terms) => void;
+        const c = counted(
+            () =>
+                new Promise((r) => {
+                    release = r;
+                }),
+        );
+        const { log, lines } = recordingLog();
+        const deps = { payments: c.payments, now: () => testNow, log };
+        const starter = new AbortController();
+        const first = readTerms(deps, starter.signal);
+        const joined = readTerms(deps, AbortSignal.timeout(5_000));
+        starter.abort();
+        expect(await first).toBeNull();
+        await tick();
+        release(testTerms());
+        expect(await joined).toEqual(testTerms());
+        expect(c.reads()).toBe(1);
+        expect(lines.some((l) => l.includes("x402 terms unavailable"))).toBe(false);
+    });
+
+    it("turns a synchronous throw into a null read", async () => {
+        const payments = testPayments(undefined, {
+            x402: {
+                terms: () => {
+                    throw new Error("sync");
+                },
+            },
+        });
+        const deps = { payments, now: () => testNow, log: silentLog };
+        expect(await readTerms(deps, AbortSignal.timeout(2_000))).toBeNull();
     });
 
     it("answers null on a failed read and keeps no stale copy", async () => {
