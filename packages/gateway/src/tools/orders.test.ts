@@ -183,6 +183,22 @@ describe("paymentRequiredResult", () => {
         );
         expect(r.structuredContent).not.toHaveProperty("quoteId");
     });
+
+    it("warns bugnet_x402_budget against a second order too", () => {
+        const r = paymentRequiredResult(
+            {
+                status: "payment_required",
+                orderId: "ord_a",
+                claim: "c".repeat(43),
+                payUrl: "https://pay.bugnet.sh/o/ord_a",
+                paymentRequired: { x402Version: 2, accepts: [] },
+            },
+            { tool: "bugnet_x402_budget", withHandle: true },
+        );
+        expect((r.structuredContent as { message?: string } | undefined)?.message).toContain(
+            "Calling bugnet_x402_budget again without this orderId opens a new order the user would pay again.",
+        );
+    });
 });
 
 describe("retryCall", () => {

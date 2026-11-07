@@ -14,7 +14,7 @@ import {
 import { Client } from "@modelcontextprotocol/client";
 import { InMemoryTransport } from "@modelcontextprotocol/server";
 import type { Assessor } from "../assess/assessor.ts";
-import { createSafeFetcher, type Fetcher, type RawFetch } from "../assess/fetch.ts";
+import { createSafeFetcher, type Fetched, type Fetcher, type RawFetch } from "../assess/fetch.ts";
 import { parseSettings, type Config } from "../config.ts";
 import {
     PackageOptionSchema,
@@ -49,7 +49,8 @@ import type {
 import { errorInfoType, retryInfoType, type RouterClient } from "../router.ts";
 import { buildMcpServer } from "../server.ts";
 import type { Deps, Register } from "../tools/common.ts";
-import { base58Encode } from "../x402/lines.ts";
+import { loadIndex, type X402Index } from "../x402/index.ts";
+import { base58Encode, serviceId, solanaNetwork, usdcAsset } from "../x402/lines.ts";
 import type { ServiceSpecInit } from "../x402/router.ts";
 
 export const testNow = Date.parse("2026-11-05T12:00:00Z");
@@ -170,6 +171,89 @@ export function x402Info(
 
 export function x402Refusal(reason: string, count: number, lastAtMs: number): X402Refusal {
     return create(X402RefusalSchema, { reason, count, lastAt: timestampFromMs(lastAtMs) });
+}
+
+/* x402 */
+
+export const testFeePayer = base58Encode(
+    createHash("sha256").update("bugnet test fee payer").digest(),
+);
+
+export interface SellerPrice {
+    payTo: string;
+    amountMicros: number;
+}
+
+// A 402 seller per priced URL and a 404 elsewhere, read at each call so a test may reprice
+export function sellerFetch(prices: Record<string, SellerPrice>, urls: string[] = []): Fetcher {
+    const body = () => new TextEncoder().encode("{}");
+    return async (url): Promise<Fetched> => {
+        urls.push(url);
+        const price = Object.hasOwn(prices, url) ? prices[url] : undefined;
+        if (price === undefined) {
+            return {
+                status: 404,
+                url,
+                headers: { "content-type": "application/json" },
+                body: body(),
+                truncated: false,
+            };
+        }
+        const required = {
+            x402Version: 2,
+            resource: { url },
+            accepts: [
+                {
+                    scheme: "exact",
+                    network: solanaNetwork,
+                    asset: usdcAsset,
+                    amount: String(price.amountMicros),
+                    payTo: price.payTo,
+                    maxTimeoutSeconds: 60,
+                    extra: { feePayer: testFeePayer },
+                },
+            ],
+        };
+        return {
+            status: 402,
+            url,
+            headers: {
+                "payment-required": paymentRequiredHeader(required),
+                "content-type": "application/json",
+            },
+            body: body(),
+            truncated: false,
+        };
+    };
+}
+
+export const testChatUrl = "https://agent402.tools/v1/auto/chat/completions";
+export const testChatLine = `POST ${testChatUrl} max=0.01 payTo=${testPayTo} prefix=/v1/auto/`;
+export const testChatId = "xs_w5a4htopmpzmmhos";
+export const testTtsUrl = "https://tts.example.com/v1/speech";
+export const testTtsLine = `POST ${testTtsUrl} max=0.02 payTo=${otherPayTo}`;
+export const testTtsId = serviceId("POST", "tts.example.com", "/v1/");
+
+export function testX402Index(): X402Index {
+    return loadIndex({
+        v: 1,
+        services: [
+            {
+                host: "agent402.tools",
+                url: testChatUrl,
+                method: "POST",
+                prefix: "/v1/auto/",
+                payTo: testPayTo,
+                category: "chat",
+                keyNames: ["OPENAI_API_KEY"],
+                name: "Agent402 chat",
+                inputFields: ["model", "messages"],
+                outputFields: ["choices"],
+                envLines: ["OPENAI_BASE_URL=https://agent402.tools/v1/auto", "OPENAI_API_KEY=x402"],
+                reviewedAt: "2026-11-01",
+            },
+        ],
+    });
 }
 
 export function resources(vcpu: number, memoryMib: number, diskGib = 10, gpuCount = 0): Resources {
