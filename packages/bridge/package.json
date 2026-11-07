@@ -16,9 +16,11 @@
     "scripts": {
         "typecheck": "tsc -p .",
         "build": "tsx src/build-main.ts",
+        "mcpb": "tsx src/build-mcpb.ts",
         "prepack": "pnpm run build"
     },
     "devDependencies": {
+        "@anthropic-ai/mcpb": "2.1.2",
         "@bufbuild/protobuf": "2.16.0",
         "@bugnet/gateway": "workspace:*",
         "@bugnet/seal": "workspace:*",
