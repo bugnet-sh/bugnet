@@ -814,20 +814,27 @@ describe("settling holds, the gateway stand-in", () => {
     const used = (p: Record<string, unknown>): CallToolResult =>
         (p.arguments as { orderId?: string }).orderId === undefined ? stepResult() : done;
 
-    it("settles the held order a start names, even when a newer one is held too", async () => {
-        const remote = fakeRemote(used);
-        const pay = devPay(testPayments(), null);
-        hold(pay, key, olderStep);
-        hold(pay, key, standInStep);
-        const b = await bridge({ remote, deps: { pay } });
-        const r = await b.client.callTool({
-            name: "bugnet_start",
-            arguments: { ...standInArgs, orderId: olderOrder, claim: standInClaim },
-        });
-        expect(r.isError).toBeFalsy();
-        expect(pay.orders.step(olderOrder)).toBeUndefined();
-        expect(pay.orders.heldFor(key)?.orderId).toBe(standInOrder);
-    });
+    const extendArgs = { handle: testHandle, packageId: "more-10m", confirmPriceUsd: "0.04" };
+    it.each([
+        ["bugnet_start", key, standInArgs],
+        ["bugnet_extend", `extend\0${testHandle}\0more-10m`, extendArgs],
+    ] as const)(
+        "settles the held order %s names, even when a newer one is held too",
+        async (tool, k, args) => {
+            const remote = fakeRemote(used);
+            const pay = devPay(testPayments(), null);
+            hold(pay, k, { ...olderStep, tool });
+            hold(pay, k, { ...standInStep, tool });
+            const b = await bridge({ remote, deps: { pay } });
+            const r = await b.client.callTool({
+                name: tool,
+                arguments: { ...args, orderId: olderOrder, claim: standInClaim },
+            });
+            expect(r.isError).toBeFalsy();
+            expect(pay.orders.step(olderOrder)).toBeUndefined();
+            expect(pay.orders.heldFor(k)?.orderId).toBe(standInOrder);
+        },
+    );
 
     it("drops a held extend order once bugnet_redeem applies it", async () => {
         const extendKey = `extend\0${testHandle}\0more-10m`;
@@ -841,9 +848,8 @@ describe("settling holds, the gateway stand-in", () => {
             arguments: { orderId: standInOrder, claim: standInClaim, handle: testHandle },
         });
         expect(pay.orders.heldFor(extendKey)).toBeUndefined();
-        const extend = { handle: testHandle, packageId: "more-10m", confirmPriceUsd: "0.04" };
-        await b.client.callTool({ name: "bugnet_extend", arguments: extend });
-        expect(remote.calls.at(-1)!.params.arguments).toEqual(extend);
+        await b.client.callTool({ name: "bugnet_extend", arguments: extendArgs });
+        expect(remote.calls.at(-1)!.params.arguments).toEqual(extendArgs);
     });
 
     it("drops a held order a redeem calls abandoned, and keeps it on another error", async () => {
