@@ -7,11 +7,11 @@ it seriously and thank everyone who sends one.
 
 Please do not open a public issue, pull request or discussion for a security problem.
 
-<!-- PENDING: security@bugnet.sh is a placeholder until the founder confirms the address and that the mailbox exists -->
+<!-- PENDING: security@bugnet.org is the address the founder chose on 2026-11-07; it stays pending until the mailbox exists -->
 
 Report it privately in one of these two ways:
 
-- Email **security@bugnet.sh**.
+- Email **security@bugnet.org**.
 - Use GitHub's private reporting: the **Report a vulnerability** button under this repository's
   [Security tab](https://github.com/bugnet-sh/bugnet/security/advisories/new).
 
