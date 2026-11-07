@@ -16,6 +16,7 @@ links_domain = "bugnet.sh"              # every preview, transfer, secret and SS
 mode = "http"                           # "http" calls the Payments service, "dev" settles free on loopback only
 url = ""                                # Payments service base URL, required for mode "http"
 order_token_ttl = "10m"                 # lifetime of order tokens dev mode signs
+dev_require_payment = false             # dev mode answers with a loopback pay link instead of settling at once
 
 [limits]
 tool_budget = "44s"                     # every tool call ends by then, 25s to 45s, router calls included

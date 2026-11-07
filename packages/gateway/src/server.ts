@@ -5,6 +5,7 @@ import { hostHeaderValidation, toNodeHandler } from "@modelcontextprotocol/node"
 import { McpServer, createMcpHandler, type ServerContext } from "@modelcontextprotocol/server";
 import { allowedHosts } from "./config.ts";
 import { instructions } from "./instructions.ts";
+import { DevPayments } from "./payments/dev.ts";
 import { peerAddress, withClientAddress, withToolCall } from "./request.ts";
 import { registerAssessTool } from "./tools/assess.ts";
 import type { Deps, Register } from "./tools/common.ts";
@@ -110,6 +111,10 @@ export function startHttp(deps: Deps, extra: Register[] = []): Promise<Server> {
         onerror: (e) => deps.log.warn("mcp request failed", { err: e.message }),
     });
     const mcp = toNodeHandler(handler);
+    const devPay =
+        deps.payments instanceof DevPayments && deps.payments.requiresPayment
+            ? deps.payments
+            : null;
     const validHost = hostHeaderValidation(allowedHosts(deps.config));
     const home = deps.config.home_url;
     // Hosted clients such as claude.ai send their own Origin, and the gateway reads no cookie
@@ -128,6 +133,16 @@ export function startHttp(deps: Deps, extra: Register[] = []): Promise<Server> {
         }
         if (path === "/healthz") {
             res.writeHead(200, { "content-type": "text/plain" }).end("ok\n");
+            return;
+        }
+        // Dev pay links stand in for the Payments checkout page on this machine
+        const payLink = devPay && /^\/o\/([^/]+)(\/status)?$/.exec(path ?? "");
+        if (devPay && payLink && (req.method === "GET" || req.method === "POST")) {
+            const id = payLink[1] as string;
+            const a = payLink[2] ? devPay.status(id) : devPay.pay(id);
+            res.writeHead(a.status, { "content-type": "application/json" }).end(
+                JSON.stringify(a.body),
+            );
             return;
         }
         if (path !== "/mcp") {

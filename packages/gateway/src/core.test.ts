@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { describe, expect, it } from "vitest";
 import {
@@ -83,6 +84,26 @@ describe("config", () => {
         expect(() => readSecrets(base, s)).toThrow(/BUGNET_ORDER_PRIVATE_KEY/);
         const env = { ...base, BUGNET_ORDER_PRIVATE_KEY: Buffer.alloc(32).toString("base64") };
         expect(readSecrets(env, s).orderPrivateKey?.length).toBe(32);
+    });
+
+    it("keeps dev_require_payment off by default and for dev payments only", () => {
+        expect(parseSettings("").payments.dev_require_payment).toBe(false);
+        const http = parseSettings(
+            '[payments]\nurl = "http://127.0.0.1:8450"\ndev_require_payment = true',
+        );
+        expect(() => checkSettings(http)).toThrow(
+            "payments.dev_require_payment needs payments.mode dev",
+        );
+        const dev = parseSettings('[payments]\nmode = "dev"\ndev_require_payment = true');
+        expect(() => checkSettings(dev)).not.toThrow();
+    });
+
+    it("lists every payments setting at its default in config/example.toml", () => {
+        const example = readFileSync(
+            new URL("../../../config/example.toml", import.meta.url),
+            "utf8",
+        );
+        expect(parseSettings(example, "example.toml").payments).toEqual(parseSettings("").payments);
     });
 });
 

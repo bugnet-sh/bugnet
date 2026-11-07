@@ -2,7 +2,8 @@ import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { startHttp } from "./server.ts";
 import { checkSettings, parseSettings } from "./config.ts";
-import { testConfig, testDeps } from "./testing/harness.ts";
+import type { AwaitingPayment, Payments } from "./payments/port.ts";
+import { testConfig, testDeps, testPayments } from "./testing/harness.ts";
 
 const list = { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} };
 
@@ -140,5 +141,59 @@ describe("the gateway's other paths", () => {
         expect((await request("POST", "/")).status).toBe(404);
         expect((await request("GET", "/index.html")).status).toBe(404);
         expect((await request("GET", "/healthz")).status).toBe(200);
+    });
+});
+
+describe("dev pay links", () => {
+    const stops: (() => Promise<void>)[] = [];
+    afterEach(async () => {
+        for (const stop of stops.splice(0)) await stop();
+    });
+
+    async function serve(payments: Payments): Promise<string> {
+        const deps = testDeps({ config: testConfig('listen_addr = "127.0.0.1:0"'), payments });
+        const http = await startHttp(deps);
+        stops.push(() => new Promise((r) => http.close(() => r())));
+        return `http://127.0.0.1:${(http.address() as AddressInfo).port}`;
+    }
+
+    it("marks a dev order paid at its pay link and reports it at /status", async () => {
+        const tp = testPayments(undefined, { requirePayment: true });
+        const base = await serve(tp.dev);
+        const r = (await tp.dev.order({
+            kind: "start",
+            packageId: "small-10m",
+            amountMicros: 50_000,
+            description: "d",
+        })) as AwaitingPayment;
+        const before = await fetch(`${base}/o/${r.orderId}/status`);
+        expect(before.status).toBe(200);
+        expect(before.headers.get("content-type")).toBe("application/json");
+        expect(await before.json()).toEqual({
+            orderId: r.orderId,
+            state: "unpaid",
+            expiresAt: "2026-11-05T12:15:00.000Z",
+        });
+        const paid = await fetch(`${base}/o/${r.orderId}`);
+        expect(paid.status).toBe(200);
+        expect(await paid.json()).toEqual({ paid: true, orderId: r.orderId });
+        const posted = await fetch(`${base}/o/${r.orderId}`, { method: "POST" });
+        expect(await posted.json()).toEqual({ paid: true, orderId: r.orderId });
+        const after = await fetch(`${base}/o/${r.orderId}/status`);
+        expect(((await after.json()) as { state: string }).state).toBe("paid");
+        const unknown = await fetch(`${base}/o/ord_${"a".repeat(26)}`);
+        expect(unknown.status).toBe(404);
+        expect(await unknown.json()).toEqual({ error: "order_unknown" });
+    });
+
+    it("answers not found at /o/ unless dev payments ask for payment", async () => {
+        for (const payments of [testPayments(), testPayments().dev]) {
+            const base = await serve(payments);
+            for (const path of ["/o/ord_x", "/o/ord_x/status"]) {
+                const r = await fetch(`${base}${path}`);
+                expect(r.status).toBe(404);
+                expect(await r.text()).toBe("not found\n");
+            }
+        }
     });
 });

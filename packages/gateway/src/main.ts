@@ -1,9 +1,7 @@
-import { ConfigError, loadConfig, type Config } from "./config.ts";
+import { ConfigError, loadConfig } from "./config.ts";
 import { startTlsFront } from "./front/index.ts";
 import { jsonLog } from "./log.ts";
-import { DevPayments } from "./payments/dev.ts";
-import { HttpPayments } from "./payments/http.ts";
-import type { Payments } from "./payments/port.ts";
+import { paymentsFor } from "./payments/index.ts";
 import { createRouterClient } from "./router.ts";
 import { startHttp, version } from "./server.ts";
 import { createTracing } from "./trace.ts";
@@ -16,13 +14,6 @@ function configPath(argv: string[]): string {
     return path;
 }
 
-function payments(cfg: Config): Payments {
-    if (cfg.payments.mode === "dev") {
-        return new DevPayments(cfg.secrets.orderPrivateKey as Buffer, cfg.payments.order_token_ttl);
-    }
-    return new HttpPayments(cfg.payments.url, cfg.secrets.paymentsToken);
-}
-
 const log = jsonLog("gateway");
 try {
     const config = loadConfig(configPath(process.argv.slice(2)));
@@ -30,7 +21,7 @@ try {
     const deps = {
         config,
         router: createRouterClient(config, tracing ? [tracing.interceptor] : []),
-        payments: payments(config),
+        payments: paymentsFor(config),
         assessor: createAssessor(config),
         log,
         now: Date.now,

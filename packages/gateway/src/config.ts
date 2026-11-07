@@ -44,6 +44,7 @@ const settingsSchema = z
                 mode: z.enum(["dev", "http"]).default("http"),
                 url: z.string().default(""),
                 order_token_ttl: duration.prefault("10m"),
+                dev_require_payment: z.boolean().default(false),
             })
             .strict()
             .prefault({}),
@@ -320,6 +321,9 @@ export function checkSettings(s: Settings): void {
         if (!loopbackListen || !isLoopback(s.public_url)) {
             throw new ConfigError("payments.mode dev needs a loopback listen_addr and public_url");
         }
+    }
+    if (s.payments.dev_require_payment && s.payments.mode !== "dev") {
+        throw new ConfigError("payments.dev_require_payment needs payments.mode dev");
     }
     checkFront(s);
     checkTelemetry(s.telemetry);

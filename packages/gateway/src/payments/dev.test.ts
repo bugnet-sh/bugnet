@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { tokenClaims } from "../testing/harness.ts";
+import { testConfig, tokenClaims } from "../testing/harness.ts";
 import { DevPayments, devUnpaidTtlMs } from "./dev.ts";
+import { paymentsFor } from "./index.ts";
 import { claimPattern, refusalReasons, type AwaitingPayment, type OrderRequest } from "./port.ts";
 
 const seed = Buffer.alloc(32, 9);
@@ -391,5 +392,27 @@ describe("DevPayments asking for payment", () => {
             status: 200,
             body: { paid: true, orderId: a.orderId },
         });
+    });
+});
+
+describe("paymentsFor", () => {
+    it("puts dev pay links on public_url's origin and calls Payments otherwise", async () => {
+        const dev = paymentsFor(
+            testConfig(
+                'public_url = "http://127.0.0.1:8787/base"\n' +
+                    '[payments]\nmode = "dev"\ndev_require_payment = true',
+            ),
+        );
+        expect(dev).toBeInstanceOf(DevPayments);
+        expect((dev as DevPayments).requiresPayment).toBe(true);
+        const r = await dev.order(start, AbortSignal.timeout(5_000));
+        expect((r as AwaitingPayment).payUrl).toMatch(
+            /^http:\/\/127\.0\.0\.1:8787\/o\/ord_[a-z2-7]{26}$/,
+        );
+        const off = paymentsFor(testConfig('[payments]\nmode = "dev"'));
+        expect((off as DevPayments).requiresPayment).toBe(false);
+        expect(paymentsFor(testConfig('[payments]\nurl = "http://127.0.0.1:8450"')).mode).toBe(
+            "http",
+        );
     });
 });
