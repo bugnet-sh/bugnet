@@ -668,7 +668,7 @@ describe.each(["legacy", "modern"] as const)("paying with pay, %s client", (era)
                     claim: step.claim,
                 }),
             );
-            expect(pay.orders.heldFor(key)?.state).toBe("unknown");
+            expect(pay.orders.heldFor(key)).toBeUndefined();
         } else {
             expect(r.isError).toBe(true);
             expect((r.content as { text: string }[]).at(-1)!.text).toBe(unpaidText(answer, step));
@@ -1380,12 +1380,12 @@ describe.each(["legacy", "modern"] as const)("paying by link, %s client", (era) 
         expect(gw.payments.orders.filter((o) => o.orderId === undefined)).toHaveLength(1);
     });
 
-    it.each([
-        ["a pay refusal that is not a spent one", { kind: "declined", reason: "payer_blocked" }],
-        ["an unsure pay whose page reads unpaid", { kind: "unknown" }],
-    ] as const)("gives %s the same order on a fresh start", async (_n, outcome) => {
+    it("gives a lasting pay refusal's order to a fresh start", async () => {
         const gw = await gateway(requirePayments());
-        const payer = payingPayer(gw.payments, { outcome, pays: false });
+        const payer = payingPayer(gw.payments, {
+            outcome: { kind: "declined", reason: "payer_blocked" },
+            pays: false,
+        });
         const pay = devPay(gw.payments, payer);
         const b = await bridge({ gateway: gw.url, era, deps: { pay } });
         const args = startArgs(await quoteId(b.client));
@@ -1396,6 +1396,23 @@ describe.each(["legacy", "modern"] as const)("paying by link, %s client", (era) 
         expect(again.structuredContent).toEqual(expect.objectContaining({ orderId: id }));
         expect(payer.calls).toHaveLength(1);
         expect(gw.payments.orders.filter((o) => o.orderId === undefined)).toHaveLength(1);
+    });
+
+    it.each([
+        ["a transient pay refusal", { kind: "declined", reason: "payer_busy" }],
+        ["an unsure pay whose page reads unpaid", { kind: "unknown" }],
+    ] as const)("lets a fresh start open a new order after %s", async (_n, outcome) => {
+        const gw = await gateway(requirePayments());
+        const payer = payingPayer(gw.payments, { outcome, pays: false });
+        const pay = devPay(gw.payments, payer);
+        const b = await bridge({ gateway: gw.url, era, deps: { pay } });
+        const args = startArgs(await quoteId(b.client));
+        const first = await b.client.callTool({ name: "bugnet_start", arguments: args });
+        const id = (first.structuredContent as { orderId: string }).orderId;
+        expect(pay.orders.heldFor(key)).toBeUndefined();
+        const again = await b.client.callTool({ name: "bugnet_start", arguments: args });
+        expect((again.structuredContent as { orderId: string }).orderId).not.toBe(id);
+        expect(gw.payments.orders.filter((o) => o.orderId === undefined)).toHaveLength(2);
     });
 
     it("holds an order whose page reads review straight after an unsure pay", async () => {

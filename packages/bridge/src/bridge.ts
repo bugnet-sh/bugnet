@@ -161,6 +161,15 @@ function withoutEnvelope(result: RemoteResult): RemoteResult {
     return rest as RemoteResult;
 }
 
+const lastingRefusals: ReadonlySet<string> = new Set([
+    "payer_blocked",
+    "payer_invalid",
+    "payment_invalid",
+    "payment_malformed",
+    "payment_replayed",
+    "payment_order_mismatch",
+]);
+
 const waitingInPay = "waiting for the payment to be approved in pay";
 
 function isPaidTool(name: string): boolean {
@@ -487,8 +496,8 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             if (outcome.kind === "paid") return redeem();
             if (outcome.kind === "unknown" || spent(outcome)) return reread();
             if (outcome.kind === "declined") {
-                // The user may still pay the link, so a fresh start gets this order back
-                orders.holdLink(paid.orderId);
+                // A refusal that never clears leaves the link as the way to pay this order
+                if (lastingRefusals.has(outcome.reason)) orders.holdLink(paid.orderId);
                 return result;
             }
             return linkPath(paid, result, ctx, orders);
@@ -504,7 +513,7 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             if (state === "paid") return redeem();
             if (state === "unpaid") {
                 // The order stays tried, so pay is never started for it again
-                orders.holdLink(paid.orderId);
+                orders.forget(paid.orderId);
                 return result;
             }
             if (state === "settling") return waitAndRedeem(paid, false);
