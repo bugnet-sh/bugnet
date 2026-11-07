@@ -94,6 +94,25 @@ export interface RenderOptions {
     ttlMinutes?: number;
     // The router's RetryInfo delay when it refused the quote for its rate limit
     retryAfterMs?: number | null;
+    // The deploy switch, so a quote and its text never change with a pause
+    x402Enabled?: boolean;
+}
+
+function secretLines(a: Assessment, x402Enabled: boolean): string[] {
+    const lines: string[] = [];
+    if (a.apiKeys.length > 0) {
+        const keys = a.apiKeys.map((k) => (k.package ? `${k.name} (${k.package})` : k.name));
+        const hint = x402Enabled
+            ? " In a sandbox, bugnet_secret_link adds a key the user has, and bugnet_x402_find finds pay-per-call APIs that need none."
+            : "";
+        lines.push(`API keys the code reads: ${keys.join(", ")}.${hint}`);
+    }
+    if (a.otherSecrets.length > 0) {
+        lines.push(
+            `Other secrets the code reads: ${a.otherSecrets.join(", ")}. A random value usually works in a sandbox.`,
+        );
+    }
+    return lines;
 }
 
 function quoteLines(quote: BuiltQuote | null, opts: RenderOptions): string[] {
@@ -149,7 +168,11 @@ export function renderAssessment(
             lines.push(`- ${f.severity}: ${f.title}${f.evidence ? ` [${f.evidence}]` : ""}`);
         }
     }
-    lines.push(needsLine(a), ...quoteLines(quote, opts));
+    lines.push(
+        ...secretLines(a, opts.x402Enabled === true),
+        needsLine(a),
+        ...quoteLines(quote, opts),
+    );
     if (a.recommendation !== "local_ok") {
         lines.push(
             "The user has not seen this check, so share it before any local install or run.",
@@ -213,9 +236,14 @@ async function assessQuote(
 }
 
 // The agent's needs decide where the sandbox can run, so the quote bugnet_start uses carries them
-function needsOf(asked: readonly NeedName[] | undefined, gpu: boolean): NeedName[] {
+function needsOf(
+    asked: readonly NeedName[] | undefined,
+    gpu: boolean,
+    addSecrets: boolean,
+): NeedName[] {
     const set = new Set(asked ?? []);
     if (gpu) set.add("gpu");
+    if (addSecrets) set.add("secrets");
     return needs.filter((n) => set.has(n));
 }
 
@@ -275,6 +303,7 @@ export const registerAssessTool: Register = (server, deps) => {
             }
             let quote: BuiltQuote | null = null;
             let retryAfterMs: number | null = null;
+            const x402Enabled = deps.config.x402.enabled;
             const quoteSignal = AbortSignal.any([
                 ctx.mcpReq.signal,
                 AbortSignal.timeout(quoteBudgetMs),
@@ -288,7 +317,11 @@ export const registerAssessTool: Register = (server, deps) => {
                             workload: assessment.needs.workload,
                             entryCommand: entryCommandOf(args.commands),
                             expectedMinutes: args.expectedMinutes,
-                            needs: needsOf(args.needs, assessment.needs.gpu),
+                            needs: needsOf(
+                                args.needs,
+                                assessment.needs.gpu,
+                                x402Enabled && assessment.apiKeys.length > 0,
+                            ),
                             fallback: {
                                 minMemoryGiB: assessment.needs.minMemoryGiB,
                                 minDiskGiB: assessment.needs.minDiskGiB,
@@ -316,10 +349,13 @@ export const registerAssessTool: Register = (server, deps) => {
                 }
             }
             const ttlMinutes = Math.round(deps.config.limits.quote_ttl / 60_000);
-            return ok(renderAssessment(assessment, quote, { ttlMinutes, retryAfterMs }), {
-                assessment,
-                quote: quote?.structured ?? null,
-            });
+            return ok(
+                renderAssessment(assessment, quote, { ttlMinutes, retryAfterMs, x402Enabled }),
+                {
+                    assessment,
+                    quote: quote?.structured ?? null,
+                },
+            );
         },
     );
 };

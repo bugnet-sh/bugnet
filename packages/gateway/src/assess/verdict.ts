@@ -13,6 +13,7 @@ import {
     type SessionContext,
 } from "@bugnet/intent";
 import type {
+    ApiKey,
     Assessment,
     AssessInput,
     Finding,
@@ -38,6 +39,8 @@ export interface SourceReport {
     minMemoryGiB: number | null;
     minDiskGiB: number | null;
     workload: Workload | null;
+    apiKeys: ApiKey[];
+    otherSecrets: string[];
 }
 
 export const maxCommands = 20;
@@ -402,6 +405,8 @@ export function combine(input: AssessInput, report: SourceReport): Assessment {
         risk: { level, findings: findings.slice(0, 30) },
         needs,
         fit,
+        apiKeys: report.apiKeys,
+        otherSecrets: report.otherSecrets,
         source: { kind: report.kind, ref: report.ref, facts: report.facts },
     };
 }

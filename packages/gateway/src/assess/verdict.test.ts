@@ -17,6 +17,8 @@ function report(name: string, findings: Finding[] = []): SourceReport {
         minMemoryGiB: null,
         minDiskGiB: null,
         workload: null,
+        apiKeys: [],
+        otherSecrets: [],
     };
 }
 

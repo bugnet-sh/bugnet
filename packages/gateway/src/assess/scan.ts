@@ -9,7 +9,8 @@
  */
 import { isIP } from "node:net";
 import { cleanText } from "../sanitize.ts";
-import type { Finding, Severity } from "./assessor.ts";
+import { dependencyKeys, isApiKeyName, keyNamePattern } from "../x402/keys.ts";
+import type { ApiKey, Finding, Severity } from "./assessor.ts";
 import { isPublicAddress } from "./fetch.ts";
 import type { RepoFile, RepoInfo, RepoSnapshot, TreeEntry } from "./github.ts";
 import { popular } from "./popular.ts";
@@ -954,7 +955,7 @@ export interface RepoNeeds {
     packages: string[];
 }
 
-function dependencyNames(f: RepoFile): string[] {
+export function dependencyNames(f: RepoFile): string[] {
     const lower = f.path.toLowerCase();
     const names: string[] = [];
     if (/(?:^|\/)requirements[\w.-]*\.txt$/.test(lower)) {
@@ -1243,4 +1244,49 @@ export function sortFindings(findings: Finding[]): Finding[] {
         out.push(f);
     }
     return out;
+}
+
+const maxKeyNames = 5;
+const secretSuffix = /_(?:KEY|TOKEN|SECRET)$/;
+
+function byName(a: { name: string }, b: { name: string }): number {
+    return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+}
+
+export function apiKeyNames(
+    input: {
+        envExample: RepoFile | null;
+        files: readonly RepoFile[];
+        rootRequirements: RepoFile | null;
+    },
+    indexKeys: ReadonlySet<string>,
+): { apiKeys: ApiKey[]; otherSecrets: string[] } {
+    const found = new Map<string, ApiKey>();
+    for (const f of [...input.files, ...(input.rootRequirements ? [input.rootRequirements] : [])]) {
+        for (const name of dependencyNames(f)) {
+            if (!Object.hasOwn(dependencyKeys, name)) continue;
+            const variable = dependencyKeys[name] as string;
+            if (!found.has(variable))
+                found.set(variable, { name: variable, from: "dependency", package: name });
+        }
+    }
+    const others = new Set<string>();
+    for (const line of (input.envExample?.text ?? "").split("\n")) {
+        const at = line.indexOf("=");
+        if (at < 0) continue;
+        const name = line.slice(0, at).trim();
+        if (!keyNamePattern.test(name) || !secretSuffix.test(name)) continue;
+        if (isApiKeyName(name, indexKeys)) {
+            if (!found.has(name)) found.set(name, { name, from: "env_example" });
+        } else {
+            others.add(name);
+        }
+    }
+    return {
+        apiKeys: [...found.values()].sort(byName).slice(0, maxKeyNames),
+        otherSecrets: [...others]
+            .filter((n) => !found.has(n))
+            .sort()
+            .slice(0, maxKeyNames),
+    };
 }

@@ -31,6 +31,12 @@ export interface Finding {
 
 export type Recommendation = "sandbox_strongly_recommended" | "sandbox_recommended" | "local_ok";
 
+export interface ApiKey {
+    name: string;
+    from: "dependency" | "env_example";
+    package?: string;
+}
+
 export interface Assessment {
     recommendation: Recommendation;
     // One or two sentences the agent can tell the user
@@ -45,6 +51,9 @@ export interface Assessment {
     };
     // Whether the needs fit the user's machine, kept apart from risk so safety stays its own level
     fit: { level: "unknown" | "fits" | "tight" | "does_not_fit"; findings: Finding[] };
+    // Variable names only, never values
+    apiKeys: ApiKey[];
+    otherSecrets: string[];
     source: {
         kind: "github" | "huggingface" | "url" | "none";
         ref: string;

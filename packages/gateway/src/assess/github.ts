@@ -41,6 +41,9 @@ export interface RepoSnapshot {
     // Files chosen for reading, so an empty files list can be told apart from failed reads
     picked: number;
     files: RepoFile[];
+    // Read for variable names only, so neither is risk scanned
+    envExample: RepoFile | null;
+    rootRequirements: RepoFile | null;
     notes: Finding[];
     complete: boolean;
 }
@@ -56,6 +59,13 @@ export interface GithubEnv {
 // Listings run larger than single files, a big repo's recursive tree is several MiB
 const listingBytes = 8 * 1024 * 1024;
 export const maxFilesRead = 6;
+export const envExampleNames: readonly string[] = [
+    ".env.example",
+    ".env.sample",
+    ".env.template",
+    "example.env",
+];
+export const extraFileMaxBytes = 8192;
 
 // Secondary limits answer 403 with quota still left, so retry-after and the message count too
 function rateLimited(r: Fetched): boolean {
@@ -243,6 +253,8 @@ export async function readGithub(
         treeTruncated: false,
         picked: 0,
         files: [],
+        envExample: null,
+        rootRequirements: null,
         notes: [],
         complete: true,
     };
@@ -362,17 +374,29 @@ export async function readGithub(
     const raw = env.raw.replace(/\/$/, "");
     const paths = pickFiles(snap.tree, preferred);
     snap.picked = paths.length;
-    const reads = await Promise.allSettled(
-        paths.map((path) =>
-            env.fetch(
-                `${raw}/${encodeURIComponent(info.owner)}/${encodeURIComponent(info.repo)}/${encodePath(ref)}/${encodePath(path)}`,
-                {
-                    signal,
-                    maxBytes: env.maxFileBytes,
-                },
+    const rawUrl = (path: string) =>
+        `${raw}/${encodeURIComponent(info.owner)}/${encodeURIComponent(info.repo)}/${encodePath(ref)}/${encodePath(path)}`;
+    const rootBlobs = new Map(
+        snap.tree
+            .filter((e) => e.type === "blob" && !e.path.includes("/"))
+            .map((e) => [e.path.toLowerCase(), e.path]),
+    );
+    const envPath = envExampleNames.map((n) => rootBlobs.get(n)).find((p) => p !== undefined);
+    const reqPath = paths.some((p) => p.toLowerCase() === "requirements.txt")
+        ? undefined
+        : rootBlobs.get("requirements.txt");
+    const [reads, extras] = await Promise.all([
+        Promise.allSettled(
+            paths.map((path) => env.fetch(rawUrl(path), { signal, maxBytes: env.maxFileBytes })),
+        ),
+        Promise.allSettled(
+            [envPath, reqPath].map((path) =>
+                path === undefined
+                    ? Promise.resolve(null)
+                    : env.fetch(rawUrl(path), { signal, maxBytes: extraFileMaxBytes }),
             ),
         ),
-    );
+    ]);
     reads.forEach((r, i) => {
         if (r.status === "fulfilled" && r.value.status === 200) {
             snap.files.push({
@@ -380,6 +404,17 @@ export async function readGithub(
                 text: bodyText(r.value),
                 truncated: r.value.truncated,
             });
+        } else {
+            snap.complete = false;
+        }
+    });
+    [envPath, reqPath].forEach((path, i) => {
+        if (path === undefined) return;
+        const r = extras[i];
+        if (r?.status === "fulfilled" && r.value && r.value.status === 200) {
+            const f = { path, text: bodyText(r.value), truncated: r.value.truncated };
+            if (i === 0) snap.envExample = f;
+            else snap.rootRequirements = f;
         } else {
             snap.complete = false;
         }

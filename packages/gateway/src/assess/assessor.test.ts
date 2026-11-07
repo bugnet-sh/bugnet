@@ -1,12 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { parseSettings, type Config } from "../config.ts";
 import type { Classification } from "@bugnet/intent";
-import type { Fetched, Fetcher, FetchOptions } from "./fetch.ts";
-import { createSafeFetcher, type Resolve } from "./fetch.ts";
-import type { RepoSnapshot } from "./github.ts";
-import { pickFiles } from "./github.ts";
+import { createSafeFetcher, type Fetcher, type Resolve } from "./fetch.ts";
+import { maxFilesRead, pickFiles } from "./github.ts";
 import { createAssessor } from "./index.ts";
-import { longBase64, mainstream, malicious, now } from "./fixtures.ts";
+import {
+    fakeFetch,
+    file,
+    githubRoutes,
+    keyedRepo,
+    leakedKeyValue,
+    longBase64,
+    mainstream,
+    malicious,
+    now,
+    type Route,
+} from "./fixtures.ts";
 import { assessFit, normaliseOs, workloadFromCommands } from "./verdict.ts";
 
 const intent = vi.hoisted(() => {
@@ -40,69 +49,6 @@ function config(over: { githubToken?: string; scanUrls?: boolean } = {}): Config
             huggingfaceToken: "",
         },
     };
-}
-
-interface Route {
-    status?: number;
-    json?: unknown;
-    text?: string;
-    bytes?: Uint8Array;
-    headers?: Record<string, string>;
-}
-
-function fakeFetch(routes: Record<string, Route>) {
-    const calls: { url: string; opts: FetchOptions }[] = [];
-    const fetch: Fetcher = async (url, opts): Promise<Fetched> => {
-        calls.push({ url, opts });
-        if (opts.signal.aborted) throw opts.signal.reason;
-        const r = routes[url] ?? routes[url.split("?")[0] as string];
-        if (!r) return { status: 404, url, headers: {}, body: new Uint8Array(), truncated: false };
-        const body = r.bytes ?? new TextEncoder().encode(r.text ?? JSON.stringify(r.json ?? {}));
-        return {
-            status: r.status ?? 200,
-            url,
-            headers: r.headers ?? {},
-            body: body.subarray(0, opts.maxBytes),
-            truncated: body.length > opts.maxBytes,
-        };
-    };
-    return { fetch, calls };
-}
-
-function githubRoutes(snap: RepoSnapshot): Record<string, Route> {
-    const i = snap.info as NonNullable<RepoSnapshot["info"]>;
-    const api = `https://api.github.com/repos/${i.owner}/${i.repo}`;
-    const routes: Record<string, Route> = {
-        [api]: {
-            json: {
-                full_name: `${i.owner}/${i.repo}`,
-                description: i.description,
-                stargazers_count: i.stars,
-                forks_count: i.forks,
-                created_at: i.createdAt,
-                pushed_at: i.pushedAt,
-                size: i.sizeKiB,
-                archived: i.archived,
-                fork: i.fork,
-                license: i.license ? { spdx_id: i.license, name: i.license } : null,
-                language: i.language,
-                default_branch: i.defaultBranch,
-                topics: i.topics,
-            },
-        },
-        [`https://api.github.com/users/${i.owner}`]: {
-            json: { login: i.owner, type: snap.ownerType, created_at: snap.ownerCreatedAt },
-        },
-        [`${api}/git/trees/${i.defaultBranch}`]: {
-            json: { truncated: false, tree: snap.tree.map((e) => ({ ...e, mode: "100644" })) },
-        },
-    };
-    for (const f of snap.files) {
-        routes[
-            `https://raw.githubusercontent.com/${i.owner}/${i.repo}/${i.defaultBranch}/${f.path}`
-        ] = { text: f.text };
-    }
-    return routes;
 }
 
 const kokoro = {
@@ -144,6 +90,59 @@ beforeEach(() => {
 });
 
 describe("assessor over GitHub", () => {
+    it("reads the first env example and the left-out requirements.txt at 8 KiB, outside the scanned files", async () => {
+        const { fetch, calls } = fakeFetch(githubRoutes(keyedRepo()));
+        const a = createAssessor(config(), { fetch, now: () => now });
+        const r = await a.assess({ source: "https://github.com/acme/tool" }, signal());
+        const raw = "https://raw.githubusercontent.com/acme/tool/main/";
+        expect(calls.find((c) => c.url === `${raw}.env.example`)?.opts.maxBytes).toBe(8192);
+        expect(calls.find((c) => c.url === `${raw}requirements.txt`)?.opts.maxBytes).toBe(8192);
+        expect(calls.some((c) => c.url === `${raw}.env.sample`)).toBe(false);
+        expect(String(r.source.facts.filesChecked)).not.toMatch(/env|requirements/);
+        expect(r.apiKeys.map((k) => k.name)).toEqual([
+            "ANTHROPIC_API_KEY",
+            "FAL_KEY",
+            "OPENAI_API_KEY",
+        ]);
+        expect(r.otherSecrets).toEqual(["JWT_SECRET"]);
+        expect(JSON.stringify(r)).not.toContain(leakedKeyValue);
+        const files = calls.filter((c) => c.url.startsWith("https://raw.githubusercontent.com/"));
+        expect(files.length).toBe(maxFilesRead + 2);
+    });
+
+    it("does not read requirements.txt twice when pickFiles chose it", async () => {
+        const { fetch, calls } = fakeFetch(githubRoutes(mainstream()));
+        const a = createAssessor(config(), { fetch, now: () => now });
+        const r = await a.assess({ source: "https://github.com/pallets/flasky" }, signal());
+        expect(calls.filter((c) => c.url.endsWith("/requirements.txt"))).toHaveLength(1);
+        expect(r.apiKeys).toEqual([]);
+    });
+
+    it("names an index key from the assessor's key set", async () => {
+        const repo = keyedRepo();
+        repo.envExample = file(".env.example", "AGENT_KEY=1\n");
+        const { fetch } = fakeFetch(githubRoutes(repo));
+        const a = createAssessor(config(), {
+            fetch,
+            now: () => now,
+            indexKeys: new Set(["AGENT_KEY"]),
+        });
+        const r = await a.assess({ source: "https://github.com/acme/tool" }, signal());
+        expect(r.apiKeys).toContainEqual({ name: "AGENT_KEY", from: "env_example" });
+    });
+
+    it("does not cache a report whose env example could not be read", async () => {
+        const routes = githubRoutes(keyedRepo());
+        routes["https://raw.githubusercontent.com/acme/tool/main/.env.example"] = { status: 500 };
+        const { fetch, calls } = fakeFetch(routes);
+        const a = createAssessor(config(), { fetch, now: () => now });
+        const repoCalls = () => calls.filter((c) => c.url.endsWith("/repos/acme/tool")).length;
+        const r = await a.assess({ source: "https://github.com/acme/tool" }, signal());
+        expect(r.otherSecrets).toEqual([]);
+        await a.assess({ source: "https://github.com/acme/tool" }, signal());
+        expect(repoCalls()).toBe(2);
+    });
+
     it("lets a mainstream repo run locally and reads at most six files", async () => {
         const { fetch, calls } = fakeFetch(githubRoutes(mainstream()));
         const a = createAssessor(config({ githubToken: "test-token" }), { fetch, now: () => now });

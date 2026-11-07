@@ -1,6 +1,14 @@
 import { Code } from "@connectrpc/connect";
 import { describe, expect, it } from "vitest";
 import type { Assessment, Assessor } from "../assess/assessor.ts";
+import {
+    fakeFetch,
+    githubRoutes,
+    keyedRepo,
+    leakedKeyValue,
+    now as assessNow,
+} from "../assess/fixtures.ts";
+import { createAssessor } from "../assess/index.ts";
 import { combine } from "../assess/verdict.ts";
 import {
     Confidence,
@@ -20,10 +28,12 @@ import {
     callTool,
     connectTools,
     fakeRouter,
+    recordingLog,
     routerError,
     testConfig,
     testDeps,
     testNow,
+    testPayments,
     type RouterImpl,
 } from "../testing/harness.ts";
 import {
@@ -57,6 +67,8 @@ const assessment: Assessment = {
             { id: "local_memory", severity: "medium", title: "Needs about 27.6 GiB of memory" },
         ],
     },
+    apiKeys: [],
+    otherSecrets: [],
     source: {
         kind: "huggingface",
         ref: "huggingface.co/black-forest-labs/FLUX.1-schnell",
@@ -84,6 +96,7 @@ async function connect(
     router: RouterImpl,
     seen: { input?: unknown } = {},
     result: Assessment = assessment,
+    toml = "",
 ) {
     const assessor: Assessor = {
         async assess(input) {
@@ -91,7 +104,7 @@ async function connect(
             return result;
         },
     };
-    const deps = testDeps({ router: fakeRouter(router), assessor });
+    const deps = testDeps({ router: fakeRouter(router), assessor, config: testConfig(toml) });
     const client = await connectTools(deps);
     return { client, deps };
 }
@@ -637,6 +650,8 @@ describe("summaries once no package fits or starts", () => {
                     minMemoryGiB: 64,
                     minDiskGiB: null,
                     workload: null,
+                    apiKeys: [],
+                    otherSecrets: [],
                 },
             );
             expect(unavailableSummary(a)).toBe(
@@ -647,4 +662,106 @@ describe("summaries once no package fits or starts", () => {
             );
         });
     }
+});
+
+const on = "[x402]\nenabled = true";
+const keyed: Assessment = {
+    ...assessment,
+    apiKeys: [{ name: "OPENAI_API_KEY", from: "dependency", package: "openai" }],
+    otherSecrets: ["JWT_SECRET"],
+};
+
+describe("renderAssessment API key lines", () => {
+    it("names the keys, both ways to get one, and the other secrets, just before the needs line", () => {
+        const lines = renderAssessment(keyed, null, { x402Enabled: true }).split("\n");
+        const at = lines.findIndex((l) => l.startsWith("Needs: "));
+        expect(lines.slice(at - 2, at)).toEqual([
+            "API keys the code reads: OPENAI_API_KEY (openai). In a sandbox, bugnet_secret_link adds a key the user has, and bugnet_x402_find finds pay-per-call APIs that need none.",
+            "Other secrets the code reads: JWT_SECRET. A random value usually works in a sandbox.",
+        ]);
+    });
+    it("keeps only the first sentence with x402 off", () => {
+        expect(renderAssessment(keyed, null).split("\n")).toContain(
+            "API keys the code reads: OPENAI_API_KEY (openai).",
+        );
+    });
+    it("lists keys without a package bare", () => {
+        const a: Assessment = {
+            ...assessment,
+            apiKeys: [
+                { name: "ELEVENLABS_API_KEY", from: "dependency", package: "elevenlabs" },
+                { name: "MY_API_KEY", from: "env_example" },
+            ],
+        };
+        expect(renderAssessment(a, null)).toContain(
+            "API keys the code reads: ELEVENLABS_API_KEY (elevenlabs), MY_API_KEY.",
+        );
+    });
+});
+
+describe("bugnet_assess API keys and the secrets need", () => {
+    async function asked(
+        result: Assessment,
+        toml: string,
+        payments?: ReturnType<typeof testPayments>,
+    ) {
+        let req: EstimateRequest | undefined;
+        const assessor: Assessor = { assess: async () => result };
+        const deps = testDeps({
+            router: fakeRouter({
+                estimate(r) {
+                    req = r;
+                    return { options: [option("cpu-s", 50_000n, 0, 4096)] };
+                },
+            }),
+            assessor,
+            config: testConfig(toml),
+            ...(payments ? { payments } : {}),
+        });
+        const client = await connectTools(deps);
+        const r = await callTool(client, "bugnet_assess", { source: "acme/tool" });
+        return { req, text: r.text };
+    }
+
+    it("adds the secrets need only for API keys with [x402] on", async () => {
+        const onRun = await asked(keyed, on);
+        expect(onRun.req?.needs).toContain(Need.SECRETS);
+        expect(onRun.req?.requirements?.secrets).toBe(true);
+        const offRun = await asked(keyed, "");
+        expect(offRun.req?.needs).not.toContain(Need.SECRETS);
+        expect(offRun.text).toContain("API keys the code reads: OPENAI_API_KEY (openai).");
+        expect(offRun.text).not.toContain("bugnet_x402_find");
+    });
+    it("follows the deploy switch, not the terms", async () => {
+        const run = await asked(keyed, on, testPayments(undefined, { terms: { enabled: false } }));
+        expect(run.req?.needs).toContain(Need.SECRETS);
+        expect(run.text).toContain("bugnet_x402_find finds pay-per-call APIs that need none.");
+    });
+    it("never adds the need for other secrets", async () => {
+        const run = await asked({ ...assessment, otherSecrets: ["JWT_SECRET"] }, on);
+        expect(run.req?.needs).not.toContain(Need.SECRETS);
+        expect(run.text).toContain("Other secrets the code reads: JWT_SECRET.");
+    });
+    it("never returns or logs a value from the env example", async () => {
+        const { log, lines } = recordingLog();
+        const { fetch } = fakeFetch(githubRoutes(keyedRepo()));
+        const config = testConfig(on);
+        const deps = testDeps({
+            router: fakeRouter({
+                estimate: () => ({ options: [option("cpu-s", 50_000n, 0, 4096)] }),
+            }),
+            assessor: createAssessor(config, { fetch, now: () => assessNow }),
+            log,
+            config,
+        });
+        const client = await connectTools(deps);
+        const r = await callTool(client, "bugnet_assess", {
+            source: "https://github.com/acme/tool",
+        });
+        expect(JSON.stringify(r)).not.toContain(leakedKeyValue);
+        expect(lines.join("\n")).not.toContain(leakedKeyValue);
+        expect(r.text).toContain(
+            "API keys the code reads: ANTHROPIC_API_KEY (@anthropic-ai/sdk), FAL_KEY (fal-client), OPENAI_API_KEY (openai). In a sandbox,",
+        );
+    });
 });

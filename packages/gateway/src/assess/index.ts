@@ -5,9 +5,10 @@ import { createSafeFetcher, FetchRefused, type Fetcher } from "./fetch.ts";
 import { createGate, type Gate } from "./gate.ts";
 import { githubLimited, readGithub } from "./github.ts";
 import { analyseModel, hfLimited, readHuggingface } from "./huggingface.ts";
-import { evidence, safePath, scanRepo, shift } from "./scan.ts";
+import { apiKeyNames, evidence, safePath, scanRepo, shift } from "./scan.ts";
 import { readScript, urlFindings } from "./script.ts";
 import { githubAlternative, parseSource, sourceName, sourceRef, type Source } from "./source.ts";
+import { builtinIndex, indexKeyNames } from "../x402/index.ts";
 import { combine, type SourceReport } from "./verdict.ts";
 
 export const cacheEntries = 500;
@@ -22,6 +23,8 @@ export interface AssessorOptions {
     now?: () => number;
     maxConcurrent?: number;
     maxQueued?: number;
+    // Variable names the x402 index lists, counted as API keys
+    indexKeys?: ReadonlySet<string>;
 }
 
 interface ReadEnv {
@@ -29,6 +32,7 @@ interface ReadEnv {
     config: Config;
     now: () => number;
     pausedUntil: { github: number; huggingface: number };
+    indexKeys: ReadonlySet<string>;
 }
 
 function note(id: string, title: string): Finding {
@@ -50,6 +54,8 @@ function emptyReport(src: Source): SourceReport {
         minMemoryGiB: null,
         minDiskGiB: null,
         workload: null,
+        apiKeys: [],
+        otherSecrets: [],
     };
 }
 
@@ -107,6 +113,9 @@ async function readGithubSource(
         env.pausedUntil.github = env.now() + rateLimitPauseMs;
     }
     const scan = scanRepo(snap, env.now());
+    const keys = apiKeyNames(snap, env.indexKeys);
+    report.apiKeys = keys.apiKeys;
+    report.otherSecrets = keys.otherSecrets;
     report.complete = snap.complete;
     report.checked =
         snap.info !== null && snap.tree.length > 0 && (snap.picked === 0 || snap.files.length > 0);
@@ -264,7 +273,13 @@ export function createAssessor(config: Config, opts: AssessorOptions = {}): Asse
         opts.maxConcurrent ?? maxConcurrentReads,
         opts.maxQueued ?? maxQueuedReads,
     );
-    const env: ReadEnv = { fetch, config, now, pausedUntil: { github: 0, huggingface: 0 } };
+    const env: ReadEnv = {
+        fetch,
+        config,
+        now,
+        pausedUntil: { github: 0, huggingface: 0 },
+        indexKeys: opts.indexKeys ?? indexKeyNames(builtinIndex),
+    };
     return {
         async assess(input: AssessInput, signal: AbortSignal): Promise<Assessment> {
             const src = parseSource(input.source);

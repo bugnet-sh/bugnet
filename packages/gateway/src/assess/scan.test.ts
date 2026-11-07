@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { Finding } from "./assessor.ts";
-import { blobs, daysAgo, file, info, longBase64, mainstream, malicious, now } from "./fixtures.ts";
 import {
+    blobs,
+    daysAgo,
+    file,
+    info,
+    keyedRepo,
+    leakedKeyValue,
+    longBase64,
+    mainstream,
+    malicious,
+    now,
+} from "./fixtures.ts";
+import {
+    apiKeyNames,
     committedBinaries,
     disableAntivirus,
     downloadRun,
@@ -766,5 +778,89 @@ describe("command rules", () => {
         "certutil -hashfile setup.exe SHA256",
     ])("leaves %s alone", (cmd) => {
         expect(scanCommand(cmd)).toEqual([]);
+    });
+});
+
+describe("apiKeyNames", () => {
+    const k = keyedRepo();
+    it("names API keys from dependencies and the env example, and local secrets apart", () => {
+        expect(apiKeyNames(k, new Set())).toEqual({
+            apiKeys: [
+                { name: "ANTHROPIC_API_KEY", from: "dependency", package: "@anthropic-ai/sdk" },
+                { name: "FAL_KEY", from: "dependency", package: "fal-client" },
+                { name: "OPENAI_API_KEY", from: "dependency", package: "openai" },
+            ],
+            otherSecrets: ["JWT_SECRET"],
+        });
+    });
+    it("never returns a value from the env example", () => {
+        const json = JSON.stringify(apiKeyNames(k, new Set()));
+        expect(json).not.toContain(leakedKeyValue);
+        expect(json).not.toContain("hunter2");
+    });
+    it("keeps env example API keys without a package, and treats an index key name as an API key", () => {
+        const env = file(
+            ".env.example",
+            "MY_API_KEY=1\nX_API_TOKEN=2\nAGENT_KEY=3\nSECRET_KEY=4\nNEXTAUTH_SECRET=5\n",
+        );
+        expect(
+            apiKeyNames(
+                { envExample: env, files: [], rootRequirements: null },
+                new Set(["AGENT_KEY"]),
+            ),
+        ).toEqual({
+            apiKeys: [
+                { name: "AGENT_KEY", from: "env_example" },
+                { name: "MY_API_KEY", from: "env_example" },
+                { name: "X_API_TOKEN", from: "env_example" },
+            ],
+            otherSecrets: ["NEXTAUTH_SECRET", "SECRET_KEY"],
+        });
+    });
+    it("keeps at most 5 of each, sorted by name", () => {
+        const env = file(
+            ".env.example",
+            "A1_API_KEY=\nA2_API_KEY=\nA3_API_KEY=\nA4_API_KEY=\nA5_API_KEY=\nA6_API_KEY=\nS1_SECRET=\nS2_SECRET=\nS3_SECRET=\nS4_SECRET=\nS5_SECRET=\nS6_SECRET=\n",
+        );
+        const r = apiKeyNames({ envExample: env, files: [], rootRequirements: null }, new Set());
+        expect(r.apiKeys.map((a) => a.name)).toEqual([
+            "A1_API_KEY",
+            "A2_API_KEY",
+            "A3_API_KEY",
+            "A4_API_KEY",
+            "A5_API_KEY",
+        ]);
+        expect(r.otherSecrets).toEqual([
+            "S1_SECRET",
+            "S2_SECRET",
+            "S3_SECRET",
+            "S4_SECRET",
+            "S5_SECRET",
+        ]);
+    });
+    it("reads the extra requirements.txt alone", () => {
+        const rootRequirements = file("requirements.txt", "replicate==1.0\n");
+        expect(
+            apiKeyNames({ envExample: null, files: [], rootRequirements }, new Set()).apiKeys,
+        ).toEqual([{ name: "REPLICATE_API_TOKEN", from: "dependency", package: "replicate" }]);
+    });
+    it("lets a dependency win over an env example entry and drops other secrets already named", () => {
+        const env = file("x.env.example", "OPENAI_API_KEY=1\n");
+        const files = [file("package.json", '{"dependencies":{"openai":"1"}}')];
+        expect(
+            apiKeyNames({ envExample: env, files, rootRequirements: null }, new Set()).apiKeys,
+        ).toEqual([{ name: "OPENAI_API_KEY", from: "dependency", package: "openai" }]);
+    });
+    it("ignores a name that is not a key shape and inherited object names", () => {
+        const env = file(
+            ".env.example",
+            "export OPENAI_API_KEY=1\n  SPACED_API_KEY = 2\nbad-name_KEY=3\n",
+        );
+        const files = [file("requirements.txt", "constructor\ntoString\n")];
+        const r = apiKeyNames({ envExample: env, files, rootRequirements: null }, new Set());
+        expect(r).toEqual({
+            apiKeys: [{ name: "SPACED_API_KEY", from: "env_example" }],
+            otherSecrets: [],
+        });
     });
 });

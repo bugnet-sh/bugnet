@@ -1,3 +1,4 @@
+import type { Fetched, Fetcher, FetchOptions } from "./fetch.ts";
 import type { RepoFile, RepoInfo, RepoSnapshot, TreeEntry } from "./github.ts";
 
 export const now = Date.parse("2026-11-05T12:00:00Z");
@@ -136,6 +137,8 @@ export function mainstream(): RepoSnapshot {
             file("requirements.txt", "click>=8\nitsdangerous>=2\n"),
             file(".github/workflows/release.yml", mainstreamWorkflow),
         ],
+        envExample: null,
+        rootRequirements: null,
         notes: [],
         complete: true,
     };
@@ -198,6 +201,125 @@ export function malicious(): RepoSnapshot {
             file("install.sh", maliciousInstall),
             file("README.md", maliciousReadme),
         ],
+        envExample: null,
+        rootRequirements: null,
+        notes: [],
+        complete: true,
+    };
+}
+
+export interface Route {
+    status?: number;
+    json?: unknown;
+    text?: string;
+    bytes?: Uint8Array;
+    headers?: Record<string, string>;
+}
+
+export function fakeFetch(routes: Record<string, Route>): {
+    fetch: Fetcher;
+    calls: { url: string; opts: FetchOptions }[];
+} {
+    const calls: { url: string; opts: FetchOptions }[] = [];
+    const fetch: Fetcher = async (url, opts): Promise<Fetched> => {
+        calls.push({ url, opts });
+        if (opts.signal.aborted) throw opts.signal.reason;
+        const r = routes[url] ?? routes[url.split("?")[0] as string];
+        if (!r) return { status: 404, url, headers: {}, body: new Uint8Array(), truncated: false };
+        const body = r.bytes ?? new TextEncoder().encode(r.text ?? JSON.stringify(r.json ?? {}));
+        return {
+            status: r.status ?? 200,
+            url,
+            headers: r.headers ?? {},
+            body: body.subarray(0, opts.maxBytes),
+            truncated: body.length > opts.maxBytes,
+        };
+    };
+    return { fetch, calls };
+}
+
+export function githubRoutes(snap: RepoSnapshot): Record<string, Route> {
+    const i = snap.info as NonNullable<RepoSnapshot["info"]>;
+    const api = `https://api.github.com/repos/${i.owner}/${i.repo}`;
+    const routes: Record<string, Route> = {
+        [api]: {
+            json: {
+                full_name: `${i.owner}/${i.repo}`,
+                description: i.description,
+                stargazers_count: i.stars,
+                forks_count: i.forks,
+                created_at: i.createdAt,
+                pushed_at: i.pushedAt,
+                size: i.sizeKiB,
+                archived: i.archived,
+                fork: i.fork,
+                license: i.license ? { spdx_id: i.license, name: i.license } : null,
+                language: i.language,
+                default_branch: i.defaultBranch,
+                topics: i.topics,
+            },
+        },
+        [`https://api.github.com/users/${i.owner}`]: {
+            json: { login: i.owner, type: snap.ownerType, created_at: snap.ownerCreatedAt },
+        },
+        [`${api}/git/trees/${i.defaultBranch}`]: {
+            json: { truncated: false, tree: snap.tree.map((e) => ({ ...e, mode: "100644" })) },
+        },
+    };
+    for (const f of snap.files) {
+        routes[
+            `https://raw.githubusercontent.com/${i.owner}/${i.repo}/${i.defaultBranch}/${f.path}`
+        ] = { text: f.text };
+    }
+    for (const f of [snap.envExample, snap.rootRequirements]) {
+        if (f) {
+            routes[
+                `https://raw.githubusercontent.com/${i.owner}/${i.repo}/${i.defaultBranch}/${f.path}`
+            ] = { text: f.text };
+        }
+    }
+    return routes;
+}
+
+export const leakedKeyValue = "sk-proj-Q7m2Lx9VbT4nR8sW1yK6pH3cJ5dF0gZa";
+
+/* A repo whose code reads an Anthropic, an OpenAI and a fal key, and a local secret */
+
+export function keyedRepo(): RepoSnapshot {
+    return {
+        info: info(),
+        ownerCreatedAt: "2015-01-01T00:00:00Z",
+        ownerType: "User",
+        tree: blobs(
+            "README.md",
+            "package.json",
+            "setup.py",
+            "pyproject.toml",
+            "install.sh",
+            "run.sh",
+            "requirements.txt",
+            ".env.example",
+            ".env.sample",
+            "src/app.py",
+        ),
+        treeTruncated: false,
+        picked: 0,
+        files: [
+            file(
+                "package.json",
+                JSON.stringify({ dependencies: { "@anthropic-ai/sdk": "^0.60.0" } }),
+            ),
+            file("setup.py", "from setuptools import setup\nsetup(name='app')\n"),
+            file("pyproject.toml", "[project]\nname = 'app'\n"),
+            file("install.sh", "#!/bin/sh\necho install\n"),
+            file("run.sh", "#!/bin/sh\necho run\n"),
+            file("README.md", "# App\n"),
+        ],
+        envExample: file(
+            ".env.example",
+            `OPENAI_API_KEY=${leakedKeyValue}\nJWT_SECRET=hunter2-local-value\nDATABASE_URL=postgres://localhost/app\nlower_key=x\n`,
+        ),
+        rootRequirements: file("requirements.txt", "openai>=1.40\nfal_client\n"),
         notes: [],
         complete: true,
     };
