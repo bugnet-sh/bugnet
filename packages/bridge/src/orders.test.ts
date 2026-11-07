@@ -50,6 +50,63 @@ it("keys a start by package and an extend by sandbox and package", () => {
     expect(orderKey("bugnet_status", { packageId: "small-10m" })).toBeNull();
 });
 
+describe("allowance orders", () => {
+    const base = {
+        handle: testHandle,
+        amountUsd: "1.00",
+        confirmPriceUsd: "1.003",
+        services: ["POST https://agent402.tools/v1/auto/chat/completions max=0.01 payTo=P"],
+        spendPerMinuteUsd: "0.50",
+    };
+
+    it("keys a paid allowance by its sandbox alone", () => {
+        expect(orderKey("bugnet_x402_budget", base)).toBe(`allowance\0${testHandle}`);
+        expect(
+            orderKey("bugnet_x402_budget", {
+                ...base,
+                amountUsd: "$2.00",
+                confirmPriceUsd: "2.003",
+                services: [],
+                disable: ["xs_b3mm6u5x36em5pdt"],
+                spendPerMinuteUsd: undefined,
+            }),
+        ).toBe(`allowance\0${testHandle}`);
+        expect(orderKey("bugnet_x402_budget", { ...base, handle: "sbx_" + "c".repeat(26) })).toBe(
+            `allowance\0sbx_${"c".repeat(26)}`,
+        );
+    });
+
+    it("has no key for a free or incomplete budget call", () => {
+        const noHandle: Record<string, unknown> = { ...base, handle: undefined };
+        const noAmount: Record<string, unknown> = { ...base, amountUsd: undefined };
+        for (const args of [
+            { ...base, amountUsd: "0" },
+            { ...base, amountUsd: "0.00" },
+            { ...base, amountUsd: "$0" },
+            noHandle,
+            noAmount,
+            { ...base, amountUsd: "abc" },
+        ]) {
+            expect(orderKey("bugnet_x402_budget", args), JSON.stringify(args)).toBeNull();
+        }
+    });
+
+    it("counts an allowance refused after payment as spent", () => {
+        for (const r of [
+            "sandbox_ended",
+            "sandbox_unknown",
+            "allowance_ceiling",
+            "allowance_pool_full",
+        ]) {
+            expect(spentRefusals.has(r), r).toBe(true);
+        }
+        for (const r of ["x402_paused", "x402_disabled", "x402_unavailable", "fee_mismatch"]) {
+            expect(spentRefusals.has(r), r).toBe(false);
+        }
+        expect(spentRefusals.size).toBe(12);
+    });
+});
+
 it("holds a paid or unsure order for 30 minutes and an order it tried for as long", () => {
     let now = 1_000;
     const orders = new PaidOrders(() => now);
@@ -170,11 +227,15 @@ it("says a paid order's id and claim and never to pay again", () => {
     );
     expect([...spentRefusals].sort()).toEqual([
         "abandoned",
+        "allowance_ceiling",
+        "allowance_pool_full",
         "claim_mismatch",
         "order_closed",
         "order_expired",
         "order_unknown",
         "payment_late",
+        "sandbox_ended",
+        "sandbox_unknown",
         "terms_mismatch",
         "token_expired",
     ]);

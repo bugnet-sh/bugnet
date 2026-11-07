@@ -1,6 +1,6 @@
 // Paid orders the bridge has not redeemed yet, kept in memory so a retry never pays twice
 import type { CallToolResult } from "@modelcontextprotocol/server";
-import type { PaymentStep } from "./pay.ts";
+import { priceMicros, type PaymentStep } from "./pay.ts";
 
 // Payments refunds a paid order nobody redeemed after 30 minutes
 export const paidOrderTtlMs = 30 * 60_000;
@@ -14,6 +14,13 @@ const states: readonly string[] = ["unpaid", "settling", "paid", "expired", "ref
 
 export function orderKey(tool: string, args: Record<string, unknown>): string | null {
     const { handle, packageId } = args;
+    if (tool === "bugnet_x402_budget") {
+        // Every paid allowance call for a sandbox shares one key, so a changed retry never pays a second order
+        const amount = priceMicros(args.amountUsd);
+        return typeof handle === "string" && amount !== null && amount > 0
+            ? `allowance\0${handle}`
+            : null;
+    }
     if (typeof packageId !== "string") return null;
     if (tool === "bugnet_start") return `start\0${packageId}`;
     if (tool === "bugnet_extend" && typeof handle === "string") {
@@ -200,6 +207,11 @@ export const spentRefusals: ReadonlySet<string> = new Set([
     "terms_mismatch",
     "payment_late",
     "token_expired",
+    // Payments refunds an allowance its paid check refused, and an ended sandbox can use none
+    "sandbox_ended",
+    "sandbox_unknown",
+    "allowance_ceiling",
+    "allowance_pool_full",
 ]);
 
 export function unpaidText(

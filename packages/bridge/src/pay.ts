@@ -11,7 +11,12 @@ export const progressEveryMs = 5_000;
 // Bounds pay's connect and its tool listing
 export const payStartTimeoutMs = 15_000;
 
-export type PaidTool = "bugnet_start" | "bugnet_extend";
+export type PaidTool = "bugnet_start" | "bugnet_extend" | "bugnet_x402_budget";
+export const paidTools: readonly PaidTool[] = [
+    "bugnet_start",
+    "bugnet_extend",
+    "bugnet_x402_budget",
+];
 
 export interface PaymentStep {
     tool: PaidTool;
@@ -25,8 +30,12 @@ const orderIdPattern = /^[A-Za-z0-9_-]{1,200}$/;
 const claimPattern = /^[A-Za-z0-9_-]{43}$/;
 const amountPattern = /^\d{1,15}$/;
 
+export function isPaidTool(tool: string): tool is PaidTool {
+    return (paidTools as readonly string[]).includes(tool);
+}
+
 export function paymentStep(tool: string, result: CallToolResult): PaymentStep | null {
-    if (tool !== "bugnet_start" && tool !== "bugnet_extend") return null;
+    if (!isPaidTool(tool)) return null;
     const required = paymentRequired(result);
     if (!required) return null;
     const s = result.structuredContent as Record<string, unknown>;

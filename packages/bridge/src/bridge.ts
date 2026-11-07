@@ -39,6 +39,7 @@ import {
     type PublicOrderState,
 } from "./orders.ts";
 import {
+    isPaidTool,
     maxPaymentMicros,
     paymentStep,
     payRefusal,
@@ -171,10 +172,6 @@ const lastingRefusals: ReadonlySet<string> = new Set([
 
 const waitingInPay = "waiting for the payment to be approved in pay";
 
-function isPaidTool(name: string): boolean {
-    return name === "bugnet_start" || name === "bugnet_extend";
-}
-
 // The client never sees an answer that lands after it gave up, so its order stays held
 function unseen(result: RemoteResult, signal: AbortSignal): boolean {
     return signal.aborted || isInputRequiredResult(result);
@@ -306,7 +303,7 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             ...(relay ? { onprogress: relay } : {}),
         });
 
-    // Pays a payment step of bugnet_start or bugnet_extend and redeems the order it names
+    // Pays a paid tool's payment step and redeems the order it names
     const payFlow = async (
         req: CallToolRequest,
         ctx: ServerContext,

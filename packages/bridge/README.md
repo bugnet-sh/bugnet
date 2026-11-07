@@ -125,7 +125,8 @@ link as off its origin and hands the payment step back unpaid.
 
 ## Paying
 
-When `bugnet_start` or `bugnet_extend` answers with a payment step, the bridge pays it:
+When `bugnet_start`, `bugnet_extend` or `bugnet_x402_budget` answers with a payment step, the
+bridge pays it:
 
 1. It checks that the pay link is `pay_origin` followed by `/o/` and the order, that the payment
    names that order, and that the amount is at most the `confirmPriceUsd` you approved.
@@ -133,13 +134,13 @@ When `bugnet_start` or `bugnet_extend` answers with a payment step, the bridge p
 --max-payment <that price>`, with every `PAY_` variable removed and without letting pay ask
    through your client, so pay asks for Touch ID or pays nothing.
 3. Once pay has paid, it calls the tool again with the order and its claim, and you get the
-   sandbox.
+   sandbox, the time or the x402 allowance.
 
 It pays an order at most once. If your client stops waiting, the bridge keeps the paid order for
-30 minutes and uses it on the next call for the same size instead of paying again. Without
-`pay`, or with `pay_command = ""`, it opens the pay link in your client when the client can open
-links, waits up to 10 minutes for you to pay in the browser, and goes on. Other clients get the
-pay link to show you.
+30 minutes and uses it on the next call for the same size, or the next x402 allowance call for the
+same sandbox, instead of paying again. Without `pay`, or with `pay_command = ""`, it opens the pay
+link in your client when the client can open links, waits up to 10 minutes for you to pay in the
+browser, and goes on. Other clients get the pay link to show you.
 
 ## Secrets from your machine
 

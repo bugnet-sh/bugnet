@@ -197,6 +197,14 @@ it("rebuilds the payment step as the gateway words it", () => {
             ),
         },
     ]);
+    const budget = paymentStepResult({ ...step, tool: "bugnet_x402_budget" });
+    const text = (budget.content[0] as { text: string }).text;
+    expect(text).toContain(
+        `(orderId "${step.orderId}", claim "${step.claim}" and this sandbox's handle)`,
+    );
+    expect(text).toContain(
+        "Calling bugnet_x402_budget again without this orderId opens a new order the user would pay again.",
+    );
     expect(lostLinkText("bugnet_start")).toBe(
         "This pay link is no longer valid. Call " +
             "bugnet_start again with the orderId and claim from its payment step, since a call " +

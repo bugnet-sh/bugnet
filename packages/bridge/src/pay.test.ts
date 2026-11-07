@@ -12,6 +12,7 @@ import {
     payEnv,
     paymentStep,
     payRefusal,
+    paidTools,
     payTimeoutMs,
     priceMicros,
     progressEveryMs,
@@ -94,7 +95,7 @@ describe("pay helpers", () => {
         }
     });
 
-    it("reads a v2 payment step of the two paid tools only", () => {
+    it("reads a v2 payment step of the paid tools only", () => {
         expect(paymentStep("bugnet_start", stepResult())).toEqual({
             tool: "bugnet_start",
             orderId,
@@ -112,6 +113,41 @@ describe("pay helpers", () => {
         expect(
             paymentStep("bugnet_start", stepResult({ accepts: [{ amount: "5e4" }] })),
         ).toBeNull();
+    });
+
+    it("reads a bugnet_x402_budget payment step", () => {
+        const due = stepResult({
+            accepts: [{ scheme: "exact", amount: "5003000", payTo: "P", extra: { memo: orderId } }],
+        });
+        expect(paymentStep("bugnet_x402_budget", due)).toEqual({
+            tool: "bugnet_x402_budget",
+            orderId,
+            claim,
+            payUrl: "https://pay.bugnet.sh/o/" + orderId,
+            amountMicros: 5_003_000,
+        });
+        expect(paymentStep("bugnet_x402_find", stepResult())).toBeNull();
+        expect(paidTools).toEqual(["bugnet_start", "bugnet_extend", "bugnet_x402_budget"]);
+    });
+
+    it("caps pay at the confirmed price of an allowance, or of a start with one", () => {
+        expect(
+            payArgs("https://pay.bugnet.sh", maxPaymentMicros([priceMicros("5.003") as number])),
+        ).toEqual([
+            "mcp",
+            "--allow-origin",
+            "https://pay.bugnet.sh",
+            "--allow-network",
+            "mainnet",
+            "--max-payment",
+            "$5.003",
+        ]);
+        // A $0.05 package, the $5.00 allowance and the fee
+        expect(
+            payArgs("https://pay.bugnet.sh", maxPaymentMicros([priceMicros("5.053") as number])).at(
+                -1,
+            ),
+        ).toBe("$5.053");
     });
 
     it("refuses a link off the origin, off the order's path, naming another memo or above the price", () => {

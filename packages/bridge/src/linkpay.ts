@@ -109,7 +109,7 @@ export function paymentStepResult(step: PaymentStep, quoteId?: string): CallTool
     const id = step.orderId;
     const named = quoteId
         ? ` (orderId "${id}", claim "${step.claim}", quoteId "${quoteId}")`
-        : step.tool === "bugnet_extend"
+        : step.tool !== "bugnet_start"
           ? ` (orderId "${id}", claim "${step.claim}" and this sandbox's handle)`
           : ` (orderId "${id}", claim "${step.claim}")`;
     const guide = [

@@ -3,6 +3,7 @@ import {
     packageOption,
     placement,
     routerError,
+    testConfig,
     testPayments,
     type RouterImpl,
     type TestPayments,
@@ -255,6 +256,26 @@ const standInStep: PaymentStep = {
     payUrl: `${testPayOrigin}/o/${standInOrder}`,
     amountMicros: 50_000,
 };
+const allowanceKey = `allowance\0${testHandle}`;
+const budgetArgs = { handle: testHandle, amountUsd: "1.00", confirmPriceUsd: "1.003" };
+const otherHandle = "sbx_" + "b".repeat(26);
+
+// A gateway with x402 on whose router takes every service and enables at once
+async function budgetGateway(
+    payments = requirePayments(),
+): Promise<FakeGateway & { payments: TestPayments }> {
+    const gw = await fakeGateway(
+        { ...grantRouter, checkX402: () => ({}), enableX402: () => ({ services: [] }) },
+        {
+            config: testConfig(
+                'listen_addr = "127.0.0.1:0"\n[tools]\nrequire_user_approval = false\n[x402]\nenabled = true',
+            ),
+            payments,
+        },
+    );
+    open.push(gw.close);
+    return { ...gw, payments };
+}
 
 // The gateway's v2 payment step for the stand-in's order, with any field replaced
 function stepResult(over: Record<string, unknown> = {}): CallToolResult {
@@ -709,6 +730,143 @@ describe.each(["legacy", "modern"] as const)("paying with pay, %s client", (era)
     });
 });
 
+describe.each(["legacy", "modern"] as const)("paying for x402 allowances, %s client", (era) => {
+    const paidIn = (r: { structuredContent?: unknown }) =>
+        (r.structuredContent as { x402: { paidInUsd: string } }).x402.paidInUsd;
+
+    it("pays a $5.003 allowance once and returns the enabled view", async () => {
+        const gw = await budgetGateway();
+        const payer = payingPayer(gw.payments);
+        const pay = devPay(gw.payments, payer);
+        const b = await bridge({ gateway: gw.url, era, deps: { pay } });
+        const r = await b.client.callTool({
+            name: "bugnet_x402_budget",
+            arguments: { ...budgetArgs, amountUsd: "5.00", confirmPriceUsd: "5.003" },
+        });
+        expect(r.isError).toBeFalsy();
+        expect(paidIn(r)).toBe("$5.00");
+        expect(payer.calls).toHaveLength(1);
+        const { step, maxMicros } = payer.calls[0]!;
+        expect(maxMicros).toBe(5_003_000);
+        expect(step).toMatchObject({ tool: "bugnet_x402_budget", amountMicros: 5_003_000 });
+        expect(gw.payments.orders[0]).toMatchObject({
+            kind: "allowance",
+            packageId: "x402-allowance",
+            amountMicros: 5_003_000,
+            allowanceMicros: 5_000_000,
+            feeMicros: 3_000,
+        });
+        // The paid retry sends no terms
+        expect(gw.payments.orders[1]).toEqual({
+            orderId: step.orderId,
+            claim: step.claim,
+            handleSha256: gw.payments.orders[0]!.handleSha256,
+        });
+        expect(pay.orders.heldFor(allowanceKey)).toBeUndefined();
+        expect(b.lines.join("\n")).not.toContain(step.claim);
+    });
+
+    it("makes a paid call for the same sandbox wait for the running pay and use its order", async () => {
+        const gw = await budgetGateway();
+        let release = () => {};
+        const gate = new Promise<void>((r) => {
+            release = r;
+        });
+        const payer = payingPayer(gw.payments, { gate });
+        const pay = devPay(gw.payments, payer);
+        const flights = vi.spyOn(pay.orders, "flight");
+        const b = await bridge({ gateway: gw.url, era, deps: { pay } });
+        const giveUp = new AbortController();
+        const first = b.client.callTool(
+            { name: "bugnet_x402_budget", arguments: budgetArgs },
+            { signal: giveUp.signal },
+        );
+        await payer.started;
+        giveUp.abort();
+        await expect(first).rejects.toThrow();
+        const step = payer.calls[0]!.step;
+        const retry = b.client.callTool({
+            name: "bugnet_x402_budget",
+            arguments: { ...budgetArgs, amountUsd: "2.00", confirmPriceUsd: "2.003" },
+        });
+        await vi.waitFor(() => expect(flights).toHaveBeenCalled());
+        release();
+        const r = await retry;
+        expect(r.isError).toBeFalsy();
+        // The held order's terms, which its view shows
+        expect(paidIn(r)).toBe("$1.00");
+        expect(payer.calls).toHaveLength(1);
+        expect(gw.payments.orders.filter((o) => o.claim === undefined)).toHaveLength(1);
+        expect(gw.payments.orders.at(-1)).toMatchObject({
+            orderId: step.orderId,
+            claim: step.claim,
+        });
+        expect(gw.payments.orders.every((o) => o.payment === undefined)).toBe(true);
+        expect(b.lines.join("\n")).not.toContain(step.claim);
+        const other = await b.client.callTool({
+            name: "bugnet_x402_budget",
+            arguments: { ...budgetArgs, handle: otherHandle },
+        });
+        expect(other.isError).toBeFalsy();
+        expect(payer.calls).toHaveLength(2);
+        expect(gw.payments.orders.filter((o) => o.claim === undefined)).toHaveLength(2);
+    });
+
+    it("pays a budget order at its link when pay is missing", async () => {
+        const gw = await budgetGateway();
+        const b = await bridge({
+            gateway: gw.url,
+            era,
+            elicitUrl: () => ({ action: "accept" }),
+            deps: {
+                pay: devPay(gw.payments, null, {
+                    status: queued(gw.payments, ["unpaid", "paid"]),
+                }),
+            },
+        });
+        const r = await b.client.callTool({ name: "bugnet_x402_budget", arguments: budgetArgs });
+        expect(r.isError).toBeFalsy();
+        expect(paidIn(r)).toBe("$1.00");
+        const id = gw.payments.orders[1]!.orderId;
+        expect(b.urls).toEqual([`${testPayOrigin}/o/${id}`]);
+        expect(b.prompts).toEqual([
+            `Pay $1.003 USDC for Bugnet order ${id} with a Solana wallet in your browser. The agent goes on once it is paid.`,
+        ]);
+        expect(gw.payments.orders[1]!.claim).toMatch(/^[A-Za-z0-9_-]{43}$/);
+        expect(gw.payments.orders[1]).not.toHaveProperty("amountMicros");
+    });
+
+    it("gives a held allowance link back to a changed call for the same sandbox", async () => {
+        const gw = await budgetGateway();
+        const pay = devPay(gw.payments, null, { status: async () => "unpaid" });
+        const b = await bridge({
+            gateway: gw.url,
+            era,
+            elicitUrl: () => ({ action: "decline" }),
+            deps: { pay },
+        });
+        const first = await b.client.callTool({
+            name: "bugnet_x402_budget",
+            arguments: budgetArgs,
+        });
+        const { orderId: id, claim } = first.structuredContent as {
+            orderId: string;
+            claim: string;
+        };
+        expect(pay.orders.heldFor(allowanceKey)).toMatchObject({ orderId: id, state: "unknown" });
+        const second = await b.client.callTool({
+            name: "bugnet_x402_budget",
+            arguments: { ...budgetArgs, amountUsd: "2.00", confirmPriceUsd: "2.003" },
+        });
+        expect(second.structuredContent).toEqual(expect.objectContaining({ orderId: id }));
+        expect((second.content as { text: string }[]).map((c) => c.text).join("\n")).toContain(
+            `(orderId "${id}", claim "${claim}" and this sandbox's handle)`,
+        );
+        expect(b.urls).toEqual([`${testPayOrigin}/o/${id}`, `${testPayOrigin}/o/${id}`]);
+        expect(gw.payments.orders).toHaveLength(1);
+    });
+});
+
 describe("paying with pay, the gateway stand-in", () => {
     it("never pays a link off the origin, off the order's path, naming another memo or above the price", async () => {
         for (const over of [
@@ -798,6 +956,45 @@ describe("paying with pay, the gateway stand-in", () => {
             standInClaim,
         ]);
     });
+
+    it("forgets a held allowance Payments refused after payment, and opens a new order next call", async () => {
+        const budgetStep = () =>
+            stepResult({
+                accepts: [
+                    {
+                        scheme: "exact",
+                        amount: "1003000",
+                        payTo: "P",
+                        extra: { memo: standInOrder },
+                    },
+                ],
+            });
+        const refusedText =
+            "x402: the payment would pass Bugnet's x402 limits, so it is refunded in full to the paying wallet within 10 minutes and nothing was enabled.";
+        const remote = fakeRemote((params) =>
+            (params.arguments as { claim?: string }).claim === undefined
+                ? budgetStep()
+                : {
+                      isError: true,
+                      content: [{ type: "text", text: refusedText }],
+                      structuredContent: {
+                          message: refusedText,
+                          orderId: standInOrder,
+                          refusal: "allowance_ceiling",
+                      },
+                  },
+        );
+        const pay = devPay(testPayments(), payingPayer(testPayments(), { pays: false }));
+        const b = await bridge({ remote, deps: { pay } });
+        const r = await b.client.callTool({ name: "bugnet_x402_budget", arguments: budgetArgs });
+        expect(r.isError).toBe(true);
+        expect((r.content as { text: string }[]).at(-1)!.text).toBe(
+            `${refusedText}${spentOrderText(standInStep)}`,
+        );
+        expect(pay.orders.heldFor(allowanceKey)).toBeUndefined();
+        await b.client.callTool({ name: "bugnet_x402_budget", arguments: budgetArgs });
+        expect(remote.calls[2]!.params.arguments).toEqual(budgetArgs);
+    });
 });
 
 describe("settling holds, the gateway stand-in", () => {
@@ -818,6 +1015,7 @@ describe("settling holds, the gateway stand-in", () => {
     it.each([
         ["bugnet_start", key, standInArgs],
         ["bugnet_extend", `extend\0${testHandle}\0more-10m`, extendArgs],
+        ["bugnet_x402_budget", allowanceKey, budgetArgs],
     ] as const)(
         "settles the held order %s names, even when a newer one is held too",
         async (tool, k, args) => {
