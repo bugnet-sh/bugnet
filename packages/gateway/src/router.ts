@@ -65,6 +65,7 @@ export class GatewayError extends Error {
         message: string,
         readonly retryAfterMs: number | null = null,
         readonly reason: string | null = null,
+        readonly fields: Record<string, unknown> | null = null,
     ) {
         super(message);
     }

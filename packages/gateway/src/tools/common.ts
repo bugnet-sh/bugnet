@@ -92,7 +92,12 @@ export function failure(err: unknown, what: string): CallToolResult {
     const e = err instanceof GatewayError ? err : fromRouter(err, what);
     const retry =
         e.retryAfterMs !== null ? ` Retry after ${Math.ceil(e.retryAfterMs / 1000)} s.` : "";
-    return { content: [{ type: "text", text: `${e.message}.${retry}` }], isError: true };
+    const text = `${e.message}.${retry}`;
+    return {
+        content: [{ type: "text", text }],
+        isError: true,
+        ...(e.fields ? { structuredContent: { message: text, ...e.fields } } : {}),
+    };
 }
 
 // A bare NotFound is a missing thing on a live sandbox, or an unknown handle on older routers

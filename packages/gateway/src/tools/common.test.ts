@@ -12,7 +12,8 @@ import {
     testHandle,
     type RouterImpl,
 } from "../testing/harness.ts";
-import { idempotencyKey, ok, usd, type Register } from "./common.ts";
+import { GatewayError } from "../router.ts";
+import { failure, idempotencyKey, ok, usd, type Register } from "./common.ts";
 
 const keyTool: Register = (server) => {
     server.registerTool(
@@ -181,5 +182,33 @@ describe("NotFound answers", () => {
             `${what}: no sandbox has this handle. Check it was copied in full, or quote and ` +
                 "start a new one.",
         );
+    });
+});
+
+describe("failure", () => {
+    it("puts an error's fields beside its text", () => {
+        const e = new GatewayError(
+            "precondition",
+            "start: order ord_1 is already paid",
+            null,
+            null,
+            { orderId: "ord_1", refusal: "paid_claim_required" },
+        );
+        expect(failure(e, "start")).toEqual({
+            content: [{ type: "text", text: "start: order ord_1 is already paid." }],
+            isError: true,
+            structuredContent: {
+                message: "start: order ord_1 is already paid.",
+                orderId: "ord_1",
+                refusal: "paid_claim_required",
+            },
+        });
+    });
+
+    it("keeps an error without fields to its text", () => {
+        expect(failure(new GatewayError("invalid", "start: bad"), "start")).toEqual({
+            content: [{ type: "text", text: "start: bad." }],
+            isError: true,
+        });
     });
 });

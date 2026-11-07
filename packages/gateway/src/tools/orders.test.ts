@@ -1,0 +1,248 @@
+import { describe, expect, it } from "vitest";
+import type { AwaitingPayment, RefusalReason, RefusedOrder } from "../payments/port.ts";
+import {
+    claimInput,
+    isPaidRetry,
+    paymentRequiredResult,
+    refusalError,
+    retryCall,
+} from "./orders.ts";
+
+const claim = "C".repeat(43);
+const required = { x402Version: 2, accepts: [{ amount: "50000" }] };
+const payUrl = "https://pay.bugnet.sh/o/ord_2";
+const step = (over: Partial<AwaitingPayment> = {}): AwaitingPayment => ({
+    status: "payment_required",
+    orderId: "ord_2",
+    payUrl,
+    paymentRequired: required,
+    ...over,
+});
+const show = "Show the user the link, since they pay in their own browser.";
+const limit =
+    "The x402 maxTimeoutSeconds limits a wallet's signed payment, not the user's time to pay.";
+const next =
+    `Next: pay at ${payUrl} with a Solana wallet holding USDC, then call bugnet_redeem ` +
+    "with orderId and claim";
+
+describe("claimInput and isPaidRetry", () => {
+    it("takes a claim of 43 base64url characters only", () => {
+        expect(claimInput.safeParse(claim).success).toBe(true);
+        for (const bad of ["a".repeat(42), "a".repeat(44), "a".repeat(42) + "+"]) {
+            const r = claimInput.safeParse(bad);
+            expect(r.success).toBe(false);
+            expect(r.error?.issues[0]?.message).toBe(
+                "the 43-character claim from the payment step",
+            );
+        }
+    });
+
+    it("counts only orderId with claim and no payment as a paid retry", () => {
+        expect(isPaidRetry({ orderId: "o", claim }, undefined)).toBe(true);
+        expect(isPaidRetry({ orderId: "o", claim }, { signed: true })).toBe(false);
+        expect(isPaidRetry({ orderId: "o" }, undefined)).toBe(false);
+        expect(isPaidRetry({ claim }, undefined)).toBe(false);
+    });
+});
+
+describe("paymentRequiredResult", () => {
+    it("names the pay link, the claim and the quote for a new start order", () => {
+        const r = paymentRequiredResult(step({ claim }), { tool: "bugnet_start", quoteId: "q3.x" });
+        const guide = [
+            "Payment required for order ord_2.",
+            `${next} (orderId "ord_2", claim "${claim}", quoteId "q3.x").`,
+            show,
+            "Calling bugnet_start again without this orderId opens a new order the user would " +
+                "pay again.",
+            limit,
+        ].join(" ");
+        expect(r).toEqual({
+            isError: true,
+            content: [
+                { type: "text", text: JSON.stringify(required) },
+                { type: "text", text: guide },
+            ],
+            structuredContent: {
+                ...required,
+                message: guide,
+                orderId: "ord_2",
+                payUrl,
+                claim,
+                quoteId: "q3.x",
+            },
+        });
+        expect(JSON.stringify(r)).not.toMatch(/x402-capable|pays automatically/);
+    });
+
+    it("names the handle for an extend order", () => {
+        const r = paymentRequiredResult(step({ claim }), {
+            tool: "bugnet_extend",
+            withHandle: true,
+        });
+        expect(r.content?.[1]).toEqual({
+            type: "text",
+            text: [
+                "Payment required for order ord_2.",
+                `${next} (orderId "ord_2", claim "${claim}" and this sandbox's handle).`,
+                show,
+                "Calling bugnet_extend again without this orderId opens a new order the user " +
+                    "would pay again.",
+                limit,
+            ].join(" "),
+        });
+        expect(r.structuredContent).not.toHaveProperty("quoteId");
+    });
+
+    it("says a redeemed order is not paid yet, with the claim the call sent", () => {
+        const r = paymentRequiredResult(step(), {
+            tool: "bugnet_redeem",
+            sentOrderId: "ord_2",
+            sentClaim: claim,
+        });
+        expect(r.content?.[1]).toEqual({
+            type: "text",
+            text: [
+                "Order ord_2 is not paid yet, and a payment can take a few seconds to confirm.",
+                `${next} (orderId "ord_2", claim "${claim}").`,
+                show,
+                limit,
+            ].join(" "),
+        });
+        expect(r.structuredContent).toEqual(expect.objectContaining({ claim }));
+    });
+
+    it("points at the first payment step when no claim is known", () => {
+        const r = paymentRequiredResult(step(), { tool: "bugnet_start", sentOrderId: "ord_2" });
+        expect((r.content?.[1] as { text: string }).text).toContain(
+            `${next} (orderId "ord_2" and the claim from its first payment step).`,
+        );
+        expect(r.structuredContent).not.toHaveProperty("claim");
+    });
+
+    it("names no quoteId it was not given", () => {
+        const r = paymentRequiredResult(step({ claim }), { tool: "bugnet_start" });
+        expect((r.content?.[1] as { text: string }).text).toContain(
+            `${next} (orderId "ord_2", claim "${claim}").`,
+        );
+        expect(r.structuredContent).not.toHaveProperty("quoteId");
+    });
+});
+
+describe("retryCall", () => {
+    it("names what the retry carries", () => {
+        expect(retryCall("bugnet_redeem", "ord_1", { claim, quoteId: "q" })).toBe(
+            `bugnet_redeem with orderId "ord_1", claim "${claim}" and quoteId "q"`,
+        );
+        expect(retryCall("bugnet_extend", "ord_1", { claim, handle: true })).toBe(
+            `bugnet_extend with the handle, orderId "ord_1" and claim "${claim}"`,
+        );
+        expect(retryCall("bugnet_start", "ord_1", { claim })).toBe(
+            `bugnet_start with orderId "ord_1" and claim "${claim}"`,
+        );
+        expect(retryCall("bugnet_start", "ord_1", { payment: true })).toBe(
+            'bugnet_start with orderId "ord_1" and the same payment',
+        );
+        expect(retryCall("bugnet_extend", "ord_1", {})).toBe('bugnet_extend with orderId "ord_1"');
+    });
+});
+
+describe("refusalError", () => {
+    const refused = (reason: RefusalReason, over: Partial<RefusedOrder> = {}): RefusedOrder => ({
+        status: "refused",
+        orderId: "ord_1",
+        reason,
+        ...over,
+    });
+
+    it("tells the model to bring the claim and never pay again", () => {
+        const e = refusalError(refused("paid_claim_required"), "start", "bugnet_start");
+        expect([e.kind, e.message, e.fields]).toEqual([
+            "precondition",
+            'start: order ord_1 is already paid. Call bugnet_start again with orderId "ord_1" ' +
+                "and the claim from its payment step, and do not pay it again. If the claim is " +
+                "lost, the payment is refunded automatically",
+            { orderId: "ord_1", refusal: "paid_claim_required" },
+        ]);
+    });
+
+    it("words a wrong claim, a settling payment and other terms", () => {
+        const wrong = refusalError(refused("claim_mismatch"), "redeem", "bugnet_redeem");
+        expect([wrong.kind, wrong.message]).toEqual([
+            "invalid",
+            "redeem: that claim does not belong to order ord_1, copy the claim from its payment " +
+                "step exactly",
+        ]);
+        const settling = refusalError(refused("settling"), "extend", "bugnet_extend");
+        expect([settling.kind, settling.retryAfterMs, settling.message]).toEqual([
+            "unavailable",
+            3000,
+            "extend: the payment for order ord_1 is still confirming. Call again with the same " +
+                "orderId and claim, and do not pay again",
+        ]);
+        expect(
+            refusalError(refused("settling", { retryAfterSeconds: 5 }), "start", "bugnet_start")
+                .retryAfterMs,
+        ).toBe(5000);
+        // Port §2, a payment proves the order on its own, so its retry names no claim
+        expect(
+            refusalError(refused("settling"), "start", "bugnet_start", { paymentSent: true })
+                .message,
+        ).toBe(
+            "start: the payment for order ord_1 is still confirming. Call again with the same " +
+                "orderId and payment, and do not pay again",
+        );
+        expect(
+            refusalError(refused("terms_mismatch"), "redeem", "bugnet_redeem", { handleSent: true })
+                .message,
+        ).toBe(
+            "redeem: order ord_1 is not for that sandbox. Check the handle, and leave it out " +
+                "when the order starts a new sandbox",
+        );
+        const terms = refusalError(refused("terms_mismatch"), "start", "bugnet_start");
+        expect([terms.kind, terms.message]).toEqual([
+            "invalid",
+            "start: order ord_1 is for another package or sandbox",
+        ]);
+    });
+
+    it("keeps today's words for every other reason", () => {
+        const blocked = refusalError(refused("payer_blocked"), "start", "bugnet_start");
+        expect([blocked.kind, blocked.message, blocked.retryAfterMs, blocked.fields]).toEqual([
+            "denied",
+            "payment refused: payer_blocked",
+            null,
+            { orderId: "ord_1", refusal: "payer_blocked" },
+        ]);
+        const limited = refusalError(
+            refused("payer_rate_limited", { retryAfterSeconds: 30 }),
+            "start",
+            "bugnet_start",
+        );
+        expect([limited.kind, limited.retryAfterMs]).toEqual(["rate_limited", 30_000]);
+        const bare = refusalError(
+            { status: "refused", reason: "bad_request" },
+            "start",
+            "bugnet_start",
+        );
+        expect(bare.fields).toEqual({ refusal: "bad_request" });
+    });
+
+    it("uses the orderId the call sent when the refusal has none", () => {
+        const e = refusalError(
+            { status: "refused", reason: "claim_mismatch" },
+            "start",
+            "bugnet_start",
+            {
+                sentOrderId: "ord_9",
+            },
+        );
+        expect(e.message).toMatch(/order ord_9,/);
+        expect(e.fields).toEqual({ orderId: "ord_9", refusal: "claim_mismatch" });
+        const none = refusalError(
+            { status: "refused", reason: "paid_claim_required" },
+            "start",
+            "bugnet_start",
+        );
+        expect(none.message).toBe("payment refused: paid_claim_required");
+    });
+});

@@ -150,4 +150,18 @@ describe("quote ids", () => {
             "not a quote id, call bugnet_quote",
         );
     });
+    it("skip only the expiry when a paid order allows an expired quote", () => {
+        const id = signQuote(key, claims);
+        expect(verifyQuote(key, id, expiresAt + 3_600_000, { allowExpired: true })).toEqual(claims);
+        const forged = signQuote(Buffer.alloc(32, 8), claims);
+        expect(() => verifyQuote(key, forged, expiresAt + 1, { allowExpired: true })).toThrow(
+            /does not verify/,
+        );
+        expect(() =>
+            verifyQuote(key, `${id}.extra`, expiresAt + 1, { allowExpired: true }),
+        ).toThrow(/malformed/);
+        expect(() => verifyQuote(key, id, expiresAt, { allowExpired: false })).toThrow(
+            "quote expired, call bugnet_quote again",
+        );
+    });
 });

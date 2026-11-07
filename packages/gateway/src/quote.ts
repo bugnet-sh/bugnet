@@ -79,7 +79,12 @@ export function signQuote(key: Buffer, claims: QuoteClaims): string {
     return `${prefix}${body}.${mac(key, body)}`;
 }
 
-export function verifyQuote(key: Buffer, token: string, now: number): QuoteClaims {
+export function verifyQuote(
+    key: Buffer,
+    token: string,
+    now: number,
+    opts: { allowExpired?: boolean } = {},
+): QuoteClaims {
     const id = token.trim();
     if (oldPrefixes.some((p) => id.startsWith(p))) {
         throw new QuoteError(
@@ -109,7 +114,8 @@ export function verifyQuote(key: Buffer, token: string, now: number): QuoteClaim
         );
     }
     const expiresAt = Number.parseInt(exp, 36) * 1000;
-    if (!Number.isFinite(expiresAt) || now >= expiresAt) {
+    // A paid order's quote only carries the requirements, so its expiry no longer matters
+    if (!Number.isFinite(expiresAt) || (!opts.allowExpired && now >= expiresAt)) {
         throw new QuoteError("quote expired, call bugnet_quote again");
     }
     const requirements = {
