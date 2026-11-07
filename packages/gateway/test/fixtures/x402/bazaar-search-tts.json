@@ -1,0 +1,723 @@
+{
+    "resources": [
+        {
+            "accepts": [
+                {
+                    "amount": "20000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:8453",
+                    "payTo": "0x7dd5Be069f2d2eAd75eC7C3423B116fF043c2629",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "20000000000000000",
+                    "asset": "0xFAfDdbb3FC7688494971a79cc65DCa3EF82079E7",
+                    "extra": {
+                        "name": "USDm",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:4326",
+                    "payTo": "0x7dd5Be069f2d2eAd75eC7C3423B116fF043c2629",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "20000",
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "feePayer": "Hc3sdEAsCGQcpgfivywog9uwtk8gUBUZgsxdME1EJy88"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "payTo": "Gzehfseq1k9AcHFSoV7qHmDGQx92nLMw78XXdqVWQQWa",
+                    "scheme": "exact"
+                }
+            ],
+            "description": "x402engine — Premium text-to-speech with ElevenLabs — ultra-realistic voices, multilingual support, custom voice IDs",
+            "extensions": {
+                "bazaar": {
+                    "info": {
+                        "input": {
+                            "body": {
+                                "format": "mp3_44100_128",
+                                "model_id": "eleven_multilingual_v2",
+                                "text": "Hello world",
+                                "voice_id": "21m00Tcm4TlvDq8ikWAM"
+                            },
+                            "bodyType": "json",
+                            "method": "POST",
+                            "type": "http"
+                        },
+                        "output": {
+                            "example": {
+                                "audio": "<base64-encoded audio>",
+                                "format": "mp3_44100_128"
+                            },
+                            "type": "json"
+                        }
+                    }
+                }
+            },
+            "lastUpdated": "2026-11-06T17:31:25.486Z",
+            "quality": {
+                "l30DaysTotalCalls": 2042,
+                "l30DaysUniquePayers": 12,
+                "lastCalledAt": "2026-11-05T23:27:40.417Z"
+            },
+            "resource": "https://x402engine.app/api/tts/elevenlabs",
+            "type": "http",
+            "x402Version": 2
+        },
+        {
+            "accepts": [
+                {
+                    "amount": "7000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 60,
+                    "network": "eip155:8453",
+                    "payTo": "0x2A266c87F7b0D1F8A471D2d5234F5CF4FB62b206",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "7000",
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "feePayer": "BENrLoUbndxoNMUS5JXApGMtNykLjFXXixMtpDwDR9SP"
+                    },
+                    "maxTimeoutSeconds": 60,
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "payTo": "FZFwXPrnGUKZ9YzgfgXbmbaDzAS8dNEjcrBXkXoKbX9A",
+                    "scheme": "exact"
+                }
+            ],
+            "description": "ElevenLabs TTS: 29 characters, voice cgSgspJ2msm6clMCkdW9",
+            "extensions": {
+                "bazaar": {
+                    "info": {
+                        "input": {
+                            "body": {
+                                "text": "One request, one voice track.",
+                                "voice": "cgSgspJ2msm6clMCkdW9"
+                            },
+                            "bodyType": "json",
+                            "method": "POST",
+                            "type": "http"
+                        },
+                        "output": {
+                            "example": "binary audio/mpeg response body (~1 KB per spoken word)",
+                            "format": "audio/mpeg",
+                            "type": "text"
+                        }
+                    }
+                }
+            },
+            "lastUpdated": "2026-11-06T17:07:05.386Z",
+            "quality": {
+                "l30DaysTotalCalls": 26,
+                "l30DaysUniquePayers": 9,
+                "lastCalledAt": "2026-11-06T05:53:04.718Z"
+            },
+            "resource": "https://kino402.com/v1/audio/tts",
+            "serviceName": "kino402",
+            "tags": ["x402", "video", "generation"],
+            "type": "http",
+            "x402Version": 2
+        },
+        {
+            "accepts": [
+                {
+                    "amount": "1082",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 120,
+                    "network": "eip155:8453",
+                    "payTo": "0xC23d1Dc0f5fCe1abfFB051e06cB93f0329968B4e",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "2082",
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "feePayer": "Hc3sdEAsCGQcpgfivywog9uwtk8gUBUZgsxdME1EJy88"
+                    },
+                    "maxTimeoutSeconds": 120,
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "payTo": "4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu",
+                    "scheme": "exact"
+                }
+            ],
+            "description": "Text-to-speech API (Kokoro, ElevenLabs, Gemini and more), OpenAI speech format. Pay per request in USDC on Base or Solana, no key.",
+            "extensions": {
+                "bazaar": {
+                    "info": {
+                        "input": {
+                            "body": {
+                                "input": "Hello from SingIt.",
+                                "model": "venice-kokoro-tts",
+                                "response_format": "mp3",
+                                "voice": "af_heart"
+                            },
+                            "bodyType": "json",
+                            "method": "POST",
+                            "type": "http"
+                        }
+                    }
+                },
+                "builder-code": {
+                    "info": {
+                        "a": "bc_is3fuv36"
+                    },
+                    "schema": {
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "additionalProperties": false,
+                        "properties": {
+                            "a": {
+                                "description": "App builder code",
+                                "pattern": "^[a-z0-9_]{1,32}$",
+                                "type": "string"
+                            },
+                            "s": {
+                                "description": "Service builder codes",
+                                "items": {
+                                    "pattern": "^[a-z0-9_]{1,32}$",
+                                    "type": "string"
+                                },
+                                "maxItems": 11,
+                                "type": "array"
+                            },
+                            "w": {
+                                "description": "Wallet builder code",
+                                "pattern": "^[a-z0-9_]{1,32}$",
+                                "type": "string"
+                            }
+                        },
+                        "type": "object"
+                    }
+                }
+            },
+            "lastUpdated": "2026-11-02T19:23:49.113Z",
+            "quality": {
+                "l30DaysTotalCalls": 15,
+                "l30DaysUniquePayers": 9,
+                "lastCalledAt": "2026-11-02T19:23:48.619Z"
+            },
+            "resource": "https://ask.singitai.app/v1/audio/speech",
+            "serviceName": "SingIt Text to Speech",
+            "tags": ["text-to-speech", "tts", "speech", "audio", "openai-compatible"],
+            "type": "http",
+            "x402Version": 2
+        },
+        {
+            "accepts": [
+                {
+                    "amount": "7000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:8453",
+                    "outputSchema": {
+                        "properties": {
+                            "audio": {
+                                "type": "string"
+                            },
+                            "chars": {
+                                "type": "integer"
+                            },
+                            "format": {
+                                "type": "string"
+                            },
+                            "model": {
+                                "type": "string"
+                            },
+                            "provider": {
+                                "type": "string"
+                            },
+                            "voice": {
+                                "type": "string"
+                            }
+                        },
+                        "required": ["model", "provider", "voice", "format", "audio", "chars"],
+                        "type": "object"
+                    },
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "7000",
+                    "asset": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:137",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "7000",
+                    "asset": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:42161",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "7000",
+                    "asset": "0x754704Bc059F8C67012fEd69BC8A327a5aafb603",
+                    "extra": {
+                        "name": "USDC",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:143",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "7000",
+                    "asset": "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:43114",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "7000",
+                    "asset": "0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392",
+                    "extra": {
+                        "name": "USDC",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:1329",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "8000",
+                    "asset": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:10",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "10000",
+                    "asset": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+                    "extra": {
+                        "name": "Global Dollar",
+                        "version": "1"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:4663",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "7000",
+                    "asset": "0xcebA9300f2b948710d2653dD7B07f33A8B32118C",
+                    "extra": {
+                        "name": "USDC",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:42220",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "7000",
+                    "asset": "0x3600000000000000000000000000000000000000",
+                    "extra": {
+                        "name": "USDC",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:5042",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "7000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "assetTransferMethod": "permit2",
+                        "facilitatorAddress": "0x14fDa13953Fc30428938E6BF950d036e77214e52",
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:8453",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "upto"
+                },
+                {
+                    "amount": "7000",
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "feePayer": "BENrLoUbndxoNMUS5JXApGMtNykLjFXXixMtpDwDR9SP",
+                        "transactionVersions": [0, 1]
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "payTo": "J7aN3PLJnTCF5qpEnvJHJsnCjcGuqC2rYtEM8Gv3xwg",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "70000",
+                    "asset": "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75",
+                    "extra": {
+                        "areFeesSponsored": true
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "stellar:pubnet",
+                    "payTo": "GDNJXCKW7ZM7GEEVP674TWPU26YJNBQ2FI4ZIPRKTPTNUEJMDHFJWWRL",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "7000",
+                    "asset": "31566704",
+                    "extra": {
+                        "feePayer": "ZMFK2OI7ZBD2U27ISERZC4S6LKM6WMFJPZQ4MYNJDZ2VNBNMBA67RA22AA",
+                        "tag": "x402-global-challenge"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73k",
+                    "payTo": "C7IIHG7SPLPZ5H7ZT6HW3UV2OQMQQE6Y2HBNGZXSLRJULE42BEE2OY2XIE",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "7000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "name": "GatewayWalletBatched",
+                        "verifyingContract": "0x77777777dcc4d5a8b6e418fd04d8997ef11000ee",
+                        "version": "1"
+                    },
+                    "maxTimeoutSeconds": 604900,
+                    "network": "eip155:8453",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "7000",
+                    "asset": "0x3600000000000000000000000000000000000000",
+                    "extra": {
+                        "name": "GatewayWalletBatched",
+                        "verifyingContract": "0x77777777dcc4d5a8b6e418fd04d8997ef11000ee",
+                        "version": "1"
+                    },
+                    "maxTimeoutSeconds": 604900,
+                    "network": "eip155:5042",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                }
+            ],
+            "description": "Convert text to speech with the eleven-v4-turbo model, priced per request from the length of the text. The quote is $0.005 plus $0.0575 per 1,000 characters of text, rounded up to the next $0.001 (2,000 characters: $0.120). Returns audio (the base64-encoded file in the format asked for: mp3, opus, aac, flac, wav or pcm) with model, voice, format and chars (the characters spoken).",
+            "extensions": {
+                "bazaar": {
+                    "info": {
+                        "input": {
+                            "body": {
+                                "format": "mp3",
+                                "text": "Hello from Agent402!",
+                                "voice": "alloy"
+                            },
+                            "bodyType": "json",
+                            "method": "POST",
+                            "type": "http"
+                        },
+                        "output": {
+                            "example": {
+                                "audio": "<base64-encoded audio>",
+                                "chars": 20,
+                                "format": "mp3",
+                                "model": "elevenlabs/eleven-v4-turbo",
+                                "provider": "openrouter",
+                                "voice": "river"
+                            },
+                            "type": "json"
+                        }
+                    }
+                },
+                "builder-code": {
+                    "info": {
+                        "a": "bc_b4aw4uzd"
+                    },
+                    "schema": {
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "additionalProperties": false,
+                        "properties": {
+                            "a": {
+                                "description": "App builder code",
+                                "pattern": "^[a-z0-9_]{1,32}$",
+                                "type": "string"
+                            },
+                            "s": {
+                                "description": "Service builder codes",
+                                "items": {
+                                    "pattern": "^[a-z0-9_]{1,32}$",
+                                    "type": "string"
+                                },
+                                "maxItems": 11,
+                                "type": "array"
+                            },
+                            "w": {
+                                "description": "Wallet builder code",
+                                "pattern": "^[a-z0-9_]{1,32}$",
+                                "type": "string"
+                            }
+                        },
+                        "type": "object"
+                    }
+                },
+                "payment-identifier": {
+                    "info": {
+                        "required": false
+                    },
+                    "schema": {
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "properties": {
+                            "id": {
+                                "maxLength": 128,
+                                "minLength": 16,
+                                "pattern": "^[a-zA-Z0-9_-]+$",
+                                "type": "string"
+                            },
+                            "required": {
+                                "type": "boolean"
+                            }
+                        },
+                        "required": ["required"],
+                        "type": "object"
+                    }
+                }
+            },
+            "lastUpdated": "2026-11-06T09:42:16.716Z",
+            "quality": {
+                "l30DaysTotalCalls": 46,
+                "l30DaysUniquePayers": 6,
+                "lastCalledAt": "2026-11-06T09:42:16.487Z"
+            },
+            "resource": "https://agent402.tools/api/tts",
+            "serviceName": "Text-to-speech",
+            "tags": ["ai", "tts", "text-to-speech", "audio", "voice"],
+            "type": "http",
+            "x402Version": 2
+        },
+        {
+            "accepts": [
+                {
+                    "amount": "1380",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 120,
+                    "network": "eip155:8453",
+                    "payTo": "0xefa0FDf4Ca8FD79227fb9A19E5CFd24a2A864B81",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1380",
+                    "asset": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+                    "extra": {
+                        "name": "Global Dollar",
+                        "version": "1"
+                    },
+                    "maxTimeoutSeconds": 120,
+                    "network": "eip155:4663",
+                    "payTo": "0xefa0FDf4Ca8FD79227fb9A19E5CFd24a2A864B81",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1380",
+                    "asset": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 120,
+                    "network": "eip155:42161",
+                    "payTo": "0xefa0FDf4Ca8FD79227fb9A19E5CFd24a2A864B81",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1380",
+                    "asset": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 120,
+                    "network": "eip155:137",
+                    "payTo": "0xefa0FDf4Ca8FD79227fb9A19E5CFd24a2A864B81",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1380",
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "feePayer": "Hc3sdEAsCGQcpgfivywog9uwtk8gUBUZgsxdME1EJy88"
+                    },
+                    "maxTimeoutSeconds": 120,
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "payTo": "5QEQqwNpYFetT6zYi5YqJUtzoy6aQgtRQdZNcWus7JVP",
+                    "scheme": "exact"
+                }
+            ],
+            "description": "MeloTTS — Light multilingual text-to-speech. Cheap narration for drafts.",
+            "extensions": {
+                "bazaar": {
+                    "category": "audio",
+                    "info": {
+                        "input": {
+                            "body": {
+                                "lang": "en",
+                                "text": "Hello from Wafermap."
+                            },
+                            "bodyType": "json",
+                            "method": "POST",
+                            "type": "http"
+                        },
+                        "output": {
+                            "example": {
+                                "receipt": {
+                                    "amountUsd": 0.002,
+                                    "asset": "USDC",
+                                    "ms": 1200,
+                                    "network": "eip155:8453",
+                                    "payer": "0x…",
+                                    "tx": "0x…"
+                                },
+                                "resource": "tts-melo",
+                                "result": "{ audio: data:audio/mpeg;base64,… }"
+                            },
+                            "type": "json"
+                        }
+                    }
+                }
+            },
+            "lastUpdated": "2026-10-31T15:31:36.45Z",
+            "quality": {
+                "l30DaysTotalCalls": 531,
+                "l30DaysUniquePayers": 5,
+                "lastCalledAt": "2026-10-31T15:31:35.892Z"
+            },
+            "resource": "https://wafermap.xyz/v1/tts-melo",
+            "type": "http",
+            "x402Version": 2
+        },
+        {
+            "accepts": [
+                {
+                    "amount": "3000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:8453",
+                    "payTo": "0x3a438B911B8E2995a9C855578F95B2889752498F",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "3000",
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "feePayer": "BFK9TLC3edb13K6v4YyH3DwPb5DSUpkWvb7XnqCL9b4F"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "payTo": "Ekdf1gQA4y7w1w9GFSe9a6GuyQuKCof5wyYTTmyZLeJk",
+                    "scheme": "exact"
+                }
+            ],
+            "description": "Read one public URL and return clean bounded page content with a SHA-256 content hash.",
+            "extensions": {
+                "bazaar": {
+                    "info": {
+                        "input": {
+                            "body": {
+                                "url": "https://example.com/"
+                            },
+                            "bodyType": "json",
+                            "method": "POST",
+                            "type": "http"
+                        },
+                        "output": {
+                            "example": {
+                                "operation": "read",
+                                "query": null,
+                                "requested_url": "https://example.com/",
+                                "result_count": 1,
+                                "results": [
+                                    {
+                                        "author": null,
+                                        "content": "Example Domain\n\nThis domain is for use in documentation examples without needing permission.",
+                                        "content_sha256": "249d8ebb185750c0bf531ec104f6a4960fcceb3ac6031819c5ca03aec53f9e65",
+                                        "published_at": null,
+                                        "rank": 1,
+                                        "retrieval_status": "complete",
+                                        "score": null,
+                                        "snippet": "This domain is for use in documentation examples without needing permission.",
+                                        "title": "Example Domain",
+                                        "url": "https://example.com/"
+                                    }
+                                ],
+                                "retrieved_at": "2026-10-29T16:13:31.168Z",
+                                "schema_version": "1.0",
+                                "warnings": [
+                                    "Documentation fixture from a free example.com page fetch; not a paid execution, live search result, or freshness guarantee."
+                                ]
+                            },
+                            "type": "json"
+                        }
+                    }
+                }
+            },
+            "lastUpdated": "2026-11-01T07:50:21.135Z",
+            "quality": {
+                "l30DaysTotalCalls": 5,
+                "l30DaysUniquePayers": 4,
+                "lastCalledAt": "2026-11-01T07:50:20.706Z"
+            },
+            "resource": "https://web-access-gateway.mattskowronis.workers.dev/v1/read",
+            "type": "http",
+            "x402Version": 2
+        }
+    ],
+    "partialResults": true,
+    "searchMethod": "hybrid",
+    "x402Version": 2
+}

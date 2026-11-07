@@ -7,6 +7,7 @@ import {
     testDeps,
     testNow,
     testTerms,
+    x402Fixture,
 } from "../testing/harness.ts";
 import { base58Encode } from "./lines.ts";
 import {
@@ -533,5 +534,58 @@ describe("x402Fetcher", () => {
         const a = testDeps();
         expect(x402Fetcher(a)).toBe(x402Fetcher(a));
         expect(x402Fetcher(testDeps({ config: testConfig() }))).not.toBe(x402Fetcher(a));
+    });
+});
+
+interface RecordedProbe {
+    url: string;
+    status: number;
+    headers: Record<string, string>;
+    body: string;
+    expect: string;
+    priceMicros?: number;
+    recorded: boolean;
+}
+const probeRows = x402Fixture("probes.json") as RecordedProbe[];
+
+describe("recorded probes", () => {
+    it.each(probeRows.map((r) => [r.url, r] as const))("%s", async (_url, row) => {
+        const { prober } = setup(
+            "",
+            async () => new Response(row.body, { status: row.status, headers: row.headers }),
+        );
+        const p = await prober.probe(
+            { method: "GET", url: row.url, indexMatch: false },
+            testTerms(),
+            AbortSignal.timeout(5_000),
+        );
+        if (row.expect === "ok") {
+            expect(p).toMatchObject({
+                ok: true,
+                pinnedFrom: "probe",
+                priceMicros: row.priceMicros,
+            });
+        } else {
+            expect(p).toEqual({ ok: false, at, failure: row.expect });
+        }
+    });
+
+    it("holds every failure of the S 5.1 table", () => {
+        const set = new Set(probeRows.map((r) => r.expect));
+        for (const f of [
+            "no_402",
+            "version_unsupported",
+            "network_unsupported",
+            "flow_unsupported",
+            "fee_payer_refused",
+            "splits_unsupported",
+            "ata_creation_unsupported",
+            "payee_refused",
+            "price_above_max",
+            "price_above_ceiling",
+        ]) {
+            expect(set.has(f)).toBe(true);
+        }
+        expect(probeRows.filter((r) => r.recorded).length).toBeGreaterThanOrEqual(6);
     });
 });

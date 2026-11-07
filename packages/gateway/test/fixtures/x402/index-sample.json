@@ -1,0 +1,89 @@
+{
+    "v": 1,
+    "services": [
+        {
+            "host": "agent402.tools",
+            "url": "https://agent402.tools/v1/auto/chat/completions",
+            "method": "POST",
+            "prefix": "/v1/auto/",
+            "payTo": "J7aN3PLJnTCF5qpEnvJHJsnCjcGuqC2rYtEM8Gv3xwg",
+            "category": "test",
+            "keyNames": ["OPENAI_API_KEY"],
+            "name": "OpenAI-compatible chat completions",
+            "inputFields": ["model", "messages"],
+            "outputFields": ["choices", "usage"],
+            "envLines": ["OPENAI_BASE_URL=https://agent402.tools/v1/auto", "OPENAI_API_KEY=x402"],
+            "reviewedAt": "2026-11-07"
+        },
+        {
+            "host": "netintel.dev",
+            "url": "https://netintel.dev/embeddings",
+            "method": "POST",
+            "prefix": "/embeddings/",
+            "payTo": "8FVeybWnB4dYrxTuPK7WzFZNAiEcFVaDLFnKpRwVGr5s",
+            "category": "test",
+            "keyNames": ["OPENAI_API_KEY"],
+            "name": "Text embeddings",
+            "inputFields": ["model", "input"],
+            "outputFields": ["data", "usage"],
+            "envLines": [],
+            "reviewedAt": "2026-11-07"
+        },
+        {
+            "host": "x402engine.app",
+            "url": "https://x402engine.app/api/tts/elevenlabs",
+            "method": "POST",
+            "prefix": "/api/tts/",
+            "payTo": "Gzehfseq1k9AcHFSoV7qHmDGQx92nLMw78XXdqVWQQWa",
+            "category": "test",
+            "keyNames": ["ELEVENLABS_API_KEY"],
+            "name": "ElevenLabs text to speech",
+            "inputFields": ["text", "voice_id", "model_id"],
+            "outputFields": ["audio", "format"],
+            "envLines": [],
+            "reviewedAt": "2026-11-07"
+        },
+        {
+            "host": "api.delx.ai",
+            "url": "https://api.delx.ai/api/v1/x402/image",
+            "method": "POST",
+            "prefix": "/api/v1/x402/",
+            "payTo": "28heAMpFkeUJsL7o7apiK4oJwZWq2fUHinRwbgYYsemG",
+            "category": "test",
+            "keyNames": ["REPLICATE_API_TOKEN"],
+            "name": "FLUX image generation",
+            "inputFields": ["prompt"],
+            "outputFields": ["url"],
+            "envLines": [],
+            "reviewedAt": "2026-11-07"
+        },
+        {
+            "host": "api.exa.ai",
+            "url": "https://api.exa.ai/search",
+            "method": "POST",
+            "prefix": "/search/",
+            "payTo": "12Ec2cJmfR1C9uwejzxcuMhUgEC7wDrLgm1wBvvR5w9E",
+            "category": "test",
+            "keyNames": ["EXA_API_KEY"],
+            "name": "Exa web search",
+            "inputFields": ["query", "numResults"],
+            "outputFields": ["results"],
+            "envLines": [],
+            "reviewedAt": "2026-11-07"
+        },
+        {
+            "host": "perp-gap-api.perpgap.workers.dev",
+            "url": "https://perp-gap-api.perpgap.workers.dev/catalog/full",
+            "method": "GET",
+            "prefix": "/catalog/",
+            "payTo": "5MoL8HNnvZUogGrqiF4T1StmAUpdU7ERA2GUJ7gLrEja",
+            "category": "test",
+            "keyNames": [],
+            "name": "Perp gap catalog",
+            "inputFields": [],
+            "outputFields": ["items"],
+            "envLines": [],
+            "reviewedAt": "2026-11-07"
+        }
+    ]
+}

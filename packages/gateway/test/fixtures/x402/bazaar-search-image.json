@@ -1,0 +1,620 @@
+{
+    "resources": [
+        {
+            "accepts": [
+                {
+                    "amount": "15000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:8453",
+                    "payTo": "0xA7f3Ad0E69F61864092FAbBa6Cee00AF6e584689",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "15000",
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "feePayer": "BENrLoUbndxoNMUS5JXApGMtNykLjFXXixMtpDwDR9SP",
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "payTo": "5hqrYCkTNe5z9Uc8o29KDNd2Gn9YreE6ZthZ7QY5hrKY",
+                    "scheme": "exact"
+                }
+            ],
+            "description": "Text-to-image generation on Venice models (Flux, SD3.5, GPT-Image, HunyuanImage, and more), paid per request in USDC on Base via x402, no API key. Charge is catalog unit × variants (1–4). A bare unpaid probe (no model) quotes default venice-sd35 (from $0.01; flux-2-pro $0.015). S",
+            "extensions": {
+                "bazaar": {
+                    "info": {
+                        "input": {
+                            "body": {
+                                "height": 1024,
+                                "model": "flux-2-pro",
+                                "prompt": "A neon-lit cyberpunk street at night, cinematic lighting, photorealistic",
+                                "width": 1024
+                            },
+                            "bodyType": "json",
+                            "method": "POST",
+                            "type": "http"
+                        },
+                        "output": {
+                            "example": {
+                                "id": "yidY-aAgyVYbeSQfKnu4gaLS2FhTus0k",
+                                "images": [
+                                    "UklGRkaBAABXRUJQVlA4IDqBAACQZwGdASoAAgACPhkMhEGhBFcvbAQAYSm3i1vP/1fFy8M/nmmzw39XzLNN9Nt+/Ez/o+YH9G/2fQs58/xP/neqj+H/6f1l"
+                                ],
+                                "request": {
+                                    "data": {
+                                        "embed_exif_metadata": false,
+                                        "format": "webp",
+                                        "height": 512,
+                                        "hide_watermark": false,
+                                        "model": "venice-sd35",
+                                        "prompt": "a dot",
+                                        "return_binary": false,
+                                        "safe_mode": true,
+                                        "seed": -238869555,
+                                        "steps": 20,
+                                        "width": 512
+                                    },
+                                    "success": true
+                                },
+                                "timing": {
+                                    "inferenceDuration": 3377,
+                                    "inferencePreprocessingTime": 3389,
+                                    "inferenceQueueTime": 557,
+                                    "total": 3953
+                                }
+                            },
+                            "type": "json"
+                        }
+                    },
+                    "related": ["/models", "/image/styles"]
+                },
+                "chainId": 8453,
+                "estimateBasis": "image_unit_0.03_variants_1",
+                "priceMult": 0.5,
+                "quoteModel": "flux-2-pro",
+                "tokenDecimals": 6,
+                "upstreamUsd": 0.03
+            },
+            "lastUpdated": "2026-11-06T05:17:07.547Z",
+            "quality": {
+                "l30DaysTotalCalls": 89,
+                "l30DaysUniquePayers": 14,
+                "lastCalledAt": "2026-11-06T05:17:07.295Z"
+            },
+            "resource": "https://x402.aispace.bot/api/v1/image/generate",
+            "serviceName": "AiSpace Venice",
+            "tags": ["venice", "image", "text-to-image", "generative", "aispace"],
+            "type": "http",
+            "x402Version": 2
+        },
+        {
+            "accepts": [
+                {
+                    "amount": "10000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "accept_label": "Coinbase CDP",
+                        "app": "Delx Commerce",
+                        "erc8004_id": "14340",
+                        "facilitator_url": "https://api.cdp.coinbase.com/platform/v2/x402",
+                        "name": "USD Coin",
+                        "provider": "coinbase",
+                        "provider_label": "Coinbase CDP",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:8453",
+                    "payTo": "0x9f8bd9875b3E0b632a24A3A7C73f7787175e73A2",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "10000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "accept_label": "PayAI Base",
+                        "app": "Delx Commerce",
+                        "erc8004_id": "14340",
+                        "facilitator_url": "https://facilitator.payai.network",
+                        "name": "USD Coin",
+                        "provider": "payai",
+                        "provider_label": "PayAI Base",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:8453",
+                    "payTo": "0x9f8bd9875b3E0b632a24A3A7C73f7787175e73A2",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "10000",
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "accept_label": "PayAI Solana",
+                        "app": "Delx Commerce",
+                        "erc8004_id": "14340",
+                        "facilitator_url": "https://facilitator.payai.network",
+                        "feePayer": "CjNFTjvBhbJJd2B5ePPMHRLx1ELZpa8dwQgGL727eKww",
+                        "name": "USD Coin",
+                        "provider": "payai",
+                        "provider_label": "PayAI Solana",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "payTo": "28heAMpFkeUJsL7o7apiK4oJwZWq2fUHinRwbgYYsemG",
+                    "scheme": "exact"
+                }
+            ],
+            "description": "Delx Commerce cheap image generation API for agents at $0.01 USDC. Call when you need a product visual, ad creative, thumbnail, banner, logo concept, or social graphic with no API key or monthly plan. Commercial FLUX Schnell stills via x402 on Base or Solana—public WebP URL, SHA-256 receipt, and 11 aspect ratios. No subscription.",
+            "extensions": {
+                "bazaar": {
+                    "category": "image",
+                    "info": {
+                        "input": {
+                            "body": {
+                                "aspect_ratio": "1:1",
+                                "prompt": "A friendly robot creating digital art for an AI agent",
+                                "quality_profile": "balanced"
+                            },
+                            "bodyType": "json",
+                            "method": "POST",
+                            "type": "http"
+                        },
+                        "output": {
+                            "example": {
+                                "aspect_ratio": "1:1",
+                                "bytes": 21302,
+                                "generation_id": "d61c158acd974528be6af43a3bfac50f",
+                                "height": 1024,
+                                "image_url": "https://api.delx.ai/api/v1/generated-images/d61c158acd974528be6af43a3bfac50f.webp",
+                                "media_type": "image/webp",
+                                "model": "black-forest-labs/flux-schnell",
+                                "prompt_policy_version": "balanced/v1",
+                                "provider": "replicate",
+                                "quality_profile": "balanced",
+                                "sale_price_usdc": 0.01,
+                                "sha256": "b1fee3065c234364feb056ee4ad06f135c0d30039eaff0e92e52e371e884cb29",
+                                "width": 1024
+                            },
+                            "type": "json"
+                        }
+                    },
+                    "serviceName": "FLUX Image for Agents",
+                    "summary": "Delx Commerce cheap image generation API for agents at $0.01 USDC. Call when you need a product visual, ad creative, thumbnail, banner, logo concept, or social graphic with no API key or monthly plan. Commercial FLUX Schnell stills via x402 on Base or Solana—public WebP URL, SHA-256 receipt, and 11 aspect ratios. No subscription.",
+                    "tags": [
+                        "x402",
+                        "ai-image",
+                        "text-to-image",
+                        "image-generation",
+                        "image-generation-api"
+                    ]
+                },
+                "payment-identifier": {
+                    "info": {
+                        "required": false
+                    },
+                    "schema": {
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "properties": {
+                            "id": {
+                                "maxLength": 128,
+                                "minLength": 16,
+                                "pattern": "^[a-zA-Z0-9_-]+$",
+                                "type": "string"
+                            },
+                            "required": {
+                                "type": "boolean"
+                            }
+                        },
+                        "required": ["required"],
+                        "type": "object"
+                    }
+                }
+            },
+            "lastUpdated": "2026-11-05T15:58:02.321Z",
+            "quality": {
+                "l30DaysTotalCalls": 21,
+                "l30DaysUniquePayers": 8,
+                "lastCalledAt": "2026-11-05T15:58:01.701Z"
+            },
+            "resource": "https://api.delx.ai/api/v1/x402/image",
+            "serviceName": "FLUX Image for Agents",
+            "tags": [
+                "x402",
+                "ai-image",
+                "text-to-image",
+                "image-generation",
+                "image-generation-api"
+            ],
+            "type": "http",
+            "x402Version": 2
+        },
+        {
+            "accepts": [
+                {
+                    "amount": "13000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:8453",
+                    "payTo": "0x622efA6Ceb83a5b6EdBC931332f4db68B7f74F27",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "13000",
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "feePayer": "Hc3sdEAsCGQcpgfivywog9uwtk8gUBUZgsxdME1EJy88"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "payTo": "5JzPS5qpEwUM1vTC9GG7uqvwJdHzbEwfoPHf2Ki977tg",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "13000",
+                    "asset": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:137",
+                    "payTo": "0x622efA6Ceb83a5b6EdBC931332f4db68B7f74F27",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "13000",
+                    "asset": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:42161",
+                    "payTo": "0x622efA6Ceb83a5b6EdBC931332f4db68B7f74F27",
+                    "scheme": "exact"
+                }
+            ],
+            "description": "Daily true-color satellite image of any area from NASA GIBS (MODIS Terra/Aqua or VIIRS, about 250 m per pixel, coastlines overlaid) as base64 JPEG. Useful to see clouds, smoke, snow, floods or fires on a given day. Params: place (\"Zurich, Switzerland\") or bbox [min_lat, min_lon, max_lat, max_lon] or lat + lon + radius_km (5 to 500, default 50), date (YYYY-MM-DD, default yesterday), layer (modis_terra default, modis_aqua, viirs_snpp, viirs_noaa20), width (64 to 1024, default 512), height…",
+            "extensions": {
+                "bazaar": {
+                    "category": "visual",
+                    "info": {
+                        "input": {
+                            "body": {
+                                "lat": 47.37,
+                                "lon": 8.54,
+                                "radius_km": 60,
+                                "width": 512
+                            },
+                            "bodyType": "json",
+                            "method": "POST",
+                            "type": "http"
+                        },
+                        "output": {
+                            "example": {
+                                "data": {
+                                    "attribution": "NASA EOSDIS GIBS / Worldview",
+                                    "bbox": {
+                                        "max_lat": 47.9105,
+                                        "max_lon": 9.3381,
+                                        "min_lat": 46.8295,
+                                        "min_lon": 7.7419
+                                    },
+                                    "date": "2026-10-05",
+                                    "height": 173,
+                                    "image_base64": "/9j/4AAQSkZJRgABAQAAAQAB…",
+                                    "layer": "modis_terra",
+                                    "layer_id": "MODIS_Terra_CorrectedReflectance_TrueColor",
+                                    "mime_type": "image/jpeg",
+                                    "note": "Daily true-color mosaic; clouds and swath gaps are normal. Resolution about 250 m per pixel at best.",
+                                    "size_bytes": 14495,
+                                    "width": 256
+                                },
+                                "success": true
+                            },
+                            "type": "json"
+                        }
+                    },
+                    "tags": [
+                        "satellite-image",
+                        "satellite-imagery",
+                        "earth-observation",
+                        "satellite",
+                        "nasa",
+                        "earth",
+                        "imagery",
+                        "weather"
+                    ]
+                },
+                "builder-code": {
+                    "info": {
+                        "a": "bc_q6wi3opd"
+                    }
+                }
+            },
+            "lastUpdated": "2026-10-26T04:08:08.505Z",
+            "quality": {
+                "l30DaysTotalCalls": 20,
+                "l30DaysUniquePayers": 7,
+                "lastCalledAt": "2026-10-26T04:08:08.292Z"
+            },
+            "resource": "https://agentsvc.io/api/v1/proxy/satellite-image",
+            "serviceName": "Satellite Image API",
+            "tags": [
+                "satellite-image",
+                "satellite-imagery",
+                "earth-observation",
+                "satellite",
+                "nasa"
+            ],
+            "type": "http",
+            "x402Version": 2
+        },
+        {
+            "accepts": [
+                {
+                    "amount": "60000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 120,
+                    "network": "eip155:8453",
+                    "payTo": "0xaE393a9CD728F7397F50f6f8C88096a0F3D2b42C",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "60000",
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "feePayer": "CjNFTjvBhbJJd2B5ePPMHRLx1ELZpa8dwQgGL727eKww"
+                    },
+                    "maxTimeoutSeconds": 120,
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "payTo": "EX4MyYWHc7NKBGuytmMpxixM7ovSWYLNy5acN2mFfoGd",
+                    "scheme": "exact"
+                }
+            ],
+            "description": "Image generation: a prompt in, one image back in the same response. 7 models including Google Nano Banana and Nano Banana Pro, OpenAI GPT Image 2, Seedream 5.0 Pro and FLUX.2 Pro, square to 21:9, up to 4K, from $0.02. GET this URL for every model and price. No account or API key: the payment is the only credential.",
+            "extensions": {
+                "bazaar": {
+                    "info": {
+                        "input": {
+                            "body": {
+                                "aspectRatio": "1:1",
+                                "model": "nano-banana",
+                                "prompt": "a lighthouse on a sea cliff at golden hour, soft mist, cinematic wide shot"
+                            },
+                            "bodyType": "json",
+                            "method": "POST",
+                            "type": "http"
+                        },
+                        "output": {
+                            "example": {
+                                "aspectRatio": "1:1",
+                                "image": "https://www.trezalabs.com/api/media/generated/x402_image/1a2b3c4d.png?s=...&c=...",
+                                "model": "nano-banana",
+                                "paidUsd": 0.06,
+                                "runId": "2026-09-23T18:04:11.000Z#1a2b3c4d",
+                                "status": "success",
+                                "statusUrl": "https://www.trezalabs.com/api/x402/image?runId=...&token=...",
+                                "transaction": "0x..."
+                            },
+                            "type": "json"
+                        }
+                    }
+                }
+            },
+            "lastUpdated": "2026-10-25T05:09:08.326Z",
+            "quality": {
+                "l30DaysTotalCalls": 29,
+                "l30DaysUniquePayers": 5,
+                "lastCalledAt": "2026-10-25T05:09:08.152Z"
+            },
+            "resource": "https://www.trezalabs.com/api/x402/image",
+            "serviceName": "Treza",
+            "tags": ["image", "image-generation", "text-to-image", "nano-banana", "gpt-image"],
+            "type": "http",
+            "x402Version": 2
+        },
+        {
+            "accepts": [
+                {
+                    "amount": "4000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:8453",
+                    "payTo": "0x54d6C2C08e10F1a1d3dA88dF513bbE9BCf1A4aFa",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "4000",
+                    "asset": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:137",
+                    "payTo": "0x54d6C2C08e10F1a1d3dA88dF513bbE9BCf1A4aFa",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "4000",
+                    "asset": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:42161",
+                    "payTo": "0x54d6C2C08e10F1a1d3dA88dF513bbE9BCf1A4aFa",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "4000",
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "feePayer": "BENrLoUbndxoNMUS5JXApGMtNykLjFXXixMtpDwDR9SP",
+                        "name": "USDC"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "payTo": "CawPXxATKM9iBPc2o6FRzu9LbvzZWcepD9akwZkbDyDo",
+                    "scheme": "exact"
+                }
+            ],
+            "description": "Munition Google Images: x402-paid Google Images results for AI agents via Serper. Pay 0.004 USDC per query for image URLs, thumbnails, dimensions and source pages.",
+            "extensions": {
+                "bazaar": {
+                    "info": {
+                        "iconUrl": "https://munition.io/logo.png",
+                        "input": {
+                            "body": {
+                                "gl": "fr",
+                                "hl": "fr",
+                                "num": 10,
+                                "q": "Eiffel tower at night"
+                            },
+                            "bodyType": "json",
+                            "method": "POST",
+                            "type": "http"
+                        },
+                        "output": {
+                            "example": {
+                                "images": [
+                                    {
+                                        "imageHeight": 800,
+                                        "imageUrl": "https://example.com/eiffel.jpg",
+                                        "imageWidth": 1200,
+                                        "position": 1,
+                                        "source": "example.com",
+                                        "title": "Eiffel Tower"
+                                    }
+                                ],
+                                "meta": {
+                                    "resultCount": 1,
+                                    "searchedAt": "2026-09-09T00:00:00.000Z"
+                                },
+                                "query": "Eiffel tower at night"
+                            },
+                            "type": "json"
+                        },
+                        "serviceName": "Munition",
+                        "tags": ["search", "images", "google"]
+                    }
+                }
+            },
+            "lastUpdated": "2026-11-06T13:07:51.798Z",
+            "quality": {
+                "l30DaysTotalCalls": 27,
+                "l30DaysUniquePayers": 5,
+                "lastCalledAt": "2026-11-06T07:04:34.341Z"
+            },
+            "resource": "https://api.munition.io/v1/serper/images",
+            "type": "http",
+            "x402Version": 2
+        },
+        {
+            "accepts": [
+                {
+                    "amount": "3000",
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "feePayer": "GVJJ7rdGiXr5xaYbRwRbjfaJL7fmwRygFi1H6aGqDveb",
+                        "meklerQuote": "eyJhbW91bnQiOiIzMDAwIiwiYXNzZXQiOiJFUGpGV2RkNUF1ZnFTU3FlTTJxTjF4enliYXBDOEc0d0VHR2tad3lURHQxdiIsImRpZ2VzdCI6ImVlYjAxZTcxMTRkMGI1Y2Q2NTRlNWE2NTc0Mzk5YWJiNDQ4ZTAyZTRiZTY2MmI3YjljMDQ5MmQwOWM5ODczMWYiLCJleHBpcmVzIjoxNzkzNTMxMDkxLCJmZWVQYXllciI6IkdWSko3cmRHaVhyNXhhWWJSd1JiamZhSkw3Zm13UnlnRmkxSDZhR3FEdmViIiwibmV0d29yayI6InNvbGFuYTo1ZXlrdDRVc0Z2OFA4TkpkVFJFcFkxdnpxS3FaS3ZkcCIsIm9yaWdpbiI6Imh0dHBzOi8vYXBpLm1la2xlci5haSIsInBhdGgiOiIvdjEvaW1hZ2VzL3FyL2dlbmVyYXRlLWNvZGUiLCJwYXlUbyI6IjltTURySGFiU2Y3M01QbjFBTmRBTlNtc053MndLaXFFN0paN2VENkVVU1JjIiwicHJvdmlkZXIiOiJjZHAiLCJ2ZXJzaW9uIjoicXItY29kZS1nZW5lcmF0aW9uLXYyIn0=.f7aa03a48c9add3cdd1f836ffef39661e7ac794b8d825429326e2eba941fdc20",
+                        "memo": "m:96oDpIya3TzdH4Nv_vOWYQ"
+                    },
+                    "maxTimeoutSeconds": 60,
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "payTo": "9mMDrHabSf73MPn1ANdANSmsNw2wKiqE7JZ7eD6EUSRc",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "3000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "assetTransferMethod": "eip3009",
+                        "meklerQuote": "eyJhbW91bnQiOiIzMDAwIiwiYXNzZXQiOiIweDgzMzU4OWZDRDZlRGI2RTA4ZjRjN0MzMkQ0ZjcxYjU0YmRBMDI5MTMiLCJkaWdlc3QiOiJlZWIwMWU3MTE0ZDBiNWNkNjU0ZTVhNjU3NDM5OWFiYjQ0OGUwMmU0YmU2NjJiN2I5YzA0OTJkMDljOTg3MzFmIiwiZXhwaXJlcyI6MTc5MzUzMTA5MSwiZmVlUGF5ZXIiOiIiLCJuZXR3b3JrIjoiZWlwMTU1Ojg0NTMiLCJvcmlnaW4iOiJodHRwczovL2FwaS5tZWtsZXIuYWkiLCJwYXRoIjoiL3YxL2ltYWdlcy9xci9nZW5lcmF0ZS1jb2RlIiwicGF5VG8iOiIweEY2YzZFMmU1MzBiYjMxMWMxNGE0OUMxYTA3QzcyMGZjMjMyYzA3YzUiLCJwcm92aWRlciI6ImNkcCIsInZlcnNpb24iOiJxci1jb2RlLWdlbmVyYXRpb24tdjIifQ==.a673c7f5a2ff157aeddf6e46a516b5dabd052ae22346944a6ab5af440523a888",
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 60,
+                    "network": "eip155:8453",
+                    "payTo": "0xF6c6E2e530bb311c14a49C1a07C720fc232c07c5",
+                    "scheme": "exact"
+                }
+            ],
+            "description": "Generate a standards-based QR code from supplied UTF-8 text or a payment URI. Return SVG or PNG as base64 with dimensions, SHA-256, QR version and error-correction level. Maximum 1024 UTF-8 bytes, scale 1–8 and fixed four-module quiet zone. Encodes the supplied payload; does not validate a payment destination, execute payment or host an image.",
+            "extensions": {
+                "bazaar": {
+                    "info": {
+                        "input": {
+                            "body": {
+                                "error_correction": "M",
+                                "format": "png",
+                                "request_id": "qr-generation-example-001",
+                                "scale": 4,
+                                "text": "https://mekler.ai/"
+                            },
+                            "bodyType": "json",
+                            "method": "POST",
+                            "type": "http"
+                        },
+                        "output": {
+                            "example": {
+                                "byte_length": 252,
+                                "data": "iVBORw0KGgoAAAANSUhEUgAAAIQAAACEAQAAAAB5P74KAAAAw0lEQVR42u1W0QkCUQwLLpD9t8wGtclDQUEQ4+cVOWo/QpumucO8hXBVXisAOCBOohve45vK4jC/zZIUOCAJDZ20OEPNH3CWGNb9jEd6EPU7jteUKPfl4FMSDT/Wj6wfVjikBD/Y8aPoWVl/gaPVII6oS348muGgSj8LpD2M0Nz1s5O5GXZ61rENk9zdlz2D+VPrOb2wvq8Vj3Lw7b3bxgblvo5tnCFbH4t7qPbDpbnWjyU0ee1oWj90VzO1H15fBR8qd5tY9Osict9SAAAAAElFTkSuQmCC",
+                                "encoding": "base64",
+                                "error_correction": "M",
+                                "format": "png",
+                                "height": 132,
+                                "mime_type": "image/png",
+                                "payload_bytes": 18,
+                                "quiet_zone_modules": 4,
+                                "sha256": "c25a99d2a24dbe4f167e747c2af350ec7360c9630002aff31a5979b6cc665780",
+                                "status": "ok",
+                                "version": 2,
+                                "width": 132
+                            },
+                            "type": "json"
+                        }
+                    }
+                }
+            },
+            "lastUpdated": "2026-11-01T11:02:51.425Z",
+            "quality": {
+                "l30DaysTotalCalls": 5,
+                "l30DaysUniquePayers": 5,
+                "lastCalledAt": "2026-11-01T11:02:49.467Z"
+            },
+            "resource": "https://api.mekler.ai/v1/images/qr/generate-code",
+            "serviceName": "Mekler AI",
+            "tags": ["Images", "QR codes", "Encoding"],
+            "type": "http",
+            "x402Version": 2
+        }
+    ],
+    "partialResults": true,
+    "searchMethod": "hybrid",
+    "x402Version": 2
+}

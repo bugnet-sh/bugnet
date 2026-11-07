@@ -1,0 +1,668 @@
+{
+    "items": [
+        {
+            "accepts": [
+                {
+                    "asset": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "payTo": "0x67164557fb0dd6ce00b95bac0931840ca1f6dbe5",
+                    "amount": "10000",
+                    "scheme": "exact",
+                    "network": "eip155:42161",
+                    "maxTimeoutSeconds": 120
+                }
+            ],
+            "lastUpdated": "2026-09-08T21:05:54.139Z",
+            "metadata": {
+                "mimeType": "application/json",
+                "description": "OpenAI-compatible LLM inference, paid per call. POST a standard chat completion body with an x402 payment and the response is the completion itself; the API key and remaining balance come back in headers, so the next call can skip payment. Serves MiniMax language models: MiniMax-M3 for long-context reasoning with a 1,048,576-token window, and MiniMax-M2.7 for general chat, agent loops and coding. Text to speech and video generation run on the same balance. Whatever a call does not spend stays on the paying wallet. No account, email or signup."
+            },
+            "resource": "https://yiduochan.com/api/x402/chat/completions",
+            "type": "http",
+            "x402Version": 2,
+            "description": "OpenAI-compatible LLM inference, paid per call. POST a standard chat completion body with an x402 payment and the response is the completion itself; the API key and remaining balance come back in headers, so the next call can skip payment. Serves MiniMax language models: MiniMax-M3 for long-context reasoning with a 1,048,576-token window, and MiniMax-M2.7 for general chat, agent loops and coding. Text to speech and video generation run on the same balance. Whatever a call does not spend stays on the paying wallet. No account, email or signup.",
+            "mimeType": "application/json",
+            "serviceName": null,
+            "tags": null,
+            "extensions": null,
+            "method": "POST",
+            "toolName": null
+        },
+        {
+            "accepts": [
+                {
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "feePayer": "CjNFTjvBhbJJd2B5ePPMHRLx1ELZpa8dwQgGL727eKww",
+                        "mimeType": "application/json",
+                        "description": "OpenAI-compatible chat completions, billed per token under each provider's list price — most models at about half list. Swap your base URL, pay the 402; pay in $CLAWHUNTER, $SQUIRE, or $ANSEM for 10% more off; streaming and the clawhunter/smart auto-router (each request routed to the best model for its difficulty) work with a prepaid API key. Menu + exact rates: GET /api/v1/chat/models (free)."
+                    },
+                    "payTo": "HuSiSpcUoUEF4hct1MRsGtNGz8EdBiTs7p2WtJGksLSa",
+                    "amount": "10000",
+                    "scheme": "exact",
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "maxTimeoutSeconds": 300
+                }
+            ],
+            "lastUpdated": "2026-09-07T07:58:13.303Z",
+            "metadata": {
+                "mimeType": "",
+                "description": "OpenAI-compatible chat completions, billed per token under each provider's list price — most models at about half list. Swap your base URL, pay the 402; pay in $CLAWHUNTER, $SQUIRE, or $ANSEM for 10% more off; streaming and the clawhunter/smart auto-router (each request routed to the best model for its difficulty) work with a prepaid API key. Menu + exact rates: GET /api/v1/chat/models (free)."
+            },
+            "resource": "https://clawhunter.fun/api/v1/chat/completions",
+            "type": "http",
+            "x402Version": 2,
+            "description": "OpenAI-compatible chat completions, billed per token under each provider's list price — most models at about half list. Swap your base URL, pay the 402; pay in $CLAWHUNTER, $SQUIRE, or $ANSEM for 10% more off; streaming and the clawhunter/smart auto-router (each request routed to the best model for its difficulty) work with a prepaid API key. Menu + exact rates: GET /api/v1/chat/models (free).",
+            "mimeType": "",
+            "serviceName": null,
+            "tags": null,
+            "extensions": null,
+            "method": "POST",
+            "toolName": null
+        },
+        {
+            "accepts": [
+                {
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "feePayer": "CjNFTjvBhbJJd2B5ePPMHRLx1ELZpa8dwQgGL727eKww"
+                    },
+                    "payTo": "58Qo8QTJ1Sd4aXSygwAeBLNL3VrXRmfUCceB6b5RJCx6",
+                    "amount": "2000",
+                    "scheme": "exact",
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "maxTimeoutSeconds": 120
+                }
+            ],
+            "lastUpdated": "2026-09-03T16:13:21.846Z",
+            "metadata": {
+                "mimeType": "application/json",
+                "description": "Paid inference via x402 USDC on Base and Solana. Cost-plus, quoted, receipted. POST /v1/chat/completions is the recommended surface. Returns signed receipt + public verify_url. Paying this host is real mainnet USDC."
+            },
+            "resource": "https://api.xfuel.app/v1/chat/completions",
+            "type": "http",
+            "x402Version": 2,
+            "description": "Paid inference via x402 USDC on Base and Solana. Cost-plus, quoted, receipted. POST /v1/chat/completions is the recommended surface. Returns signed receipt + public verify_url. Paying this host is real mainnet USDC.",
+            "mimeType": "application/json",
+            "serviceName": null,
+            "tags": null,
+            "extensions": null,
+            "method": "POST",
+            "toolName": null
+        },
+        {
+            "accepts": [
+                {
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "payTo": "0x751a4c3841bE287544C371B4EE09Bd3366AeA7cf",
+                    "amount": "3000",
+                    "scheme": "exact",
+                    "network": "eip155:8453",
+                    "maxTimeoutSeconds": 300
+                }
+            ],
+            "lastUpdated": "2026-10-20T20:02:16.742Z",
+            "metadata": {
+                "tags": ["llm", "chat", "openai-compatible", "inference", "ai"],
+                "mimeType": "application/json",
+                "description": "Drop-in OpenAI Chat Completions endpoint: POST {model, messages, max_tokens, temperature, top_p, seed, stream, response_format} and get a chat.completion object (or SSE chunks with stream=true). Models (Cloudflare Workers AI): llama-3.1-8b (default), llama-3.2-3b, llama-3.2-1b, mistral-7b, granite-4.0-micro; any other model name maps to the default (actual model is in the response). Text only, no tool calling; max_tokens capped at 512, input up to 24000 chars. Latest user message checked by Llama Guard 3 (unsafe = 400). Fixed price per call. If the daily capacity is used up you get 503 \"capacity\". Errors are never charged. GET with ?prompt= also works; with no params it answers a short sample question. Free model list: GET /v1/models.",
+                "serviceName": "QuickBuild"
+            },
+            "resource": "https://quickbuild.quynguyenbac.workers.dev/v1/chat/completions",
+            "type": "http",
+            "x402Version": 2,
+            "description": "Drop-in OpenAI Chat Completions endpoint: POST {model, messages, max_tokens, temperature, top_p, seed, stream, response_format} and get a chat.completion object (or SSE chunks with stream=true). Models (Cloudflare Workers AI): llama-3.1-8b (default), llama-3.2-3b, llama-3.2-1b, mistral-7b, granite-4.0-micro; any other model name maps to the default (actual model is in the response). Text only, no tool calling; max_tokens capped at 512, input up to 24000 chars. Latest user message checked by Llama Guard 3 (unsafe = 400). Fixed price per call. If the daily capacity is used up you get 503 \"capacity\". Errors are never charged. GET with ?prompt= also works; with no params it answers a short sample question. Free model list: GET /v1/models.",
+            "mimeType": "application/json",
+            "serviceName": "QuickBuild",
+            "tags": ["llm", "chat", "openai-compatible", "inference", "ai"],
+            "extensions": {
+                "bazaar": {
+                    "info": {
+                        "input": {
+                            "type": "http",
+                            "method": "GET",
+                            "queryParams": {
+                                "model": "llama-3.1-8b",
+                                "messages": [
+                                    {
+                                        "role": "user",
+                                        "content": "In one sentence, what does HTTP status 402 mean?"
+                                    }
+                                ],
+                                "max_tokens": 128
+                            }
+                        },
+                        "output": {
+                            "type": "json",
+                            "example": {
+                                "id": "chatcmpl-3f2a9c",
+                                "model": "@cf/meta/llama-3.1-8b-instruct-fp8-fast",
+                                "usage": {
+                                    "total_tokens": 49,
+                                    "prompt_tokens": 22,
+                                    "completion_tokens": 27
+                                },
+                                "object": "chat.completion",
+                                "choices": [
+                                    {
+                                        "index": 0,
+                                        "message": {
+                                            "role": "assistant",
+                                            "content": "HTTP 402 Payment Required means the server wants payment before it will serve the requested resource."
+                                        },
+                                        "finish_reason": "stop"
+                                    }
+                                ],
+                                "created": 1792526400
+                            }
+                        }
+                    },
+                    "schema": {
+                        "type": "object",
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "required": ["input"],
+                        "properties": {
+                            "input": {
+                                "type": "object",
+                                "required": ["type", "method"],
+                                "properties": {
+                                    "type": {
+                                        "type": "string",
+                                        "const": "http"
+                                    },
+                                    "method": {
+                                        "enum": ["GET"],
+                                        "type": "string"
+                                    },
+                                    "queryParams": {
+                                        "type": "object",
+                                        "required": [],
+                                        "properties": {
+                                            "seed": {
+                                                "type": "integer",
+                                                "description": "Optional seed."
+                                            },
+                                            "model": {
+                                                "enum": [
+                                                    "llama-3.1-8b",
+                                                    "llama-3.2-3b",
+                                                    "llama-3.2-1b",
+                                                    "mistral-7b",
+                                                    "granite-4.0-micro",
+                                                    "@cf/meta/llama-3.1-8b-instruct-fp8-fast",
+                                                    "@cf/meta/llama-3.2-3b-instruct",
+                                                    "@cf/meta/llama-3.2-1b-instruct",
+                                                    "@cf/mistral/mistral-7b-instruct-v0.1",
+                                                    "@cf/ibm-granite/granite-4.0-h-micro"
+                                                ],
+                                                "type": "string",
+                                                "description": "Model alias or Workers AI id (default llama-3.1-8b). Unknown names fall back to the default."
+                                            },
+                                            "top_p": {
+                                                "type": "number",
+                                                "maximum": 1,
+                                                "minimum": 0,
+                                                "description": "Nucleus sampling."
+                                            },
+                                            "prompt": {
+                                                "type": "string",
+                                                "description": "Convenience: a single user message (appended after `messages`)."
+                                            },
+                                            "stream": {
+                                                "type": "boolean",
+                                                "description": "If true, returns text/event-stream chat.completion.chunk events (whole answer in one chunk) ending with [DONE]."
+                                            },
+                                            "messages": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "required": ["role", "content"],
+                                                    "properties": {
+                                                        "role": {
+                                                            "enum": [
+                                                                "system",
+                                                                "developer",
+                                                                "user",
+                                                                "assistant"
+                                                            ],
+                                                            "type": "string"
+                                                        },
+                                                        "content": {
+                                                            "type": "string"
+                                                        }
+                                                    }
+                                                },
+                                                "description": "OpenAI-style chat messages. Optional: if omitted, `prompt` (or a sample question) is used."
+                                            },
+                                            "max_tokens": {
+                                                "type": "integer",
+                                                "maximum": 512,
+                                                "minimum": 1,
+                                                "description": "Max completion tokens (default and cap 512)."
+                                            },
+                                            "temperature": {
+                                                "type": "number",
+                                                "maximum": 2,
+                                                "minimum": 0,
+                                                "description": "Sampling temperature (model default if omitted)."
+                                            },
+                                            "response_format": {
+                                                "type": "object",
+                                                "description": "{\"type\":\"json_object\"} or {\"type\":\"json_schema\",\"json_schema\":{\"schema\":{...}}}."
+                                            }
+                                        }
+                                    }
+                                },
+                                "additionalProperties": false
+                            },
+                            "output": {
+                                "type": "object",
+                                "required": ["type"],
+                                "properties": {
+                                    "type": {
+                                        "type": "string"
+                                    },
+                                    "example": {
+                                        "type": "object",
+                                        "properties": {
+                                            "id": {
+                                                "type": "string"
+                                            },
+                                            "model": {
+                                                "type": "string"
+                                            },
+                                            "usage": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "total_tokens": {
+                                                        "type": "integer"
+                                                    },
+                                                    "prompt_tokens": {
+                                                        "type": "integer"
+                                                    },
+                                                    "completion_tokens": {
+                                                        "type": "integer"
+                                                    }
+                                                }
+                                            },
+                                            "object": {
+                                                "type": "string"
+                                            },
+                                            "choices": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "index": {
+                                                            "type": "integer"
+                                                        },
+                                                        "message": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "role": {
+                                                                    "type": "string"
+                                                                },
+                                                                "content": {
+                                                                    "type": "string"
+                                                                }
+                                                            }
+                                                        },
+                                                        "finish_reason": {
+                                                            "type": "string"
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "created": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "method": "GET",
+            "toolName": null
+        },
+        {
+            "accepts": [
+                {
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "payTo": "0xA4AA7F9371BF82E484656bA146230f971d0ebdA4",
+                    "scheme": "exact",
+                    "network": "base",
+                    "mimeType": "application/json",
+                    "resource": "https://1rpc.ai/v1/chat/completions",
+                    "description": "Payment required for 1RPC AI service access",
+                    "outputSchema": {
+                        "input": {
+                            "type": "http",
+                            "method": "POST",
+                            "required": ["model", "messages"],
+                            "bodyFields": {
+                                "model": {
+                                    "enum": [
+                                        "deepseek-chat",
+                                        "deepseek-reasoner",
+                                        "gpt-4.5-preview",
+                                        "gpt-4o",
+                                        "gpt-4o-mini",
+                                        "o1",
+                                        "o3",
+                                        "o3-mini",
+                                        "o1-mini",
+                                        "o4-mini",
+                                        "gpt-4.1",
+                                        "gpt-4.1-mini",
+                                        "gpt-4.1-nano",
+                                        "gpt-5.2",
+                                        "gpt-5.1",
+                                        "gpt-5",
+                                        "gpt-5-mini",
+                                        "gpt-5-nano",
+                                        "claude-opus-4-5-20251101",
+                                        "claude-sonnet-4-5-20250929",
+                                        "claude-haiku-4-5-20251001",
+                                        "claude-opus-4-1-20250805",
+                                        "claude-opus-4-20250514",
+                                        "claude-sonnet-4-20250514",
+                                        "claude-3-7-sonnet-20250219",
+                                        "claude-3-5-haiku-20241022",
+                                        "claude-3-opus-20240229",
+                                        "claude-3-haiku-20240307",
+                                        "gemini-3-pro-preview",
+                                        "gemini-2.0-flash",
+                                        "gemini-2.0-flash-lite",
+                                        "gemini-1.5-flash",
+                                        "gemini-1.5-flash-8b",
+                                        "gemini-1.5-pro",
+                                        "gemini-2.5-flash-preview-04-17",
+                                        "gemini-2.5-flash-preview-05-20",
+                                        "gemini-2.5-pro-preview-03-25",
+                                        "gemini-2.5-pro-preview-06-05",
+                                        "meta/llama-3.3-70b-instruct-maas",
+                                        "google/gemini-2.0-flash-001",
+                                        "google/gemini-flash-1.5",
+                                        "google/gemini-flash-1.5-8b",
+                                        "openai/gpt-4o-mini",
+                                        "openai/o1-mini-2024-09-12",
+                                        "mistralai/mistral-nemo",
+                                        "meta-llama/llama-3.3-70b-instruct",
+                                        "meta-llama/llama-4-maverick",
+                                        "meta-llama/llama-4-scout"
+                                    ],
+                                    "type": "string"
+                                },
+                                "messages": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "required": ["role", "content"],
+                                        "properties": {
+                                            "role": {
+                                                "enum": ["user"],
+                                                "type": "string"
+                                            },
+                                            "content": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "additionalProperties": false
+                                    }
+                                }
+                            }
+                        },
+                        "output": {
+                            "type": "object",
+                            "required": ["id", "object", "created", "model", "choices"],
+                            "properties": {
+                                "id": {
+                                    "type": "string"
+                                },
+                                "model": {
+                                    "type": "string"
+                                },
+                                "usage": {
+                                    "type": "object",
+                                    "required": [
+                                        "prompt_tokens",
+                                        "completion_tokens",
+                                        "total_tokens"
+                                    ],
+                                    "properties": {
+                                        "total_tokens": {
+                                            "type": "number"
+                                        },
+                                        "prompt_tokens": {
+                                            "type": "number"
+                                        },
+                                        "completion_tokens": {
+                                            "type": "number"
+                                        },
+                                        "prompt_tokens_details": {
+                                            "type": "object",
+                                            "properties": {
+                                                "audio_tokens": {
+                                                    "type": "number"
+                                                },
+                                                "cached_tokens": {
+                                                    "type": "number"
+                                                }
+                                            },
+                                            "additionalProperties": false
+                                        },
+                                        "completion_tokens_details": {
+                                            "type": "object",
+                                            "properties": {
+                                                "audio_tokens": {
+                                                    "type": "number"
+                                                },
+                                                "reasoning_tokens": {
+                                                    "type": "number"
+                                                },
+                                                "accepted_prediction_tokens": {
+                                                    "type": "number"
+                                                },
+                                                "rejected_prediction_tokens": {
+                                                    "type": "number"
+                                                }
+                                            },
+                                            "additionalProperties": false
+                                        }
+                                    },
+                                    "additionalProperties": false
+                                },
+                                "object": {
+                                    "enum": ["chat.completion"],
+                                    "type": "string"
+                                },
+                                "choices": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "required": ["index", "message", "finish_reason"],
+                                        "properties": {
+                                            "index": {
+                                                "type": "number"
+                                            },
+                                            "message": {
+                                                "type": "object",
+                                                "required": ["role", "content"],
+                                                "properties": {
+                                                    "role": {
+                                                        "enum": ["assistant"],
+                                                        "type": "string"
+                                                    },
+                                                    "content": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    },
+                                                    "refusal": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    }
+                                                },
+                                                "additionalProperties": true
+                                            },
+                                            "logprobs": {
+                                                "nullable": true
+                                            },
+                                            "finish_reason": {
+                                                "enum": ["stop", "length", "content_filter"],
+                                                "type": "string",
+                                                "nullable": true
+                                            }
+                                        },
+                                        "additionalProperties": false
+                                    }
+                                },
+                                "created": {
+                                    "type": "number"
+                                },
+                                "service_tier": {
+                                    "type": "string",
+                                    "nullable": true
+                                },
+                                "system_fingerprint": {
+                                    "type": "string",
+                                    "nullable": true
+                                }
+                            },
+                            "additionalProperties": false
+                        }
+                    },
+                    "maxAmountRequired": "13750",
+                    "maxTimeoutSeconds": 60
+                }
+            ],
+            "lastUpdated": "2026-06-18T05:52:20.413Z",
+            "metadata": {},
+            "resource": "https://1rpc.ai/v1/chat/completions",
+            "type": "http",
+            "x402Version": 1,
+            "description": null,
+            "mimeType": null,
+            "serviceName": null,
+            "tags": null,
+            "extensions": null,
+            "method": "POST",
+            "toolName": null
+        },
+        {
+            "accepts": [
+                {
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "feePayer": "2wKupLR9q6wXYppw8Gr2NvWxKBUqm4PPJKkQfoxHDBg4"
+                    },
+                    "payTo": "3EAcvj5vG7AoTrCHtHbnmE15oFb9QTrdBiWLJR8cCvCh",
+                    "scheme": "exact",
+                    "network": "solana",
+                    "mimeType": "",
+                    "resource": "http://api.solrouter.com/api/v1/x402/chat/completions",
+                    "description": "",
+                    "outputSchema": {
+                        "input": {
+                            "type": "http",
+                            "method": "POST",
+                            "discoverable": true
+                        }
+                    },
+                    "maxAmountRequired": "20000",
+                    "maxTimeoutSeconds": 60
+                }
+            ],
+            "lastUpdated": "2026-05-07T13:54:12.450Z",
+            "metadata": {},
+            "resource": "http://api.solrouter.com/api/v1/x402/chat/completions",
+            "type": "http",
+            "x402Version": 1,
+            "description": null,
+            "mimeType": null,
+            "serviceName": null,
+            "tags": null,
+            "extensions": null,
+            "method": "POST",
+            "toolName": null
+        },
+        {
+            "accepts": [
+                {
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "feePayer": "2wKupLR9q6wXYppw8Gr2NvWxKBUqm4PPJKkQfoxHDBg4",
+                        "mimeType": "application/json",
+                        "resource": "https://sol.blockrun.ai/api/v1/chat/completions",
+                        "description": "AI model inference"
+                    },
+                    "payTo": "AQqnMFBwGZEoti85aTVRy8XYpKrho7GaMDx9ZB3CEeKA",
+                    "amount": "3000",
+                    "scheme": "exact",
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "maxTimeoutSeconds": 300
+                }
+            ],
+            "lastUpdated": "2026-07-28T15:50:16.954Z",
+            "metadata": {},
+            "resource": "https://blockrun-sol-staging-vbsbhh7lea-uc.a.run.app/api/v1/chat/completions",
+            "type": "http",
+            "x402Version": 2,
+            "description": null,
+            "mimeType": null,
+            "serviceName": null,
+            "tags": null,
+            "extensions": null,
+            "method": "POST",
+            "toolName": null
+        },
+        {
+            "accepts": [
+                {
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "feePayer": "2wKupLR9q6wXYppw8Gr2NvWxKBUqm4PPJKkQfoxHDBg4",
+                        "mimeType": "application/json",
+                        "resource": "https://sol.blockrun.ai/api/v1/chat/completions",
+                        "description": "AI model inference"
+                    },
+                    "payTo": "AQqnMFBwGZEoti85aTVRy8XYpKrho7GaMDx9ZB3CEeKA",
+                    "amount": "3000",
+                    "scheme": "exact",
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "maxTimeoutSeconds": 300
+                }
+            ],
+            "lastUpdated": "2026-07-23T03:18:11.141Z",
+            "metadata": {},
+            "resource": "https://blockrun-sol-vbsbhh7lea-an.a.run.app/api/v1/chat/completions",
+            "type": "http",
+            "x402Version": 2,
+            "description": null,
+            "mimeType": null,
+            "serviceName": null,
+            "tags": null,
+            "extensions": null,
+            "method": "POST",
+            "toolName": null
+        }
+    ],
+    "pagination": {
+        "limit": 100,
+        "offset": 0,
+        "total": 8
+    }
+}

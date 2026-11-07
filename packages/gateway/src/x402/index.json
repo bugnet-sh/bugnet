@@ -1,0 +1,47 @@
+{
+    "v": 1,
+    "services": [
+        {
+            "host": "agent402.tools",
+            "url": "https://agent402.tools/v1/auto/chat/completions",
+            "method": "POST",
+            "prefix": "/v1/auto/",
+            "payTo": "J7aN3PLJnTCF5qpEnvJHJsnCjcGuqC2rYtEM8Gv3xwg",
+            "category": "chat",
+            "keyNames": ["OPENAI_API_KEY"],
+            "name": "OpenAI-compatible chat completions",
+            "inputFields": ["model", "messages"],
+            "outputFields": ["choices", "usage"],
+            "envLines": ["OPENAI_BASE_URL=https://agent402.tools/v1/auto", "OPENAI_API_KEY=x402"],
+            "reviewedAt": "2026-11-07"
+        },
+        {
+            "host": "netintel.dev",
+            "url": "https://netintel.dev/embeddings",
+            "method": "POST",
+            "prefix": "/embeddings/",
+            "payTo": "8FVeybWnB4dYrxTuPK7WzFZNAiEcFVaDLFnKpRwVGr5s",
+            "category": "embeddings",
+            "keyNames": ["OPENAI_API_KEY"],
+            "name": "Text embeddings",
+            "inputFields": ["model", "input"],
+            "outputFields": ["data", "usage"],
+            "envLines": [],
+            "reviewedAt": "2026-11-07"
+        },
+        {
+            "host": "x402engine.app",
+            "url": "https://x402engine.app/api/tts/elevenlabs",
+            "method": "POST",
+            "prefix": "/api/tts/",
+            "payTo": "Gzehfseq1k9AcHFSoV7qHmDGQx92nLMw78XXdqVWQQWa",
+            "category": "text to speech",
+            "keyNames": ["ELEVENLABS_API_KEY"],
+            "name": "ElevenLabs text to speech",
+            "inputFields": ["text", "voice_id", "model_id"],
+            "outputFields": ["audio", "format"],
+            "envLines": [],
+            "reviewedAt": "2026-11-07"
+        }
+    ]
+}

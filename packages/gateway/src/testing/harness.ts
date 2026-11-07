@@ -1,5 +1,6 @@
 // Tests reach the tools through connectTools, the MCP path a real client takes
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { create } from "@bufbuild/protobuf";
 import { timestampFromMs } from "@bufbuild/protobuf/wkt";
 import { BinaryWriter, WireType } from "@bufbuild/protobuf/wire";
@@ -249,6 +250,13 @@ export async function devOrder(
     }
     if (opts.paid !== false) p.dev.pay(r.orderId);
     return { orderId: r.orderId, claim: r.claim };
+}
+
+// JSON.parse of packages/gateway/test/fixtures/x402/<name>
+export function x402Fixture(name: string): unknown {
+    return JSON.parse(
+        readFileSync(new URL(`../../test/fixtures/x402/${name}`, import.meta.url), "utf8"),
+    );
 }
 
 export function recordingLog(): { log: Log; lines: string[] } {

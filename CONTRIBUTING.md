@@ -280,6 +280,12 @@ router's services run: a templated unit per versioned directory under
 runs as the Unix user `bugnet-gateway` and nothing else, so the deploy check that proves no other
 user reaches Postgres, Valkey or the egress proxy takes `GATEWAY_USERS="bugnet-gateway"`.
 
+`packages/gateway/src/x402/index.json` is Bugnet's one reviewed list of x402 services, and no
+setting points the gateway at another. Each deploy copies it to Payments first, as
+`/etc/bugnet/payments/x402-index.json`, then sends Payments `SIGHUP`, and writes its hosts that
+sit under a shared-hosting suffix into the router's `[x402] allowed_shared_hosts`, all before the
+gateway itself moves to the new version, so the three copies stay one list.
+
 ## Style
 
 - TypeScript is strict ESM. Prettier formats everything at 4 spaces and 100 columns.

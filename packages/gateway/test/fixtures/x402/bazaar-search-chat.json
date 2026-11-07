@@ -1,0 +1,1083 @@
+{
+    "resources": [
+        {
+            "accepts": [
+                {
+                    "amount": "2000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "expiresAt": 1793840855959,
+                        "name": "USD Coin",
+                        "nonce": "0x662073e841fb57b7f739e11cd4c16b756e924bad2a087f5f8709e5ef451b3d1b",
+                        "taskId": "xfuel-61eaab14-f0d3-4123-97da-bd073a9856c2",
+                        "version": "2"
+                    },
+                    "maxAmountRequired": "2000",
+                    "maxTimeoutSeconds": 120,
+                    "network": "eip155:8453",
+                    "payTo": "0x23f713411c30BBd9A989c9cbC22EB0b55F7f7334",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "2000",
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "expiresAt": 1793840855959,
+                        "feePayer": "CjNFTjvBhbJJd2B5ePPMHRLx1ELZpa8dwQgGL727eKww",
+                        "nonce": "0xf8914a7a9f34b70d47f2efc28870fcb171f61e4f687484363af79e8d7ef59ef7",
+                        "taskId": "xfuel-61eaab14-f0d3-4123-97da-bd073a9856c2"
+                    },
+                    "maxAmountRequired": "2000",
+                    "maxTimeoutSeconds": 120,
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "payTo": "ALLdmmAsbUnhHS7x2556449syP5Wz73Gng4gzzLHqsC7",
+                    "scheme": "exact"
+                }
+            ],
+            "description": "Signed spend receipts for agent x402 payments — who paid which call, verifiable by a third party. Treasury desk and possession book for agent spend — export, policy, evidence. POST /v1/chat/completions is the x402 USDC door on Base and Solana. Returns signed receipt + public verify_url. Paying this host is real mainnet USDC.",
+            "extensions": {
+                "bazaar": {
+                    "info": {
+                        "input": {
+                            "body": {
+                                "max_tokens": 500,
+                                "messages": [
+                                    {
+                                        "content": "Hello",
+                                        "role": "user"
+                                    }
+                                ],
+                                "model": "xfuel/auto"
+                            },
+                            "bodyType": "json",
+                            "method": "POST",
+                            "type": "http"
+                        },
+                        "output": {
+                            "example": {
+                                "choices": [
+                                    {
+                                        "finish_reason": "stop",
+                                        "index": 0,
+                                        "message": {
+                                            "content": "Hello!",
+                                            "role": "assistant"
+                                        }
+                                    }
+                                ],
+                                "created": 1700000000,
+                                "id": "chatcmpl-abc123",
+                                "model": "xfuel/auto",
+                                "object": "chat.completion",
+                                "usage": {
+                                    "completion_tokens": 5,
+                                    "prompt_tokens": 10,
+                                    "total_tokens": 15
+                                },
+                                "xfuel": {
+                                    "verify_url": "https://api.chit402.com/receipt/chit-abc123"
+                                }
+                            },
+                            "type": "json"
+                        }
+                    }
+                },
+                "offer-receipt": {
+                    "info": {
+                        "offers": [
+                            {
+                                "acceptIndex": 0,
+                                "format": "jws",
+                                "signature": "eyJhbGciOiJFUzI1NiIsInR5cCI6ImNoaXQ0MDIteDQwMi1vZmZlcitqd3QiLCJraWQiOiJkaWQ6d2ViOmFwaS5jaGl0NDAyLmNvbSNJdkZwbUMtdlBoa1lfdjB2aWRzcldWVDl1emxFNVhXS1pnQUVPZUpUcTFRIn0.eyJhbW91bnQiOiIyMDAwIiwiYXNzZXQiOiIweDgzMzU4OWZDRDZlRGI2RTA4ZjRjN0MzMkQ0ZjcxYjU0YmRBMDI5MTMiLCJuZXR3b3JrIjoiZWlwMTU1Ojg0NTMiLCJwYXlUbyI6IjB4MjNmNzEzNDExYzMwQkJkOUE5ODljOWNiQzIyRUIwYjU1RjdmNzMzNCIsInJlc291cmNlVXJsIjoiaHR0cHM6Ly9hcGkuY2hpdDQwMi5jb20vdjEvY2hhdC9jb21wbGV0aW9ucyIsInNjaGVtZSI6ImV4YWN0IiwidmFsaWRVbnRpbCI6MTc5Mzg0MDg1NSwidmVyc2lvbiI6MX0.7xSvN0Gpmpqi0CILYvx-MI2Ue8qzj5etrDVbzUujhEMRnZrTHRYIv6xQyEX9CklhJyUJCHx3mGIzUEau-RGmTg"
+                            },
+                            {
+                                "acceptIndex": 1,
+                                "format": "jws",
+                                "signature": "eyJhbGciOiJFUzI1NiIsInR5cCI6ImNoaXQ0MDIteDQwMi1vZmZlcitqd3QiLCJraWQiOiJkaWQ6d2ViOmFwaS5jaGl0NDAyLmNvbSNJdkZwbUMtdlBoa1lfdjB2aWRzcldWVDl1emxFNVhXS1pnQUVPZUpUcTFRIn0.eyJhbW91bnQiOiIyMDAwIiwiYXNzZXQiOiJFUGpGV2RkNUF1ZnFTU3FlTTJxTjF4enliYXBDOEc0d0VHR2tad3lURHQxdiIsIm5ldHdvcmsiOiJzb2xhbmE6NWV5a3Q0VXNGdjhQOE5KZFRSRXBZMXZ6cUtxWkt2ZHAiLCJwYXlUbyI6IkFMTGRtbUFzYlVuaEhTN3gyNTU2NDQ5c3lQNVd6NzNHbmc0Z3p6TEhxc0M3IiwicmVzb3VyY2VVcmwiOiJodHRwczovL2FwaS5jaGl0NDAyLmNvbS92MS9jaGF0L2NvbXBsZXRpb25zIiwic2NoZW1lIjoiZXhhY3QiLCJ2YWxpZFVudGlsIjoxNzkzODQwODU1LCJ2ZXJzaW9uIjoxfQ.3FT28wMsaG0oItbTMBfwGDy48TyAdT57Sfw9-ztt_oAusGRHoFwT6aphRzx7q82kpv-V7pqRHW_Rg-4BNo0SmA"
+                            }
+                        ]
+                    },
+                    "schema": {
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "properties": {
+                            "offers": {
+                                "items": {
+                                    "properties": {
+                                        "acceptIndex": {
+                                            "type": "integer"
+                                        },
+                                        "format": {
+                                            "const": "jws",
+                                            "type": "string"
+                                        },
+                                        "signature": {
+                                            "description": "JWS compact serialization containing the offer payload",
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": ["format", "signature"],
+                                    "type": "object"
+                                },
+                                "type": "array"
+                            }
+                        },
+                        "required": ["offers"],
+                        "type": "object"
+                    }
+                }
+            },
+            "lastUpdated": "2026-11-05T01:05:36.176Z",
+            "quality": {
+                "l30DaysTotalCalls": 70,
+                "l30DaysUniquePayers": 25,
+                "lastCalledAt": "2026-11-05T01:05:35.626Z"
+            },
+            "resource": "https://api.chit402.com/v1/chat/completions",
+            "serviceName": "Chit402",
+            "tags": ["treasury", "possession-book", "spend-receipt", "x402", "usdc"],
+            "type": "http",
+            "x402Version": 2
+        },
+        {
+            "accepts": [
+                {
+                    "amount": "1000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:8453",
+                    "outputSchema": {
+                        "type": "object"
+                    },
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1000",
+                    "asset": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:137",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1000",
+                    "asset": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:42161",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1000",
+                    "asset": "0x754704Bc059F8C67012fEd69BC8A327a5aafb603",
+                    "extra": {
+                        "name": "USDC",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:143",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1000",
+                    "asset": "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:43114",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1000",
+                    "asset": "0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392",
+                    "extra": {
+                        "name": "USDC",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:1329",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "2000",
+                    "asset": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:10",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "10000",
+                    "asset": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+                    "extra": {
+                        "name": "Global Dollar",
+                        "version": "1"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:4663",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1000",
+                    "asset": "0xcebA9300f2b948710d2653dD7B07f33A8B32118C",
+                    "extra": {
+                        "name": "USDC",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:42220",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1000",
+                    "asset": "0x2D270e6886d130D724215A266106e6832161EAEd",
+                    "extra": {
+                        "name": "USDC",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:57073",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1000",
+                    "asset": "0x3600000000000000000000000000000000000000",
+                    "extra": {
+                        "name": "USDC",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:5042",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "assetTransferMethod": "permit2",
+                        "facilitatorAddress": "0x14fDa13953Fc30428938E6BF950d036e77214e52",
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:8453",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "upto"
+                },
+                {
+                    "amount": "1000",
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "feePayer": "BENrLoUbndxoNMUS5JXApGMtNykLjFXXixMtpDwDR9SP",
+                        "transactionVersions": [0, 1]
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "payTo": "J7aN3PLJnTCF5qpEnvJHJsnCjcGuqC2rYtEM8Gv3xwg",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "10000",
+                    "asset": "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75",
+                    "extra": {
+                        "areFeesSponsored": true
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "stellar:pubnet",
+                    "payTo": "GDNJXCKW7ZM7GEEVP674TWPU26YJNBQ2FI4ZIPRKTPTNUEJMDHFJWWRL",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1000",
+                    "asset": "31566704",
+                    "extra": {
+                        "feePayer": "ZMFK2OI7ZBD2U27ISERZC4S6LKM6WMFJPZQ4MYNJDZ2VNBNMBA67RA22AA",
+                        "tag": "x402-global-challenge"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73k",
+                    "payTo": "C7IIHG7SPLPZ5H7ZT6HW3UV2OQMQQE6Y2HBNGZXSLRJULE42BEE2OY2XIE",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "name": "GatewayWalletBatched",
+                        "verifyingContract": "0x77777777dcc4d5a8b6e418fd04d8997ef11000ee",
+                        "version": "1"
+                    },
+                    "maxTimeoutSeconds": 604900,
+                    "network": "eip155:8453",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1000",
+                    "asset": "0x3600000000000000000000000000000000000000",
+                    "extra": {
+                        "name": "GatewayWalletBatched",
+                        "verifyingContract": "0x77777777dcc4d5a8b6e418fd04d8997ef11000ee",
+                        "version": "1"
+                    },
+                    "maxTimeoutSeconds": 604900,
+                    "network": "eip155:5042",
+                    "payTo": "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+                    "scheme": "exact"
+                }
+            ],
+            "description": "OpenAI-compatible chat completions priced from the request itself: the 402 quotes this exact body, from $0.001, and a buyer on the upto scheme settles the tokens actually used under that quote. Use it when an agent sends large or variable prompts and wants to pay for what it sends, not a flat tier.",
+            "extensions": {
+                "bazaar": {
+                    "info": {
+                        "input": {
+                            "body": {
+                                "max_tokens": 5,
+                                "messages": [
+                                    {
+                                        "content": "Reply with exactly: OK",
+                                        "role": "user"
+                                    }
+                                ],
+                                "model": "openai/gpt-4o-mini"
+                            },
+                            "bodyType": "json",
+                            "method": "POST",
+                            "type": "http"
+                        },
+                        "output": {
+                            "example": {
+                                "note": "full example in /openapi.json",
+                                "truncated": true
+                            },
+                            "type": "json"
+                        }
+                    }
+                },
+                "builder-code": {
+                    "info": {
+                        "a": "bc_b4aw4uzd"
+                    },
+                    "schema": {
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "additionalProperties": false,
+                        "properties": {
+                            "a": {
+                                "description": "App builder code",
+                                "pattern": "^[a-z0-9_]{1,32}$",
+                                "type": "string"
+                            },
+                            "s": {
+                                "description": "Service builder codes",
+                                "items": {
+                                    "pattern": "^[a-z0-9_]{1,32}$",
+                                    "type": "string"
+                                },
+                                "maxItems": 11,
+                                "type": "array"
+                            },
+                            "w": {
+                                "description": "Wallet builder code",
+                                "pattern": "^[a-z0-9_]{1,32}$",
+                                "type": "string"
+                            }
+                        },
+                        "type": "object"
+                    }
+                },
+                "payment-identifier": {
+                    "info": {
+                        "required": false
+                    },
+                    "schema": {
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "properties": {
+                            "id": {
+                                "maxLength": 128,
+                                "minLength": 16,
+                                "pattern": "^[a-zA-Z0-9_-]+$",
+                                "type": "string"
+                            },
+                            "required": {
+                                "type": "boolean"
+                            }
+                        },
+                        "required": ["required"],
+                        "type": "object"
+                    }
+                }
+            },
+            "lastUpdated": "2026-11-06T15:34:05.551Z",
+            "quality": {
+                "l30DaysTotalCalls": 814,
+                "l30DaysUniquePayers": 11,
+                "lastCalledAt": "2026-11-06T07:59:51.432Z"
+            },
+            "resource": "https://agent402.tools/v1/metered/chat/completions",
+            "serviceName": "Chat completions - metered (pay",
+            "tags": ["llm", "ai", "inference", "chat", "gateway"],
+            "type": "http",
+            "x402Version": 2
+        },
+        {
+            "accepts": [
+                {
+                    "amount": "1500",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "assetTransferMethod": "permit2",
+                        "billing": {
+                            "markupBps": 3000,
+                            "maxChargeAtomic": "1500",
+                            "mode": "actual_usage",
+                            "settlementFeeAtomic": "1000",
+                            "version": 1
+                        },
+                        "facilitatorAddress": "0x67B9CE703d9ce658d7C4ac3c289cEa112fE662Af",
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 120,
+                    "network": "eip155:8453",
+                    "payTo": "0xC23d1Dc0f5fCe1abfFB051e06cB93f0329968B4e",
+                    "scheme": "upto"
+                },
+                {
+                    "amount": "2010",
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "billing": {
+                            "markupBps": 3000,
+                            "maxChargeAtomic": "2010",
+                            "mode": "actual_usage",
+                            "settlementFeeAtomic": "2000",
+                            "version": 1
+                        },
+                        "feePayer": "BENrLoUbndxoNMUS5JXApGMtNykLjFXXixMtpDwDR9SP",
+                        "paymentFlow": "escrow",
+                        "receiverAuthorizer": "9dpHxn3XFZMZv59vE5MKxhfwGUCCgkcCUzYZLpdEm7ox",
+                        "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+                        "transactionVersions": [0, 1],
+                        "withdrawDelay": 300
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "payTo": "4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu",
+                    "scheme": "upto"
+                },
+                {
+                    "amount": "1500",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "billing": {
+                            "markupBps": 3000,
+                            "maxChargeAtomic": "1500",
+                            "mode": "exact_ceiling",
+                            "settlementFeeAtomic": "1000",
+                            "version": 1
+                        },
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 120,
+                    "network": "eip155:8453",
+                    "payTo": "0xC23d1Dc0f5fCe1abfFB051e06cB93f0329968B4e",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "2004",
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "billing": {
+                            "markupBps": 3000,
+                            "maxChargeAtomic": "2004",
+                            "mode": "exact_ceiling",
+                            "settlementFeeAtomic": "2000",
+                            "version": 1
+                        },
+                        "feePayer": "BENrLoUbndxoNMUS5JXApGMtNykLjFXXixMtpDwDR9SP"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "payTo": "4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu",
+                    "scheme": "exact"
+                }
+            ],
+            "description": "OpenAI-compatible chat API, many models incl. free ones. Pay per call in USDC on Base or Solana, no API key. Models: GET /v1/catalog.",
+            "extensions": {
+                "bazaar": {
+                    "info": {
+                        "input": {
+                            "body": {
+                                "max_tokens": 400,
+                                "messages": [
+                                    {
+                                        "content": "Where is good coffee near the Colosseum?",
+                                        "role": "user"
+                                    }
+                                ]
+                            },
+                            "bodyType": "json",
+                            "method": "POST",
+                            "type": "http"
+                        },
+                        "output": {
+                            "example": {
+                                "billing": {
+                                    "currency": "USDC",
+                                    "markupAtomic": "2",
+                                    "markupBps": 3000,
+                                    "maxChargeAtomic": "3000",
+                                    "mode": "actual_usage",
+                                    "providerCostAtomic": "6",
+                                    "settlementFeeAtomic": "1000",
+                                    "totalAtomic": "1008",
+                                    "version": 1
+                                },
+                                "choices": [
+                                    {
+                                        "finish_reason": "stop",
+                                        "index": 0,
+                                        "message": {
+                                            "content": "Around the Colosseum, try Caffè Propaganda on Via Claudia or Bar Martini for an espresso with a view.",
+                                            "role": "assistant"
+                                        }
+                                    }
+                                ],
+                                "created": 1791932400,
+                                "id": "singit-ask-1791932400000",
+                                "model": "singit-ask",
+                                "object": "chat.completion",
+                                "usage": {
+                                    "buyer_cost_micro": 6,
+                                    "completion_tokens": 31,
+                                    "prompt_tokens": 14,
+                                    "total_tokens": 45
+                                }
+                            },
+                            "type": "json"
+                        }
+                    }
+                },
+                "builder-code": {
+                    "info": {
+                        "a": "bc_is3fuv36"
+                    },
+                    "schema": {
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "additionalProperties": false,
+                        "properties": {
+                            "a": {
+                                "description": "App builder code",
+                                "pattern": "^[a-z0-9_]{1,32}$",
+                                "type": "string"
+                            },
+                            "s": {
+                                "description": "Service builder codes",
+                                "items": {
+                                    "pattern": "^[a-z0-9_]{1,32}$",
+                                    "type": "string"
+                                },
+                                "maxItems": 11,
+                                "type": "array"
+                            },
+                            "w": {
+                                "description": "Wallet builder code",
+                                "pattern": "^[a-z0-9_]{1,32}$",
+                                "type": "string"
+                            }
+                        },
+                        "type": "object"
+                    }
+                },
+                "eip2612GasSponsoring": {
+                    "info": {
+                        "description": "The facilitator accepts EIP-2612 gasless Permit to `Permit2` canonical contract.",
+                        "version": "1"
+                    },
+                    "schema": {
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "properties": {
+                            "amount": {
+                                "description": "The amount to approve (uint256). Typically MaxUint.",
+                                "pattern": "^[0-9]+$",
+                                "type": "string"
+                            },
+                            "asset": {
+                                "description": "The address of the ERC-20 token contract.",
+                                "pattern": "^0x[a-fA-F0-9]{40}$",
+                                "type": "string"
+                            },
+                            "deadline": {
+                                "description": "The timestamp at which the signature expires.",
+                                "pattern": "^[0-9]+$",
+                                "type": "string"
+                            },
+                            "from": {
+                                "description": "The address of the sender.",
+                                "pattern": "^0x[a-fA-F0-9]{40}$",
+                                "type": "string"
+                            },
+                            "nonce": {
+                                "description": "The current nonce of the sender.",
+                                "pattern": "^[0-9]+$",
+                                "type": "string"
+                            },
+                            "signature": {
+                                "description": "The 65-byte concatenated signature (r, s, v) as a hex string.",
+                                "pattern": "^0x[a-fA-F0-9]+$",
+                                "type": "string"
+                            },
+                            "spender": {
+                                "description": "The address of the spender (Canonical Permit2).",
+                                "pattern": "^0x[a-fA-F0-9]{40}$",
+                                "type": "string"
+                            },
+                            "version": {
+                                "description": "Schema version identifier.",
+                                "pattern": "^[0-9]+(\\.[0-9]+)*$",
+                                "type": "string"
+                            }
+                        },
+                        "required": [
+                            "from",
+                            "asset",
+                            "spender",
+                            "amount",
+                            "nonce",
+                            "deadline",
+                            "signature",
+                            "version"
+                        ],
+                        "type": "object"
+                    }
+                }
+            },
+            "lastUpdated": "2026-11-05T17:44:11.028Z",
+            "quality": {
+                "l30DaysTotalCalls": 32,
+                "l30DaysUniquePayers": 11,
+                "lastCalledAt": "2026-11-05T17:44:10.369Z"
+            },
+            "resource": "https://ask.singitai.app/v1/chat/completions",
+            "serviceName": "SingIt LLM Chat Completions",
+            "tags": [
+                "chat",
+                "aion-labs-aion-3-0",
+                "beam-1.0-501b-a23b",
+                "claude-fable-5",
+                "command-a-plus"
+            ],
+            "type": "http",
+            "x402Version": 2
+        },
+        {
+            "accepts": [
+                {
+                    "amount": "2000",
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "feePayer": "Hc3sdEAsCGQcpgfivywog9uwtk8gUBUZgsxdME1EJy88"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "payTo": "2wm4nh1gQ5AyNnGD8n5VSeTjjo9WRZZKbU3TeX4SPs6s",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "2000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 300,
+                    "network": "eip155:8453",
+                    "payTo": "0x53884EF9A486b805bfa5e4F55290Ff66dca7C457",
+                    "scheme": "exact"
+                }
+            ],
+            "description": "Text completion using the model selected in the request body.",
+            "extensions": {
+                "bazaar": {
+                    "info": {
+                        "input": {
+                            "body": {
+                                "messages": [
+                                    {
+                                        "content": "Say hello in one sentence.",
+                                        "role": "user"
+                                    }
+                                ]
+                            },
+                            "bodyType": "json",
+                            "method": "POST",
+                            "type": "http"
+                        },
+                        "output": {
+                            "example": {
+                                "choices": [
+                                    {
+                                        "finish_reason": "stop",
+                                        "index": 0,
+                                        "message": {
+                                            "content": "Hello.",
+                                            "role": "assistant"
+                                        }
+                                    }
+                                ],
+                                "model": "openai/gpt-oss-20b",
+                                "object": "chat.completion"
+                            },
+                            "type": "json"
+                        }
+                    }
+                },
+                "builder-code": {
+                    "info": {
+                        "a": "onhub",
+                        "s": ["cdp_sdk_server"]
+                    },
+                    "schema": {
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "additionalProperties": false,
+                        "properties": {
+                            "a": {
+                                "description": "App builder code",
+                                "pattern": "^[a-z0-9_]{1,32}$",
+                                "type": "string"
+                            },
+                            "s": {
+                                "description": "Service builder codes",
+                                "items": {
+                                    "pattern": "^[a-z0-9_]{1,32}$",
+                                    "type": "string"
+                                },
+                                "maxItems": 11,
+                                "type": "array"
+                            },
+                            "w": {
+                                "description": "Wallet builder code",
+                                "pattern": "^[a-z0-9_]{1,32}$",
+                                "type": "string"
+                            }
+                        },
+                        "type": "object"
+                    }
+                },
+                "eip2612GasSponsoring": {},
+                "erc20ApprovalGasSponsoring": {}
+            },
+            "lastUpdated": "2026-11-03T02:50:41.636Z",
+            "quality": {
+                "l30DaysTotalCalls": 36,
+                "l30DaysUniquePayers": 10,
+                "lastCalledAt": "2026-11-03T02:50:41.029Z"
+            },
+            "resource": "https://x402.onhub.ai/v1/chat/completions",
+            "type": "http",
+            "x402Version": 2
+        },
+        {
+            "accepts": [
+                {
+                    "amount": "1000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxTimeoutSeconds": 120,
+                    "network": "eip155:8453",
+                    "payTo": "0xAA0a350f6080940c138A8A50C0Fa8c8387782eb4",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1000",
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "extra": {
+                        "feePayer": "CjNFTjvBhbJJd2B5ePPMHRLx1ELZpa8dwQgGL727eKww"
+                    },
+                    "maxTimeoutSeconds": 120,
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "payTo": "VXbuAtfujvaARnzCv38PehXSHA9xccXiQGHvqUBg2YN",
+                    "scheme": "exact"
+                }
+            ],
+            "description": "Synap by Linkrra — OpenAI-compatible chat completions for coding and agent workloads on dedicated GPUs. Pay per call in USDC on any network offered in the payment challenge; no account, no API key. Self-hosted open models use 4-bit weights. From $0.001 per call. Streaming supported: https://synap.linkrra.com",
+            "extensions": {
+                "bazaar": {
+                    "info": {
+                        "input": {
+                            "body": {
+                                "max_tokens": 256,
+                                "messages": [
+                                    {
+                                        "content": "Write a Python function that reverses a string",
+                                        "role": "user"
+                                    }
+                                ],
+                                "model": "auto",
+                                "stream": false
+                            },
+                            "bodyType": "json",
+                            "method": "POST",
+                            "type": "http"
+                        },
+                        "output": {
+                            "example": {
+                                "choices": [
+                                    {
+                                        "message": {
+                                            "content": "def reverse(s):\n    return s[::-1]",
+                                            "role": "assistant"
+                                        }
+                                    }
+                                ],
+                                "id": "chatcmpl-...",
+                                "model": "qwen/qwen3-vl-30b-a3b-instruct",
+                                "object": "chat.completion",
+                                "payment": {
+                                    "network": "eip155:8453",
+                                    "paidUsd": 0.001,
+                                    "transaction": "0x..."
+                                },
+                                "usage": {
+                                    "completion_tokens": 12,
+                                    "prompt_tokens": 16,
+                                    "total_tokens": 28
+                                }
+                            },
+                            "type": "json"
+                        }
+                    }
+                },
+                "builder-code": {
+                    "info": {
+                        "a": "bc_66yn2s8l"
+                    },
+                    "schema": {
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "additionalProperties": false,
+                        "properties": {
+                            "a": {
+                                "description": "App builder code",
+                                "pattern": "^[a-z0-9_]{1,32}$",
+                                "type": "string"
+                            },
+                            "s": {
+                                "description": "Service builder codes",
+                                "items": {
+                                    "pattern": "^[a-z0-9_]{1,32}$",
+                                    "type": "string"
+                                },
+                                "maxItems": 11,
+                                "type": "array"
+                            },
+                            "w": {
+                                "description": "Wallet builder code",
+                                "pattern": "^[a-z0-9_]{1,32}$",
+                                "type": "string"
+                            }
+                        },
+                        "type": "object"
+                    }
+                }
+            },
+            "lastUpdated": "2026-11-06T17:27:22.319Z",
+            "quality": {
+                "l30DaysTotalCalls": 147,
+                "l30DaysUniquePayers": 8,
+                "lastCalledAt": "2026-11-06T09:27:06.121Z"
+            },
+            "resource": "https://pool.linkrra.com/api/billing/x402/chat/completions",
+            "serviceName": "Synap by Linkrra",
+            "tags": ["inference", "llm", "chat-completion", "openai-compatible", "ai-compute"],
+            "type": "http",
+            "x402Version": 2
+        },
+        {
+            "accepts": [
+                {
+                    "amount": "1000",
+                    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "description": "OpenAI-compatible chat completion on 71 models: name one in `model` (llama-3.1-8b-instruct, l3-8b-lunaris-v1, mistral-small-24b-instruct-2501, gemma-3-4b-it, qwen2.5-7b-instruct, gpt-oss-20b, phi-4, gemma-3-12b-it, qwen3.5-9b, gemma-3-27b-it, gpt-oss-120b and 59 more) and the 402 prices that model per request; served by DeepInfra, Venice AI, NEAR AI Cloud and Taifoon's own GPU (nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16 when no model is named). Messages in, the answer and its token usage out; max_…",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxAmountRequired": "1000",
+                    "maxTimeoutSeconds": 300,
+                    "mimeType": "application/json",
+                    "network": "eip155:8453",
+                    "payTo": "0x3574999dd4c96eB73Bd6e11D4177010C83E14f5b",
+                    "resource": "https://coord.taifoon.dev/v1/chat/completions",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1000",
+                    "asset": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+                    "description": "OpenAI-compatible chat completion on 71 models: name one in `model` (llama-3.1-8b-instruct, l3-8b-lunaris-v1, mistral-small-24b-instruct-2501, gemma-3-4b-it, qwen2.5-7b-instruct, gpt-oss-20b, phi-4, gemma-3-12b-it, qwen3.5-9b, gemma-3-27b-it, gpt-oss-120b and 59 more) and the 402 prices that model per request; served by DeepInfra, Venice AI, NEAR AI Cloud and Taifoon's own GPU (nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16 when no model is named). Messages in, the answer and its token usage out; max_…",
+                    "extra": {
+                        "name": "USD Coin",
+                        "version": "2"
+                    },
+                    "maxAmountRequired": "1000",
+                    "maxTimeoutSeconds": 300,
+                    "mimeType": "application/json",
+                    "network": "eip155:42161",
+                    "payTo": "0x3574999dd4c96eB73Bd6e11D4177010C83E14f5b",
+                    "resource": "https://coord.taifoon.dev/v1/chat/completions",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1000",
+                    "asset": "0x3600000000000000000000000000000000000000",
+                    "description": "OpenAI-compatible chat completion on 71 models: name one in `model` (llama-3.1-8b-instruct, l3-8b-lunaris-v1, mistral-small-24b-instruct-2501, gemma-3-4b-it, qwen2.5-7b-instruct, gpt-oss-20b, phi-4, gemma-3-12b-it, qwen3.5-9b, gemma-3-27b-it, gpt-oss-120b and 59 more) and the 402 prices that model per request; served by DeepInfra, Venice AI, NEAR AI Cloud and Taifoon's own GPU (nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16 when no model is named). Messages in, the answer and its token usage out; max_…",
+                    "extra": {
+                        "name": "USDC",
+                        "version": "2"
+                    },
+                    "maxAmountRequired": "1000",
+                    "maxTimeoutSeconds": 300,
+                    "mimeType": "application/json",
+                    "network": "eip155:5042",
+                    "payTo": "0x3574999dd4c96eB73Bd6e11D4177010C83E14f5b",
+                    "resource": "https://coord.taifoon.dev/v1/chat/completions",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1000",
+                    "asset": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+                    "description": "OpenAI-compatible chat completion on 71 models: name one in `model` (llama-3.1-8b-instruct, l3-8b-lunaris-v1, mistral-small-24b-instruct-2501, gemma-3-4b-it, qwen2.5-7b-instruct, gpt-oss-20b, phi-4, gemma-3-12b-it, qwen3.5-9b, gemma-3-27b-it, gpt-oss-120b and 59 more) and the 402 prices that model per request; served by DeepInfra, Venice AI, NEAR AI Cloud and Taifoon's own GPU (nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16 when no model is named). Messages in, the answer and its token usage out; max_…",
+                    "extra": {
+                        "name": "Global Dollar",
+                        "version": "1"
+                    },
+                    "maxAmountRequired": "1000",
+                    "maxTimeoutSeconds": 300,
+                    "mimeType": "application/json",
+                    "network": "eip155:4663",
+                    "payTo": "0x3574999dd4c96eB73Bd6e11D4177010C83E14f5b",
+                    "resource": "https://coord.taifoon.dev/v1/chat/completions",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1000",
+                    "asset": "0x754704Bc059F8C67012fEd69BC8A327a5aafb603",
+                    "description": "OpenAI-compatible chat completion on 71 models: name one in `model` (llama-3.1-8b-instruct, l3-8b-lunaris-v1, mistral-small-24b-instruct-2501, gemma-3-4b-it, qwen2.5-7b-instruct, gpt-oss-20b, phi-4, gemma-3-12b-it, qwen3.5-9b, gemma-3-27b-it, gpt-oss-120b and 59 more) and the 402 prices that model per request; served by DeepInfra, Venice AI, NEAR AI Cloud and Taifoon's own GPU (nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16 when no model is named). Messages in, the answer and its token usage out; max_…",
+                    "extra": {
+                        "name": "USDC",
+                        "version": "2"
+                    },
+                    "maxAmountRequired": "1000",
+                    "maxTimeoutSeconds": 300,
+                    "mimeType": "application/json",
+                    "network": "eip155:143",
+                    "payTo": "0x3574999dd4c96eB73Bd6e11D4177010C83E14f5b",
+                    "resource": "https://coord.taifoon.dev/v1/chat/completions",
+                    "scheme": "exact"
+                },
+                {
+                    "amount": "1000",
+                    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "description": "OpenAI-compatible chat completion on 71 models: name one in `model` (llama-3.1-8b-instruct, l3-8b-lunaris-v1, mistral-small-24b-instruct-2501, gemma-3-4b-it, qwen2.5-7b-instruct, gpt-oss-20b, phi-4, gemma-3-12b-it, qwen3.5-9b, gemma-3-27b-it, gpt-oss-120b and 59 more) and the 402 prices that model per request; served by DeepInfra, Venice AI, NEAR AI Cloud and Taifoon's own GPU (nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16 when no model is named). Messages in, the answer and its token usage out; max_…",
+                    "extra": {
+                        "feePayer": "F742C4VfFLQ9zRQyithoj5229ZgtX2WqKCSFKgH2EThq"
+                    },
+                    "maxAmountRequired": "1000",
+                    "maxTimeoutSeconds": 300,
+                    "mimeType": "application/json",
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "payTo": "GQcEn5pLcweo7qaiy3rDdsiUPiygygmFBaixNtNqhQVD",
+                    "resource": "https://coord.taifoon.dev/v1/chat/completions",
+                    "scheme": "exact"
+                }
+            ],
+            "description": "OpenAI-compatible chat completion on 71 models: name one in `model` (llama-3.1-8b-instruct, l3-8b-lunaris-v1, mistral-small-24b-instruct-2501, gemma-3-4b-it, qwen2.5-7b-instruct, gpt-oss-20b, phi-4, gemma-3-12b-it, qwen3.5-9b, gemma-3-27b-it, gpt-oss-120b and 59 more) and the 402 prices that model per request; served by DeepInfra, Venice AI, NEAR AI Cloud and Taifoon's own GPU (nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16 when no model is named). Messages in, the answer and its token usage out; max_…",
+            "extensions": {
+                "bazaar": {
+                    "info": {
+                        "input": {
+                            "body": {
+                                "max_tokens": 128,
+                                "messages": [
+                                    {
+                                        "content": "What is 17 multiplied by 24? Show the calculation briefly.",
+                                        "role": "user"
+                                    }
+                                ],
+                                "model": "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16"
+                            },
+                            "bodyType": "json",
+                            "method": "POST",
+                            "type": "http"
+                        },
+                        "output": {
+                            "example": {
+                                "choices": [
+                                    {
+                                        "finish_reason": "stop",
+                                        "index": 0,
+                                        "message": {
+                                            "content": "17 × 24 = 408 (17 × 20 = 340; 17 × 4 = 68; 340 + 68 = 408).",
+                                            "role": "assistant"
+                                        }
+                                    }
+                                ],
+                                "created": 1791763200,
+                                "id": "chatcmpl-gpu_…",
+                                "model": "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16",
+                                "object": "chat.completion",
+                                "usage": {
+                                    "completion_tokens": 14,
+                                    "prompt_tokens": 14,
+                                    "total_tokens": 28
+                                }
+                            },
+                            "type": "json"
+                        }
+                    }
+                }
+            },
+            "lastUpdated": "2026-11-02T21:47:20.795Z",
+            "quality": {
+                "l30DaysTotalCalls": 25,
+                "l30DaysUniquePayers": 8,
+                "lastCalledAt": "2026-11-02T21:47:12.296Z"
+            },
+            "resource": "https://coord.taifoon.dev/v1/chat/completions",
+            "serviceName": "Taifoon",
+            "type": "http",
+            "x402Version": 2
+        }
+    ],
+    "partialResults": true,
+    "searchMethod": "hybrid",
+    "x402Version": 2
+}

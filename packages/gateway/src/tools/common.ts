@@ -11,6 +11,7 @@ import type { Fetcher } from "../assess/fetch.ts";
 import type { Assessor } from "../assess/assessor.ts";
 import type { Log } from "../log.ts";
 import type { Tracing } from "../trace.ts";
+import type { X402Index } from "../x402/index.ts";
 
 export interface Deps {
     config: Config;
@@ -22,6 +23,8 @@ export interface Deps {
     tracing?: Tracing;
     // Tests replace the safe fetcher that x402 probes and searches use
     x402Fetch?: Fetcher;
+    // Tests replace the built-in x402 index
+    x402Index?: X402Index;
 }
 
 export type Register = (server: McpServer, deps: Deps) => void;
