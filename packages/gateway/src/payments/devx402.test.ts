@@ -540,7 +540,7 @@ describe("DevPayments x402 ledger", () => {
     });
 
     it("answers the next order or configure with a set refusal once", async () => {
-        dev.x402.refuseNext({
+        dev.x402.refuseNextOrder({
             reason: "pin_refused",
             serviceId: "xs_w5a4htopmpzmmhos",
             pinReason: "payee_no_usdc_account",
@@ -552,7 +552,11 @@ describe("DevPayments x402 ledger", () => {
             pinReason: "payee_no_usdc_account",
         });
         expect((await dev.order(allowance())).status).toBe("paid");
-        dev.x402.refuseNext({ reason: "router_unavailable" });
+        dev.x402.refuseNextConfigure({ reason: "router_unavailable" });
+        // @ts-expect-error a configure-only reason is no order refusal
+        dev.x402.refuseNextOrder({ reason: "needs_payment" });
+        // @ts-expect-error an order-only reason is no configure refusal
+        dev.x402.refuseNextConfigure({ reason: "pin_refused" });
         expect(await dev.x402Configure(h, {}, "req_configure_0010", signal())).toEqual({
             status: "refused",
             reason: "router_unavailable",
@@ -616,4 +620,64 @@ describe("DevPayments x402 ledger", () => {
             }),
         ).toEqual({ status: "refused", orderId: id, reason: "terms_mismatch" });
     });
+
+    it("refuses at settle with refundPending when the account closed between create and pay", async () => {
+        const d = new DevPayments(testOrderSeed, 600_000, () => testNow, { requirePayment: true });
+        const a = await d.order(allowance({ idempotencyKey: "toolu_allowance_0001" }));
+        if (a.status !== "payment_required") throw new Error("expected a payment step");
+        d.pay(a.orderId);
+        const b = await d.order(allowance({ idempotencyKey: "toolu_allowance_0002" }));
+        if (b.status !== "payment_required") throw new Error("expected a payment step");
+        d.pay(b.orderId);
+        expect((await d.order({ orderId: a.orderId, claim: a.claim as string })).status).toBe(
+            "paid",
+        );
+        d.x402.patch(h, { state: "closed" });
+        expect(await d.order({ orderId: b.orderId, claim: b.claim as string })).toEqual({
+            status: "refused",
+            orderId: b.orderId,
+            reason: "sandbox_ended",
+            refundPending: true,
+        });
+    });
+
+    it("answers a configure disabling an id the account does not hold with needs_payment", async () => {
+        await dev.order(allowance());
+        expect(
+            await dev.x402Configure(
+                h,
+                { disable: [serviceId("POST", "nobody.example", "/v1/")] },
+                "req_configure_0011",
+                signal(),
+            ),
+        ).toEqual({ status: "refused", reason: "needs_payment" });
+    });
+
+    it("signs allowance_micros on start tokens only", async () => {
+        const r = await dev.order({
+            kind: "extend",
+            packageId: "more",
+            amountMicros: 40_000,
+            allowanceMicros: 100_000,
+            handleSha256: h,
+            description: "e",
+            idempotencyKey: "toolu_extend_00001",
+        });
+        if (r.status !== "paid" || r.kind === "allowance") throw new Error("expected an extend");
+        expect(tokenClaims(r.orderToken)).not.toHaveProperty("allowance_micros");
+    });
+
+    it.each(["closing", "closed"] as const)(
+        "always shows a refund block on a %s account",
+        async (state) => {
+            await dev.order(allowance());
+            dev.x402.patch(h, { state });
+            expect((await dev.x402Account(h, signal())).x402?.refund).toEqual({
+                state: "waiting",
+                amountMicros: 0,
+                keptMicros: 0,
+                txs: [],
+            });
+        },
+    );
 });

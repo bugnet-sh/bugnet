@@ -108,7 +108,8 @@ export function canonicalSetup(s: X402Setup | undefined): string {
 export class DevX402Ledger {
     readonly terms: X402Terms;
     private readonly accounts = new Map<string, LedgerAccount>();
-    private readonly refusals: (RefusedOrder | X402ConfigureRefused)[] = [];
+    private readonly orderRefusals: RefusedOrder[] = [];
+    private readonly configureRefusals: X402ConfigureRefused[] = [];
     private readonly configured = new Map<
         string,
         { request: string; answer: X402ConfigureResult }
@@ -151,9 +152,14 @@ export class DevX402Ledger {
         }
     }
 
-    // The next order or configure answers this refusal once
-    refuseNext(r: Omit<RefusedOrder, "status"> | Omit<X402ConfigureRefused, "status">): void {
-        this.refusals.push({ status: "refused", ...r } as RefusedOrder | X402ConfigureRefused);
+    // The next order answers this refusal once
+    refuseNextOrder(r: Omit<RefusedOrder, "status">): void {
+        this.orderRefusals.push({ status: "refused", ...r });
+    }
+
+    // The next configure answers this refusal once
+    refuseNextConfigure(r: Omit<X402ConfigureRefused, "status">): void {
+        this.configureRefusals.push({ status: "refused", ...r });
     }
 
     setSellers(stats: Record<string, X402SellerStats>): void {
@@ -165,8 +171,12 @@ export class DevX402Ledger {
         this.payerIndex += 1;
     }
 
-    takeRefusal(): RefusedOrder | X402ConfigureRefused | null {
-        return this.refusals.shift() ?? null;
+    takeOrderRefusal(): RefusedOrder | null {
+        return this.orderRefusals.shift() ?? null;
+    }
+
+    takeConfigureRefusal(): X402ConfigureRefused | null {
+        return this.configureRefusals.shift() ?? null;
     }
 
     private enabledAfter(
@@ -249,6 +259,9 @@ export class DevX402Ledger {
         const key = req.kind === "start" ? this.startKey(orderId) : (req.handleSha256 as string);
         let a = this.accounts.get(key);
         const allowance = req.allowanceMicros ?? 0;
+        if (a && a.state !== "open") {
+            return { status: "refused", orderId, reason: "sandbox_ended", refundPending: true };
+        }
         if ((a?.funded ?? 0) + allowance > this.terms.maxAllowancePerSandboxMicros) {
             return { status: "refused", orderId, reason: "allowance_ceiling", refundPending: true };
         }
@@ -300,7 +313,16 @@ export class DevX402Ledger {
             pendingCalls: a.pendingCalls,
             spendPerMinuteMicros: a.spendPerMinute ?? this.terms.defaultSpendPerMinuteMicros,
             services,
-            ...(a.state !== "open" && a.refund ? { refund: a.refund } : {}),
+            ...(a.state !== "open"
+                ? {
+                      refund: a.refund ?? {
+                          state: "waiting" as const,
+                          amountMicros: 0,
+                          keptMicros: 0,
+                          txs: [],
+                      },
+                  }
+                : {}),
         };
     }
 
@@ -335,7 +357,10 @@ export class DevX402Ledger {
                 h.payTo !== p.payTo
             );
         });
-        if (needsPayment) return refuse("needs_payment");
+        const unheldDisable = (setup.disable ?? []).some(
+            (id) => !a.services.some((s) => s.serviceId === id),
+        );
+        if (needsPayment || unheldDisable) return refuse("needs_payment");
         if (pins.some((p) => p.maxPriceMicros > this.terms.maxPricePerCallMicros)) {
             return refuse("price_above_ceiling");
         }
@@ -442,8 +467,8 @@ export class DevPayments implements Payments {
         requestId: string,
         _signal?: AbortSignal,
     ): Promise<X402ConfigureResult> {
-        const set = this.x402.takeRefusal();
-        if (set) return set as X402ConfigureRefused;
+        const set = this.x402.takeConfigureRefusal();
+        if (set) return set;
         return this.x402.configure(handleSha256, setup, requestId);
     }
 
@@ -461,7 +486,9 @@ export class DevPayments implements Payments {
             kind,
             package_id: o.packageId,
             amount_micros: o.amountMicros,
-            ...((o.allowanceMicros ?? 0) > 0 ? { allowance_micros: o.allowanceMicros } : {}),
+            ...(kind === "start" && (o.allowanceMicros ?? 0) > 0
+                ? { allowance_micros: o.allowanceMicros }
+                : {}),
             expires_at: new Date(this.now() + this.ttlMs).toISOString(),
             ...(o.handleSha256 ? { handle_sha256: o.handleSha256 } : {}),
         });
@@ -543,8 +570,8 @@ export class DevPayments implements Payments {
     }
 
     async order(req: OrderRequest): Promise<OrderResult> {
-        const set = this.x402.takeRefusal();
-        if (set) return set as RefusedOrder;
+        const set = this.x402.takeOrderRefusal();
+        if (set) return set;
         return this.requiresPayment ? this.requireOrder(req) : this.settleAtOnce(req);
     }
 

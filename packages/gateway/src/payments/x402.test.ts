@@ -199,4 +199,23 @@ describe("HttpPayments x402 routes", () => {
             new HttpPayments(s.url, "tok").x402Configure("ab", {}, "req_configure_0004", signal()),
         ).rejects.toMatchObject({ kind: "unavailable" });
     });
+
+    it.each([
+        [400, { status: "refused", reason: "order_unknown" }],
+        [200, { status: "refused", reason: "pin_refused" }],
+        [200, { status: "refused" }],
+    ])(
+        "answers a configure %i refusal with an unknown reason as bad_request",
+        async (status, body) => {
+            const s = await serve(() => ({ status, body }));
+            expect(
+                await new HttpPayments(s.url, "tok").x402Configure(
+                    "ab",
+                    {},
+                    "req_configure_0005",
+                    signal(),
+                ),
+            ).toEqual({ status: "refused", reason: "bad_request" });
+        },
+    );
 });

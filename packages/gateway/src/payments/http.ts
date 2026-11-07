@@ -1,16 +1,17 @@
 import { z } from "zod";
 import { GatewayError } from "../router.ts";
-import type {
-    OrderRequest,
-    OrderResult,
-    Payments,
-    RefusedOrder,
-    X402AccountAnswer,
-    X402ConfigureRefused,
-    X402ConfigureResult,
-    X402SellerStats,
-    X402Setup,
-    X402Terms,
+import {
+    configureRefusalReasons,
+    type OrderRequest,
+    type OrderResult,
+    type Payments,
+    type RefusedOrder,
+    type X402AccountAnswer,
+    type X402ConfigureRefused,
+    type X402ConfigureResult,
+    type X402SellerStats,
+    type X402Setup,
+    type X402Terms,
 } from "./port.ts";
 
 export const paymentsUnavailableText = "the payment service did not answer, try again in a minute";
@@ -217,27 +218,46 @@ export class HttpPayments implements Payments {
             },
             signal,
         );
-        if (status >= 400 && status < 500) {
-            if (isRefused(body)) return body as unknown as X402ConfigureRefused;
-            return { status: "refused", reason: status === 401 ? "unauthorized" : "bad_request" };
+        const mapped = this.mapAnswer(status, body);
+        if (mapped.refused) {
+            const reason = (mapped.refused as { reason?: unknown }).reason;
+            const known = (configureRefusalReasons as readonly unknown[]).includes(reason);
+            return known
+                ? (mapped.refused as X402ConfigureRefused)
+                : { status: "refused", reason: "bad_request" };
         }
-        if (status < 200 || status >= 300) throw unavailable();
-        const b = body as { status?: unknown } | undefined;
-        if (b?.status === "refused") return body as X402ConfigureRefused;
+        const b = mapped.body as { status?: unknown } | undefined;
         if (b?.status === "ok") {
-            const x402 = accountSchema.safeParse((body as { x402?: unknown }).x402);
+            const x402 = accountSchema.safeParse((mapped.body as { x402?: unknown }).x402);
             if (x402.success) return { status: "ok", x402: x402.data };
         }
         throw unavailable();
     }
 
-    async order(req: OrderRequest, signal: AbortSignal): Promise<OrderResult> {
-        const { status, body } = await this.post("/v1/orders", req, signal);
+    // Every 4xx and every 2xx refused body is a refusal, other statuses are unavailable
+    private mapAnswer(
+        status: number,
+        body: unknown,
+    ): { refused: { status: "refused"; reason: string } | null; body: unknown } {
         if (status >= 400 && status < 500) {
-            if (isRefused(body)) return body;
-            return { status: "refused", reason: status === 401 ? "unauthorized" : "bad_request" };
+            return {
+                refused: isRefused(body)
+                    ? body
+                    : {
+                          status: "refused",
+                          reason: status === 401 ? "unauthorized" : "bad_request",
+                      },
+                body,
+            };
         }
         if (status < 200 || status >= 300) throw unavailable();
+        return { refused: isRefused(body) ? body : null, body };
+    }
+
+    async order(req: OrderRequest, signal: AbortSignal): Promise<OrderResult> {
+        const { status, body } = await this.post("/v1/orders", req, signal);
+        const mapped = this.mapAnswer(status, body);
+        if (mapped.refused && status >= 400) return mapped.refused as RefusedOrder;
         if (!body || typeof body !== "object" || !("status" in body)) {
             throw new Error("payments answered without a status");
         }
