@@ -46,16 +46,39 @@ export interface Env {
     stateDir: string;
     platform: NodeJS.Platform;
     arch: string;
+    plugin: string;
 }
 
 const maxHintsPerSession = 2;
 const stateTtlMs = 2 * 24 * 3600 * 1000;
 
+// The hint names the skill of whichever plugin carries this hook
+export function pluginName(env: NodeJS.ProcessEnv): string {
+    try {
+        const root = env.CLAUDE_PLUGIN_ROOT;
+        if (!root) return "bugnet";
+        const manifest = JSON.parse(
+            readFileSync(join(root, ".claude-plugin", "plugin.json"), "utf8"),
+        ) as { name?: unknown };
+        return typeof manifest.name === "string" && /^[a-z0-9-]{1,64}$/.test(manifest.name)
+            ? manifest.name
+            : "bugnet";
+    } catch {
+        return "bugnet";
+    }
+}
+
 export function envFrom(env: NodeJS.ProcessEnv): Env {
     const raw = (env.BUGNET_HINTS ?? env.CLAUDE_PLUGIN_OPTION_HINTS ?? "normal").toLowerCase();
     const hints = raw === "off" || raw === "quiet" ? raw : "normal";
     const base = env.CLAUDE_PLUGIN_DATA || join(tmpdir(), "bugnet-plugin");
-    return { hints, stateDir: join(base, "hints"), platform: process.platform, arch: process.arch };
+    return {
+        hints,
+        stateDir: join(base, "hints"),
+        platform: process.platform,
+        arch: process.arch,
+        plugin: pluginName(env),
+    };
 }
 
 function stateFile(env: Env, session: string): string {
@@ -193,7 +216,7 @@ export function runHook(mode: Mode, input: HookInput, env: Env, now = Date.now()
     if (!c.suggest || !c.category) return null;
     const key = c.category;
     if (state.hinted.includes(key)) return null;
-    const text = hintFor(c, mode, firstPrompt);
+    const text = hintFor(c, mode, firstPrompt, env.plugin);
     if (!text) return null;
     state.hinted.push(key);
     persist(env, session, state, now);

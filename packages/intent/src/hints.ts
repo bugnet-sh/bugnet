@@ -70,11 +70,11 @@ const failureCause: Record<string, string> = {
 
 const tools =
     "Bugnet's tools in this session can run or inspect it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
-const skill =
-    "The bugnet:run-in-sandbox skill holds the steps for telling the user before any shell command.";
+const skill = (plugin: string) =>
+    `The ${plugin}:run-in-sandbox skill holds the steps for telling the user before any shell command.`;
 // Claude Code invokes a skill whose description fits the request, so prompt hints name it
-const promptSkill =
-    "The bugnet:run-in-sandbox skill covers requests of this kind and holds the steps for telling the user before any shell command.";
+const promptSkill = (plugin: string) =>
+    `The ${plugin}:run-in-sandbox skill covers requests of this kind and holds the steps for telling the user before any shell command.`;
 // Only a first prompt surely comes before any offer, so later hints state what the hook tracks
 const notOffered = "Bugnet has not been offered in this session.";
 const notUsed = "No Bugnet tool has been used in this session.";
@@ -107,14 +107,19 @@ function detection(c: Classification, kind: InputKind, max: number): string {
     return `the prompt asks to run or set up ${described(c, max)}.`;
 }
 
-export function hintFor(c: Classification, kind: InputKind, firstPrompt = false): string {
+export function hintFor(
+    c: Classification,
+    kind: InputKind,
+    firstPrompt = false,
+    plugin = "bugnet",
+): string {
     if (!c.suggest || !c.category) return "";
     const top = lead(c);
     const reason =
         kind === "failure"
             ? failureWhy[c.category]
             : ((top && signalWhy[top.id]) ?? why[c.category]);
-    const steps = kind === "prompt" ? promptSkill : skill;
+    const steps = kind === "prompt" ? promptSkill(plugin) : skill(plugin);
     const state = kind === "prompt" && firstPrompt ? notOffered : notUsed;
     for (const max of [60, 36, 20]) {
         const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${steps} ${state}`;

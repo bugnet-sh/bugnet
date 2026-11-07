@@ -1,8 +1,8 @@
-import { existsSync, mkdtempSync, utimesSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { clonedDirs, loadState, runHook, type Env } from "./hook.ts";
+import { clonedDirs, loadState, pluginName, runHook, type Env } from "./hook.ts";
 
 function env(hints: Env["hints"] = "normal"): Env {
     return {
@@ -10,8 +10,30 @@ function env(hints: Env["hints"] = "normal"): Env {
         stateDir: mkdtempSync(join(tmpdir(), "bugnet-hook-")),
         platform: "darwin",
         arch: "arm64",
+        plugin: "bugnet",
     };
 }
+
+describe("pluginName", () => {
+    it("reads the installed plugin's name, and falls back to bugnet", () => {
+        const dir = mkdtempSync(join(tmpdir(), "bugnet-plugin-"));
+        mkdirSync(join(dir, ".claude-plugin"));
+        const write = (name: unknown) =>
+            writeFileSync(join(dir, ".claude-plugin", "plugin.json"), JSON.stringify({ name }));
+        write("bugnet-wallet");
+        expect(pluginName({ CLAUDE_PLUGIN_ROOT: dir })).toBe("bugnet-wallet");
+        write("Bugnet Wallet!");
+        expect(pluginName({ CLAUDE_PLUGIN_ROOT: dir })).toBe("bugnet");
+        expect(pluginName({ CLAUDE_PLUGIN_ROOT: join(dir, "none") })).toBe("bugnet");
+        expect(pluginName({})).toBe("bugnet");
+    });
+
+    it("puts that name in the hint", () => {
+        const e = { ...env(), plugin: "bugnet-wallet" };
+        const out = runHook("prompt", { session_id: "w1", prompt: "set up kokoro on my mac" }, e);
+        expect(out).toContain("bugnet-wallet:run-in-sandbox skill");
+    });
+});
 
 describe("clonedDirs", () => {
     const dirs = (command: string) => clonedDirs(command, "/w").map((c) => c.dir);

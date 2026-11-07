@@ -2767,8 +2767,8 @@ var failureCause = {
   docker_daemon: "no running Docker daemon on this machine"
 };
 var tools = "Bugnet's tools in this session can run or inspect it in a disposable cloud Linux sandbox, and bugnet_assess checks it for free.";
-var skill = "The bugnet:run-in-sandbox skill holds the steps for telling the user before any shell command.";
-var promptSkill = "The bugnet:run-in-sandbox skill covers requests of this kind and holds the steps for telling the user before any shell command.";
+var skill = (plugin) => `The ${plugin}:run-in-sandbox skill holds the steps for telling the user before any shell command.`;
+var promptSkill = (plugin) => `The ${plugin}:run-in-sandbox skill covers requests of this kind and holds the steps for telling the user before any shell command.`;
 var notOffered = "Bugnet has not been offered in this session.";
 var notUsed = "No Bugnet tool has been used in this session.";
 function lead(c) {
@@ -2796,11 +2796,11 @@ function detection(c, kind, max) {
   }
   return `the prompt asks to run or set up ${described(c, max)}.`;
 }
-function hintFor(c, kind, firstPrompt = false) {
+function hintFor(c, kind, firstPrompt = false, plugin = "bugnet") {
   if (!c.suggest || !c.category) return "";
   const top = lead(c);
   const reason = kind === "failure" ? failureWhy[c.category] : (top && signalWhy[top.id]) ?? why[c.category];
-  const steps = kind === "prompt" ? promptSkill : skill;
+  const steps = kind === "prompt" ? promptSkill(plugin) : skill(plugin);
   const state = kind === "prompt" && firstPrompt ? notOffered : notUsed;
   for (const max of [60, 36, 20]) {
     const text = `${hintPrefix} ${detection(c, kind, max)} ${reason} ${tools} ${steps} ${state}`;
@@ -3227,11 +3227,29 @@ function perItemSeconds(m) {
 // packages/intent/src/hook.ts
 var maxHintsPerSession = 2;
 var stateTtlMs = 2 * 24 * 3600 * 1e3;
+function pluginName(env) {
+  try {
+    const root = env.CLAUDE_PLUGIN_ROOT;
+    if (!root) return "bugnet";
+    const manifest = JSON.parse(
+      readFileSync(join(root, ".claude-plugin", "plugin.json"), "utf8")
+    );
+    return typeof manifest.name === "string" && /^[a-z0-9-]{1,64}$/.test(manifest.name) ? manifest.name : "bugnet";
+  } catch {
+    return "bugnet";
+  }
+}
 function envFrom(env) {
   const raw = (env.BUGNET_HINTS ?? env.CLAUDE_PLUGIN_OPTION_HINTS ?? "normal").toLowerCase();
   const hints = raw === "off" || raw === "quiet" ? raw : "normal";
   const base = env.CLAUDE_PLUGIN_DATA || join(tmpdir(), "bugnet-plugin");
-  return { hints, stateDir: join(base, "hints"), platform: process.platform, arch: process.arch };
+  return {
+    hints,
+    stateDir: join(base, "hints"),
+    platform: process.platform,
+    arch: process.arch,
+    plugin: pluginName(env)
+  };
 }
 function stateFile(env, session) {
   return join(env.stateDir, `${session.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 100)}.json`);
@@ -3350,7 +3368,7 @@ function runHook(mode, input, env, now = Date.now()) {
   if (!c.suggest || !c.category) return null;
   const key = c.category;
   if (state.hinted.includes(key)) return null;
-  const text = hintFor(c, mode, firstPrompt);
+  const text = hintFor(c, mode, firstPrompt, env.plugin);
   if (!text) return null;
   state.hinted.push(key);
   persist(env, session, state, now);

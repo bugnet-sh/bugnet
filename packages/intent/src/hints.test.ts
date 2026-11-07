@@ -49,6 +49,13 @@ function cases(): [string, Classification, "prompt" | "command" | "failure"][] {
 }
 
 describe("hintFor", () => {
+    it.each(cases())("names the wallet plugin's skill for %s", (_name, c, kind) => {
+        const text = hintFor(c, kind, true, "bugnet-wallet");
+        expect(text).toContain("The bugnet-wallet:run-in-sandbox skill");
+        expect(text).not.toContain("The bugnet:run-in-sandbox skill");
+        expect(text.length).toBeLessThanOrEqual(maxHintChars);
+    });
+
     it.each(cases())("writes one factual paragraph for %s", (_name, c, kind) => {
         expect(c.suggest).toBe(true);
         const text = hintFor(c, kind, true);
