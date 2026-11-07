@@ -1069,30 +1069,35 @@ describe("settling holds, the gateway stand-in", () => {
         expect(pay.orders.heldFor(key)).toBeUndefined();
     });
 
-    it("keeps the hold and the refusal text when a named order gets claim_mismatch", async () => {
-        const mismatch: CallToolResult = {
-            isError: true,
-            content: [{ type: "text", text: "start: wrong claim." }],
-            structuredContent: {
-                message: "start: wrong claim.",
-                orderId: standInOrder,
-                refusal: "claim_mismatch",
-            },
-        };
-        const remote = fakeRemote(() => mismatch);
-        const pay = devPay(testPayments(), null);
-        hold(pay, key, standInStep);
-        const b = await bridge({ remote, deps: { pay } });
-        const r = await b.client.callTool({
-            name: "bugnet_start",
-            arguments: { ...standInArgs, orderId: standInOrder, claim: "wrong" },
-        });
-        expect(r.isError).toBe(true);
-        const text = (r.content as { text: string }[]).map((c) => c.text).join("\n");
-        expect(text).toContain("start: wrong claim.");
-        expect(text).not.toContain("can no longer be used");
-        expect(pay.orders.heldFor(key)?.state).toBe("paid");
-    });
+    // Neither word says the order is spent, and an allowance order is funded once paid
+    it.each([
+        ["bugnet_start", "claim_mismatch", key, standInArgs],
+        ["bugnet_start", "terms_mismatch", key, standInArgs],
+        ["bugnet_x402_budget", "terms_mismatch", allowanceKey, budgetArgs],
+    ] as const)(
+        "keeps the hold and the refusal text when a named %s order gets %s",
+        async (tool, refusal, k, args) => {
+            const mismatch: CallToolResult = {
+                isError: true,
+                content: [{ type: "text", text: "x: wrong order." }],
+                structuredContent: { message: "x: wrong order.", orderId: standInOrder, refusal },
+            };
+            const remote = fakeRemote(() => mismatch);
+            const pay = devPay(testPayments(), null);
+            const step = { ...standInStep, tool };
+            hold(pay, k, step);
+            const b = await bridge({ remote, deps: { pay } });
+            const r = await b.client.callTool({
+                name: tool,
+                arguments: { ...args, orderId: standInOrder, claim: "wrong" },
+            });
+            expect(r.isError).toBe(true);
+            const text = (r.content as { text: string }[]).map((c) => c.text).join("\n");
+            expect(text).toBe(`x: wrong order.${afterPaymentText(step)}`);
+            expect(text).not.toContain("can no longer be used");
+            expect(pay.orders.heldFor(k)?.state).toBe("paid");
+        },
+    );
 
     it("keeps a paid order whose redeem answered after the client gave up", async () => {
         const giveUp = new AbortController();

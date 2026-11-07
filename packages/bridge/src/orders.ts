@@ -15,7 +15,7 @@ const states: readonly string[] = ["unpaid", "settling", "paid", "expired", "ref
 export function orderKey(tool: string, args: Record<string, unknown>): string | null {
     const { handle, packageId } = args;
     if (tool === "bugnet_x402_budget") {
-        // Every paid allowance call for a sandbox shares one key, so a changed retry never pays a second order
+        // All paid allowance calls for a sandbox share one key, so a changed retry never pays twice
         const amount = priceMicros(args.amountUsd);
         return typeof handle === "string" && amount !== null && amount > 0
             ? `allowance\0${handle}`

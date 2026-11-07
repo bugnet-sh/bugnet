@@ -213,6 +213,9 @@ function progressFor(ctx: ServerContext): {
     return { note, relay: token === undefined ? undefined : (p) => note(p.message ?? "") };
 }
 
+// A wrong claim or other terms say nothing about the order, which may be paid and still redeemable
+const notSpent: ReadonlySet<string> = new Set(["claim_mismatch", "terms_mismatch"]);
+
 // Returns the result of the call that redeemed a paid order, dropping the order when it is spent
 function settle(
     orders: PaidOrders,
@@ -227,8 +230,7 @@ function settle(
         return result;
     }
     const refusal = (r.structuredContent as { refusal?: unknown } | undefined)?.refusal;
-    // A wrong claim says nothing about the order, which may be paid and still redeemable
-    if (typeof refusal === "string" && refusal !== "claim_mismatch" && spentRefusals.has(refusal)) {
+    if (typeof refusal === "string" && !notSpent.has(refusal) && spentRefusals.has(refusal)) {
         orders.drop(step.orderId);
         return withAfterPayment(r, step, true);
     }
