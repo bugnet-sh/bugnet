@@ -274,29 +274,30 @@ Paid tools ask you first, and so does moving a file between your computer and a 
 
 <!-- PENDING: bugnet_fetch_source, bugnet_preview, bugnet_transfer, bugnet_ssh, bugnet_ssh_remove, bugnet_secret_link, bugnet_secrets, bugnet_secret_delete and bugnet_secret_put_grant answer "not available yet" until Bugnet's backend builds them -->
 
-| Tool                      | What it does                                                        | Cost           |
-| ------------------------- | ------------------------------------------------------------------- | -------------- |
-| `bugnet_assess`           | Checks a repo, model or script and says if a sandbox fits, and why  | Free           |
-| `bugnet_quote`            | Prices the sandbox sizes that fit the work                          | Free           |
-| `bugnet_start`            | Pays for a sandbox and starts it                                    | Paid, asks you |
-| `bugnet_status`           | Shows the state, time left, extension prices and where the repo is  | Free           |
-| `bugnet_stop`             | Deletes the sandbox and everything in it                            | Free           |
-| `bugnet_exec`             | Runs a shell command and returns its exit code and last output      | Free           |
-| `bugnet_job`              | Follows a command that is still running                             | Free           |
-| `bugnet_cancel_job`       | Stops a running command                                             | Free           |
-| `bugnet_list_files`       | Lists a folder                                                      | Free           |
-| `bugnet_read_file`        | Reads up to 256 KiB of a file per call                              | Free           |
-| `bugnet_write_file`       | Writes a file of up to 256 KiB                                      | Free           |
-| `bugnet_extend`           | Pays for more time                                                  | Paid, asks you |
-| `bugnet_fetch_source`     | Puts the GitHub repo from the quote into the sandbox                | Free           |
-| `bugnet_preview`          | Makes an HTTPS link to a web app running in the sandbox             | Free           |
-| `bugnet_transfer`         | Makes a one-use `curl` link to move a big file in or out            | Free, asks you |
-| `bugnet_ssh`              | Lets your SSH public key in and gives you the `ssh` command         | Free           |
-| `bugnet_ssh_remove`       | Takes an SSH key off                                                | Free           |
-| `bugnet_secret_link`      | Makes a one-time page where you type a secret, such as an API token | Free           |
-| `bugnet_secrets`          | Lists the sandbox's secrets, never their values                     | Free           |
-| `bugnet_secret_delete`    | Deletes a secret                                                    | Free           |
-| `bugnet_secret_put_grant` | Lets the bridge add sealed secrets, agents never call it            | Free           |
+| Tool                      | What it does                                                            | Cost           |
+| ------------------------- | ----------------------------------------------------------------------- | -------------- |
+| `bugnet_assess`           | Checks a repo, model or script and says if a sandbox fits, and why      | Free           |
+| `bugnet_quote`            | Prices the sandbox sizes that fit the work                              | Free           |
+| `bugnet_start`            | Pays for a sandbox and starts it                                        | Paid, asks you |
+| `bugnet_status`           | Shows the state, time left, extension prices and where the repo is      | Free           |
+| `bugnet_stop`             | Deletes the sandbox and everything in it                                | Free           |
+| `bugnet_exec`             | Runs a shell command and returns its exit code and last output          | Free           |
+| `bugnet_job`              | Follows a command that is still running                                 | Free           |
+| `bugnet_cancel_job`       | Stops a running command                                                 | Free           |
+| `bugnet_list_files`       | Lists a folder                                                          | Free           |
+| `bugnet_read_file`        | Reads up to 256 KiB of a file per call                                  | Free           |
+| `bugnet_write_file`       | Writes a file of up to 256 KiB                                          | Free           |
+| `bugnet_extend`           | Pays for more time                                                      | Paid, asks you |
+| `bugnet_redeem`           | Finishes an order paid at its pay link: starts the sandbox or adds time | Free           |
+| `bugnet_fetch_source`     | Puts the GitHub repo from the quote into the sandbox                    | Free           |
+| `bugnet_preview`          | Makes an HTTPS link to a web app running in the sandbox                 | Free           |
+| `bugnet_transfer`         | Makes a one-use `curl` link to move a big file in or out                | Free, asks you |
+| `bugnet_ssh`              | Lets your SSH public key in and gives you the `ssh` command             | Free           |
+| `bugnet_ssh_remove`       | Takes an SSH key off                                                    | Free           |
+| `bugnet_secret_link`      | Makes a one-time page where you type a secret, such as an API token     | Free           |
+| `bugnet_secrets`          | Lists the sandbox's secrets, never their values                         | Free           |
+| `bugnet_secret_delete`    | Deletes a secret                                                        | Free           |
+| `bugnet_secret_put_grant` | Lets the bridge add sealed secrets, agents never call it                | Free           |
 
 The bridge hides `bugnet_secret_put_grant` and adds `bugnet_secret_from_env`, which adds a secret
 from your machine after you confirm it.

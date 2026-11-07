@@ -13,6 +13,7 @@ import { registerExtendTool } from "./tools/extend.ts";
 import { registerFileTools } from "./tools/files.ts";
 import { registerJobTools } from "./tools/jobs.ts";
 import { registerQuoteTool } from "./tools/quote.ts";
+import { registerRedeemTool } from "./tools/redeem.ts";
 import { registerPreviewTool } from "./tools/preview.ts";
 import { registerSandboxTools } from "./tools/sandbox.ts";
 import { registerSourceTool } from "./tools/source.ts";
@@ -29,6 +30,7 @@ export const registrations: Register[] = [
     registerJobTools,
     registerFileTools,
     registerExtendTool,
+    registerRedeemTool,
     registerSourceTool,
     registerPreviewTool,
     registerTransferTool,
