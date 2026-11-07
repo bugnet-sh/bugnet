@@ -87,6 +87,9 @@ export const registerRedeemTool: Register = (server, deps) => {
                     });
                 }
                 const id = order.orderId;
+                if (order.kind === "allowance") {
+                    throw new GatewayError("invalid", "redeem: this order needs a newer gateway");
+                }
                 if (order.kind === "start") {
                     if (!claims) {
                         throw new GatewayError(

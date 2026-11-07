@@ -6,6 +6,7 @@ import {
     type CreatePlacementRequest,
     type ExtendPlacementRequest,
 } from "../gen/bugnet/router/v1/router_pb.ts";
+import type { PaidAllowanceOrder } from "../payments/port.ts";
 import { signQuote } from "../quote.ts";
 import {
     callTool,
@@ -25,6 +26,29 @@ import {
 } from "../testing/harness.ts";
 import { handleHash, type Deps } from "./common.ts";
 
+const claim = "C".repeat(43);
+const allowancePaid: PaidAllowanceOrder = {
+    status: "paid",
+    orderId: "ord_a",
+    kind: "allowance",
+    handleSha256: handleHash(testHandle),
+    payer: "p",
+    amountMicros: 1_003_000,
+    allowanceMicros: 1_000_000,
+    firstUse: true,
+    x402: {
+        state: "open",
+        fundedMicros: 1_000_000,
+        spentMicros: 0,
+        heldMicros: 0,
+        leftMicros: 1_000_000,
+        allowanceRoomMicros: 4_000_000,
+        paidCalls: 0,
+        pendingCalls: 0,
+        spendPerMinuteMicros: 500_000,
+        services: [],
+    },
+};
 const startTerms = {
     kind: "start",
     packageId: "small-30m",
@@ -294,5 +318,19 @@ describe("bugnet_redeem", () => {
                 "paid twice.",
         );
         expect(payments.orders).toEqual([]);
+    });
+
+    it("a paid allowance order is not redeemed by this build", async () => {
+        const created: CreatePlacementRequest[] = [];
+        const applied: ExtendPlacementRequest[] = [];
+        const { client } = await setup(
+            { ...startRouter(created), ...extendRouter(applied) },
+            testPayments(() => allowancePaid),
+        );
+        const r = await callTool(client, "bugnet_redeem", { orderId: "ord_a", claim });
+        expect(r.isError).toBe(true);
+        expect(r.text).toBe("redeem: this order needs a newer gateway.");
+        expect(created).toEqual([]);
+        expect(applied).toEqual([]);
     });
 });

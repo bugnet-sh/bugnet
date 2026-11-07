@@ -49,6 +49,22 @@ describe("port v2 names", () => {
             "payment_late",
             "token_expired",
             "paid_claim_required",
+            "x402_disabled",
+            "x402_paused",
+            "x402_unavailable",
+            "x402_start_unavailable",
+            "sandbox_unknown",
+            "sandbox_ended",
+            "sandbox_not_capable",
+            "amount_too_small",
+            "fee_mismatch",
+            "too_many_services",
+            "price_above_ceiling",
+            "pin_refused",
+            "spend_rate_out_of_range",
+            "description_too_long",
+            "allowance_ceiling",
+            "allowance_pool_full",
         ]);
     });
 

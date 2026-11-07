@@ -6,6 +6,7 @@ export interface OrderClaims {
     kind: "start" | "extend";
     package_id: string;
     amount_micros: number;
+    allowance_micros?: number;
     expires_at: string;
     handle_sha256?: string;
 }

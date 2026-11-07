@@ -25,7 +25,8 @@ import {
     abandonedFields,
     claimAsked,
     claimInput,
-    isPaidRetry,
+    allowanceOrderError,
+    paidRetry,
     paymentRequiredResult,
     refusalError,
     retryCall,
@@ -226,16 +227,15 @@ export const registerExtendTool: Register = (server, deps) => {
         async (args, ctx) => {
             try {
                 const payment = ctx.mcpReq._meta?.["x402/payment"] ?? args.payment;
-                const paidRetry = isPaidRetry(args, payment);
+                const retried = paidRetry(args, payment);
                 const key = toolUseId(ctx);
                 const budget = new Budget(deps);
                 let request: OrderRequest;
                 let minutes: number | null = null;
-                if (paidRetry) {
+                if (retried) {
                     // The order holds its own terms, so the price is not asked again
                     request = {
-                        orderId: args.orderId,
-                        claim: args.claim,
+                        ...retried,
                         handleSha256: handleHash(args.handle),
                         ...(key ? { idempotencyKey: key } : {}),
                     };
@@ -305,7 +305,7 @@ export const registerExtendTool: Register = (server, deps) => {
                     request,
                     budget.signal(30_000, applyReserveMs),
                 );
-                let byClaim = paidRetry;
+                let byClaim = retried?.claim !== undefined;
                 if (claimAsked(order, args, payment)) {
                     // Asking with the claim alone moves no money
                     order = await deps.payments.order(
@@ -335,6 +335,17 @@ export const registerExtendTool: Register = (server, deps) => {
                     });
                 }
                 const id = order.orderId;
+                if (order.kind === "allowance") {
+                    throw allowanceOrderError(
+                        order,
+                        "extend",
+                        byClaim
+                            ? { claim: args.claim as string, handle: true }
+                            : payment !== undefined
+                              ? { payment: true }
+                              : {},
+                    );
+                }
                 if (order.kind !== "extend") {
                     const next = byClaim
                         ? retryCall("bugnet_redeem", id, { claim: args.claim }) +

@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
-import type { AwaitingPayment, RefusalReason, RefusedOrder } from "../payments/port.ts";
+import type {
+    AwaitingPayment,
+    PaidAllowanceOrder,
+    RefusalReason,
+    RefusedOrder,
+} from "../payments/port.ts";
+import { testHandle } from "../testing/harness.ts";
+import { handleHash } from "./common.ts";
 import {
+    allowanceOrderError,
     claimInput,
-    isPaidRetry,
+    paidRetry,
     paymentRequiredResult,
     refusalError,
     retryCall,
@@ -10,6 +18,28 @@ import {
 } from "./orders.ts";
 
 const claim = "C".repeat(43);
+const allowancePaid: PaidAllowanceOrder = {
+    status: "paid",
+    orderId: "ord_a",
+    kind: "allowance",
+    handleSha256: handleHash(testHandle),
+    payer: "p",
+    amountMicros: 1_003_000,
+    allowanceMicros: 1_000_000,
+    firstUse: true,
+    x402: {
+        state: "open",
+        fundedMicros: 1_000_000,
+        spentMicros: 0,
+        heldMicros: 0,
+        leftMicros: 1_000_000,
+        allowanceRoomMicros: 4_000_000,
+        paidCalls: 0,
+        pendingCalls: 0,
+        spendPerMinuteMicros: 500_000,
+        services: [],
+    },
+};
 const required = { x402Version: 2, accepts: [{ amount: "50000" }] };
 const payUrl = "https://pay.bugnet.sh/o/ord_2";
 const step = (over: Partial<AwaitingPayment> = {}): AwaitingPayment => ({
@@ -26,7 +56,7 @@ const next =
     `Next: pay at ${payUrl} with a Solana wallet holding USDC, then call bugnet_redeem ` +
     "with orderId and claim";
 
-describe("claimInput and isPaidRetry", () => {
+describe("claimInput and paidRetry", () => {
     it("takes a claim of 43 base64url characters only", () => {
         expect(claimInput.safeParse(claim).success).toBe(true);
         for (const bad of ["a".repeat(42), "a".repeat(44), "a".repeat(42) + "+"]) {
@@ -38,11 +68,26 @@ describe("claimInput and isPaidRetry", () => {
         }
     });
 
-    it("counts only orderId with claim and no payment as a paid retry", () => {
-        expect(isPaidRetry({ orderId: "o", claim }, undefined)).toBe(true);
-        expect(isPaidRetry({ orderId: "o", claim }, { signed: true })).toBe(false);
-        expect(isPaidRetry({ orderId: "o" }, undefined)).toBe(false);
-        expect(isPaidRetry({ claim }, undefined)).toBe(false);
+    it("takes orderId with a claim or a payment as a paid retry", () => {
+        expect(paidRetry({ orderId: "o", claim }, undefined)).toEqual({ orderId: "o", claim });
+        expect(paidRetry({ orderId: "o", claim }, { p: 1 })).toEqual({
+            orderId: "o",
+            payment: { p: 1 },
+        });
+        expect(paidRetry({ orderId: "o" }, { p: 1 })).toEqual({ orderId: "o", payment: { p: 1 } });
+        expect(paidRetry({ claim }, { p: 1 })).toBeNull();
+        expect(paidRetry({ orderId: "o" }, undefined)).toBeNull();
+    });
+
+    it("names bugnet_x402_budget for a paid allowance order", () => {
+        const e = allowanceOrderError(allowancePaid, "start", { claim, handle: true });
+        expect(e.kind).toBe("invalid");
+        expect(e.message).toBe(
+            `start: order ord_a adds x402 allowance to a sandbox, call bugnet_x402_budget with the handle, orderId "ord_a" and claim "${claim}"`,
+        );
+        expect(allowanceOrderError(allowancePaid, "extend", { payment: true }).message).toBe(
+            'extend: order ord_a adds x402 allowance to a sandbox, call bugnet_x402_budget with orderId "ord_a" and the claim from its payment step',
+        );
     });
 });
 

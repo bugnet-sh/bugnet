@@ -32,7 +32,8 @@ import {
     abandonedFields,
     claimAsked,
     claimInput,
-    isPaidRetry,
+    allowanceOrderError,
+    paidRetry,
     paymentRequiredResult,
     refusalError,
     retryCall,
@@ -364,12 +365,12 @@ export const registerSandboxTools: Register = (server, deps) => {
         async (args, ctx) => {
             try {
                 const payment = ctx.mcpReq._meta?.["x402/payment"] ?? args.payment;
-                const paidRetry = isPaidRetry(args, payment);
+                const retried = paidRetry(args, payment);
                 const key = toolUseId(ctx);
                 let claims: QuoteClaims;
                 try {
                     claims = verifyQuote(deps.config.secrets.quoteKey, args.quoteId, deps.now(), {
-                        allowExpired: paidRetry,
+                        allowExpired: retried !== null,
                     });
                 } catch (e) {
                     if (!(e instanceof QuoteError)) throw e;
@@ -382,11 +383,10 @@ export const registerSandboxTools: Register = (server, deps) => {
                 }
                 const budget = new Budget(deps);
                 let request: OrderRequest;
-                if (paidRetry) {
+                if (retried) {
                     // The order holds its own terms, so the price is not asked again
                     request = {
-                        orderId: args.orderId,
-                        claim: args.claim,
+                        ...retried,
                         ...(key ? { idempotencyKey: key } : {}),
                     };
                 } else {
@@ -428,7 +428,7 @@ export const registerSandboxTools: Register = (server, deps) => {
                     request,
                     budget.signal(30_000, placeReserveMs),
                 );
-                let byClaim = paidRetry;
+                let byClaim = retried?.claim !== undefined;
                 if (claimAsked(order, args, payment)) {
                     // Asking with the claim alone moves no money
                     order = await deps.payments.order(
@@ -454,6 +454,17 @@ export const registerSandboxTools: Register = (server, deps) => {
                         ...(args.orderId ? { sentOrderId: args.orderId } : {}),
                         paymentSent: payment !== undefined,
                     });
+                }
+                if (order.kind === "allowance") {
+                    throw allowanceOrderError(
+                        order,
+                        "start",
+                        byClaim
+                            ? { claim: args.claim as string, handle: true }
+                            : payment !== undefined
+                              ? { payment: true }
+                              : {},
+                    );
                 }
                 if (order.kind !== "start") {
                     const next = retryCall(

@@ -3,7 +3,7 @@ import { Code } from "@connectrpc/connect";
 import type { Client } from "@modelcontextprotocol/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlacementState, type ExtendPlacementRequest } from "../gen/bugnet/router/v1/router_pb.ts";
-import type { PaidOrder } from "../payments/port.ts";
+import type { PaidAllowanceOrder, PaidOrder } from "../payments/port.ts";
 import {
     callTool,
     connectTools,
@@ -35,6 +35,28 @@ async function connect(impl: RouterImpl): Promise<{ client: Client; payments: Te
 }
 
 const claim = "C".repeat(43);
+const allowancePaid: PaidAllowanceOrder = {
+    status: "paid",
+    orderId: "ord_a",
+    kind: "allowance",
+    handleSha256: handleHash(testHandle),
+    payer: "p",
+    amountMicros: 1_003_000,
+    allowanceMicros: 1_000_000,
+    firstUse: true,
+    x402: {
+        state: "open",
+        fundedMicros: 1_000_000,
+        spentMicros: 0,
+        heldMicros: 0,
+        leftMicros: 1_000_000,
+        allowanceRoomMicros: 4_000_000,
+        paidCalls: 0,
+        pendingCalls: 0,
+        spendPerMinuteMicros: 500_000,
+        services: [],
+    },
+};
 const extendTerms = {
     kind: "extend",
     packageId: "more-10m",
@@ -409,6 +431,76 @@ describe("bugnet_extend", () => {
         expect(lines.join("\n")).not.toContain(claim);
     });
 
+    it("an extend retry with orderId and a payment sends no terms", async () => {
+        const applied: ExtendPlacementRequest[] = [];
+        const payments = testPayments(() => ({
+            status: "paid",
+            orderId: "ord_p",
+            orderToken: "v1.tok",
+            payer: "p",
+            kind: "extend",
+            packageId: "small",
+            amountMicros: 250_000,
+            handleSha256: handleHash(testHandle),
+        }));
+        const deps = testDeps({
+            router: fakeRouter({
+                checkExtendPlacement: () => {
+                    throw new Error("no check");
+                },
+                extendPlacement: (req) => {
+                    applied.push(req);
+                    return { placement: extended };
+                },
+            }),
+            payments,
+        });
+        const client = await connectTools(deps);
+        const r = await callTool(
+            client,
+            "bugnet_extend",
+            { handle: testHandle, packageId: "small", confirmPriceUsd: "9.99", orderId: "ord_p" },
+            { toolUseId: "toolu_p", meta: { "x402/payment": { p: 1 } } },
+        );
+        expect(r.isError).toBe(false);
+        expect(applied).toHaveLength(1);
+        expect(payments.orders).toEqual([
+            {
+                orderId: "ord_p",
+                payment: { p: 1 },
+                handleSha256: handleHash(testHandle),
+                idempotencyKey: "toolu_p",
+            },
+        ]);
+    });
+
+    it("a paid allowance order answers bugnet_extend with the bugnet_x402_budget call", async () => {
+        let extendCalls = 0;
+        const payments = testPayments(() => allowancePaid);
+        const deps = testDeps({
+            router: fakeRouter({
+                extendPlacement: () => {
+                    extendCalls += 1;
+                    return { placement: extended };
+                },
+            }),
+            payments,
+        });
+        const client = await connectTools(deps);
+        const r = await callTool(client, "bugnet_extend", {
+            handle: testHandle,
+            packageId: "small",
+            confirmPriceUsd: "9.99",
+            orderId: "ord_a",
+            claim,
+        });
+        expect(r.isError).toBe(true);
+        expect(r.text).toBe(
+            `extend: order ord_a adds x402 allowance to a sandbox, call bugnet_x402_budget with the handle, orderId "ord_a" and claim "${claim}".`,
+        );
+        expect(extendCalls).toBe(0);
+    });
+
     it("abandons a paid order whose sandbox ended and says it is refunded", async () => {
         const { client, payments, orderId, claim } = await paidSetup({
             extendPlacement() {
@@ -443,9 +535,13 @@ describe("bugnet_extend", () => {
             payment,
         });
         expect(r.isError).toBe(false);
-        expect(r.text).toMatch(/^Extended by 10 min\./);
+        expect(r.text).toMatch(/^Extended with more-10m\./);
         expect(payments.orders).toHaveLength(2);
-        expect(payments.orders[0]).not.toHaveProperty("claim");
+        expect(payments.orders[0]).toEqual({
+            orderId,
+            payment,
+            handleSha256: handleHash(testHandle),
+        });
         expect(payments.orders[1]).toEqual({
             orderId,
             claim: own,

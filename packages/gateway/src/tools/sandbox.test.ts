@@ -11,6 +11,8 @@ import {
     type GetPlacementRequest,
     type PricePackageRequest,
 } from "../gen/bugnet/router/v1/router_pb.ts";
+import { handleHash } from "./common.ts";
+import type { PaidAllowanceOrder } from "../payments/port.ts";
 import { signQuote, type QuoteClaims } from "../quote.ts";
 import {
     callTool,
@@ -87,6 +89,28 @@ afterEach(() => {
 });
 
 const claim = "C".repeat(43);
+const allowancePaid: PaidAllowanceOrder = {
+    status: "paid",
+    orderId: "ord_a",
+    kind: "allowance",
+    handleSha256: handleHash(testHandle),
+    payer: "p",
+    amountMicros: 1_003_000,
+    allowanceMicros: 1_000_000,
+    firstUse: true,
+    x402: {
+        state: "open",
+        fundedMicros: 1_000_000,
+        spentMicros: 0,
+        heldMicros: 0,
+        leftMicros: 1_000_000,
+        allowanceRoomMicros: 4_000_000,
+        paidCalls: 0,
+        pendingCalls: 0,
+        spendPerMinuteMicros: 500_000,
+        services: [],
+    },
+};
 const startTerms = {
     kind: "start",
     packageId: "small-10m",
@@ -574,16 +598,71 @@ describe("bugnet_start", () => {
             payment: { signed: true },
         });
         expect(r.isError).toBe(false);
+        expect(payments.orders).toEqual([{ orderId: "ord_p", payment: { signed: true } }]);
+    });
+
+    it("a start retry with orderId and a payment sends no terms", async () => {
+        const seen: { create?: CreatePlacementRequest; waits: GetPlacementRequest[] } = {
+            waits: [],
+        };
+        const payments = testPayments(() => ({
+            status: "paid",
+            orderId: "ord_p",
+            orderToken: "v1.tok",
+            payer: "p",
+            kind: "start",
+            packageId: "small",
+            amountMicros: 250_000,
+        }));
+        const { client, deps, clock } = await setup(
+            {
+                ...startRouter(seen),
+                estimate: () => {
+                    throw new Error("no estimate");
+                },
+                pricePackage: () => {
+                    throw new Error("no price");
+                },
+            },
+            payments,
+        );
+        const id = signed(deps, { expiresAt: testNow + 60_000 });
+        clock.now = testNow + 11 * 60_000;
+        const r = await callTool(
+            client,
+            "bugnet_start",
+            { quoteId: id, packageId: "small", confirmPriceUsd: "9.99", orderId: "ord_p" },
+            { toolUseId: "toolu_p", meta: { "x402/payment": { p: 1 } } },
+        );
+        expect(r.isError).toBe(false);
+        expect(seen.create?.orderToken).toBe("v1.tok");
         expect(payments.orders).toEqual([
-            expect.objectContaining({
-                kind: "start",
-                packageId: "small-10m",
-                amountMicros: 50_000,
-                orderId: "ord_p",
-                payment: { signed: true },
-            }),
+            { orderId: "ord_p", payment: { p: 1 }, idempotencyKey: "toolu_p" },
         ]);
-        expect(payments.orders[0]).not.toHaveProperty("claim");
+    });
+
+    it("a paid allowance order answers bugnet_start with the bugnet_x402_budget call", async () => {
+        const seen: { create?: CreatePlacementRequest; waits: GetPlacementRequest[] } = {
+            waits: [],
+        };
+        const payments = testPayments(() => allowancePaid);
+        const { client, deps, clock } = await setup(startRouter(seen), payments);
+        const id = signed(deps, { expiresAt: testNow + 60_000 });
+        clock.now = testNow + 11 * 60_000;
+        const r = await callTool(
+            client,
+            "bugnet_start",
+            { quoteId: id, packageId: "small", confirmPriceUsd: "9.99", orderId: "ord_a", claim },
+            { toolUseId: "toolu_a" },
+        );
+        expect(payments.orders).toEqual([{ orderId: "ord_a", claim, idempotencyKey: "toolu_a" }]);
+        expect(r.isError).toBe(true);
+        expect(r.text).toBe(
+            `start: order ord_a adds x402 allowance to a sandbox, call bugnet_x402_budget with the handle, orderId "ord_a" and claim "${claim}".`,
+        );
+        expect(seen.create).toBeUndefined();
+        expect(payments.abandoned).toEqual([]);
+        expect(handleHash(testHandle)).toBe(allowancePaid.handleSha256);
     });
 
     it("checks a claim's shape and that its orderId comes with it", async () => {

@@ -1,0 +1,66 @@
+import type { X402Terms } from "../payments/port.ts";
+import type { Deps } from "../tools/common.ts";
+import type { LineLimits } from "./lines.ts";
+
+export const termsMaxAgeMs = 300_000;
+
+type TermsDeps = Pick<Deps, "payments" | "now" | "log">;
+
+interface TermsState {
+    copy: { terms: X402Terms; at: number } | null;
+    inflight: Promise<X402Terms | null> | null;
+}
+
+const states = new WeakMap<object, TermsState>();
+
+function stateOf(deps: TermsDeps): TermsState {
+    let s = states.get(deps.payments);
+    if (!s) {
+        s = { copy: null, inflight: null };
+        states.set(deps.payments, s);
+    }
+    return s;
+}
+
+function fetchTerms(deps: TermsDeps, state: TermsState, signal: AbortSignal) {
+    if (state.inflight) return state.inflight;
+    const read = deps.payments
+        .x402Terms(signal)
+        .then((terms) => {
+            state.copy = { terms, at: deps.now() };
+            return terms;
+        })
+        .catch((e: unknown) => {
+            state.copy = null;
+            deps.log.warn("x402 terms unavailable", { err: String(e) });
+            return null;
+        })
+        .finally(() => {
+            state.inflight = null;
+        });
+    state.inflight = read;
+    return read;
+}
+
+// A copy younger than termsMaxAgeMs, else one read shared by every caller in flight, null on failure
+export function readTerms(deps: TermsDeps, signal: AbortSignal): Promise<X402Terms | null> {
+    const state = stateOf(deps);
+    if (state.copy && deps.now() - state.copy.at < termsMaxAgeMs) {
+        return Promise.resolve(state.copy.terms);
+    }
+    return fetchTerms(deps, state, signal);
+}
+
+// Reads at once and every termsMaxAgeMs with an unref'd timer, the returned function stops it
+export function pollTerms(deps: TermsDeps): () => void {
+    const state = stateOf(deps);
+    const tick = () => void fetchTerms(deps, state, AbortSignal.timeout(10_000));
+    tick();
+    const timer = setInterval(tick, termsMaxAgeMs);
+    timer.unref();
+    return () => clearInterval(timer);
+}
+
+export function lineLimits(t: X402Terms): LineLimits {
+    return { maxPriceMicros: t.maxPricePerCallMicros, bugnetAddresses: t.bugnetAddresses };
+}

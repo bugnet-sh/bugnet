@@ -1,5 +1,17 @@
+import { z } from "zod";
 import { GatewayError } from "../router.ts";
-import type { OrderRequest, OrderResult, Payments, RefusedOrder } from "./port.ts";
+import type {
+    OrderRequest,
+    OrderResult,
+    Payments,
+    RefusedOrder,
+    X402AccountAnswer,
+    X402ConfigureRefused,
+    X402ConfigureResult,
+    X402SellerStats,
+    X402Setup,
+    X402Terms,
+} from "./port.ts";
 
 export const paymentsUnavailableText = "the payment service did not answer, try again in a minute";
 
@@ -18,6 +30,73 @@ interface Answer {
 }
 
 const unavailable = () => new GatewayError("unavailable", paymentsUnavailableText);
+
+const micros = z.int().min(0);
+const method = z.enum(["GET", "POST"]);
+
+export const termsSchema = z.object({
+    enabled: z.boolean(),
+    startWithX402: z.boolean(),
+    network: z.string(),
+    asset: z.string(),
+    sessionFeeMicros: micros,
+    minAllowanceMicros: micros,
+    suggestedAllowanceMicros: micros,
+    maxAllowancePerSandboxMicros: micros,
+    maxPricePerCallMicros: micros,
+    defaultSpendPerMinuteMicros: micros,
+    minSpendPerMinuteMicros: micros,
+    maxSpendPerMinuteMicros: micros,
+    maxServices: micros,
+    maxNewServicesPerOrder: micros,
+    sellerMemoMaxBytes: micros,
+    refundMinMicros: micros,
+    bugnetAddresses: z.array(z.string()).min(1).max(16),
+}) satisfies z.ZodType<X402Terms>;
+
+const accountSchema = z.object({
+    state: z.enum(["open", "closing", "closed"]),
+    fundedMicros: micros,
+    spentMicros: micros,
+    heldMicros: micros,
+    leftMicros: micros,
+    allowanceRoomMicros: micros,
+    paidCalls: micros,
+    pendingCalls: micros,
+    spendPerMinuteMicros: micros,
+    services: z.array(
+        z.object({
+            serviceId: z.string(),
+            method,
+            host: z.string(),
+            prefix: z.string(),
+            url: z.string(),
+            paidPath: z.string().nullable(),
+            maxPriceMicros: micros,
+            payTo: z.string(),
+            listed: z.enum(["indexed", "unlisted"]),
+            state: z.enum(["enabled", "disabled", "unreliable"]),
+        }),
+    ),
+    refund: z
+        .object({
+            state: z.enum(["waiting", "pending", "sent", "confirmed", "kept", "manual"]),
+            amountMicros: micros,
+            keptMicros: micros,
+            txs: z.array(z.string()),
+        })
+        .optional(),
+});
+
+export const accountAnswerSchema = z.object({
+    x402: accountSchema.nullable(),
+    feeDue: z.boolean(),
+}) satisfies z.ZodType<X402AccountAnswer>;
+
+export const sellersSchema = z.record(
+    z.string(),
+    z.object({ paidCalls30d: micros, failedPaid30d: micros }),
+) satisfies z.ZodType<Record<string, X402SellerStats>>;
 
 function isRefused(body: unknown): body is RefusedOrder {
     return (
@@ -64,6 +143,92 @@ export class HttpPayments implements Payments {
         } catch {
             return { status: res.status, body: undefined };
         }
+    }
+
+    private async get(path: string, signal: AbortSignal): Promise<unknown> {
+        let res: Response;
+        try {
+            res = await fetch(new URL(path, this.baseUrl), {
+                method: "GET",
+                headers: { authorization: `Bearer ${this.token}`, accept: "application/json" },
+                signal,
+            });
+        } catch {
+            throw signal.aborted ? signal.reason : unavailable();
+        }
+        let text: string;
+        try {
+            text = await res.text();
+        } catch {
+            throw signal.aborted ? signal.reason : unavailable();
+        }
+        if (res.status !== 200) throw unavailable();
+        try {
+            return JSON.parse(text);
+        } catch {
+            throw unavailable();
+        }
+    }
+
+    private async getParsed<T>(
+        path: string,
+        schema: z.ZodType<T>,
+        signal: AbortSignal,
+    ): Promise<T> {
+        const parsed = schema.safeParse(await this.get(path, signal));
+        if (!parsed.success) throw unavailable();
+        return parsed.data;
+    }
+
+    x402Terms(signal: AbortSignal): Promise<X402Terms> {
+        return this.getParsed("/v1/x402/terms", termsSchema, signal);
+    }
+
+    x402Account(handleSha256: string, signal: AbortSignal): Promise<X402AccountAnswer> {
+        const path = `/v1/x402/accounts/${encodeURIComponent(handleSha256)}`;
+        return this.getParsed(path, accountAnswerSchema, signal);
+    }
+
+    async x402Sellers(
+        hosts: string[],
+        signal: AbortSignal,
+    ): Promise<Record<string, X402SellerStats>> {
+        if (hosts.length === 0) return {};
+        const query = new URLSearchParams({ hosts: hosts.slice(0, 20).join(",") });
+        return this.getParsed(`/v1/x402/sellers?${query}`, sellersSchema, signal);
+    }
+
+    async x402Configure(
+        handleSha256: string,
+        setup: X402Setup,
+        requestId: string,
+        signal: AbortSignal,
+    ): Promise<X402ConfigureResult> {
+        const { status, body } = await this.post(
+            "/v1/x402/configure",
+            {
+                handleSha256,
+                services: setup.services ?? [],
+                disable: setup.disable ?? [],
+                ...(setup.spendPerMinuteMicros !== undefined
+                    ? { spendPerMinuteMicros: setup.spendPerMinuteMicros }
+                    : {}),
+                requestId,
+            },
+            signal,
+        );
+        if (status >= 400 && status < 500) {
+            if (isRefused(body)) return body as unknown as X402ConfigureRefused;
+            return { status: "refused", reason: status === 401 ? "unauthorized" : "bad_request" };
+        }
+        if (status < 200 || status >= 300) throw unavailable();
+        const b = body as { status?: unknown } | undefined;
+        if (b?.status === "refused") return body as X402ConfigureRefused;
+        if (b?.status === "ok") {
+            const x402 = accountSchema.safeParse((body as { x402?: unknown }).x402);
+            if (x402.success) return { status: "ok", x402: x402.data };
+        }
+        throw unavailable();
     }
 
     async order(req: OrderRequest, signal: AbortSignal): Promise<OrderResult> {

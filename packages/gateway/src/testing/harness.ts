@@ -25,10 +25,20 @@ import {
     type Resources,
 } from "../gen/bugnet/router/v1/router_pb.ts";
 import { silentLog, type Log } from "../log.ts";
-import { DevPayments } from "../payments/dev.ts";
+import { DevPayments, devTerms } from "../payments/dev.ts";
 export { DevPayments, type DevPaymentsOptions } from "../payments/dev.ts";
 import type { OrderClaims } from "../payments/ordertoken.ts";
-import type { OrderRequest, OrderResult, OrderTerms, Payments } from "../payments/port.ts";
+import type {
+    OrderRequest,
+    OrderResult,
+    OrderTerms,
+    Payments,
+    X402AccountAnswer,
+    X402ConfigureResult,
+    X402SellerStats,
+    X402Setup,
+    X402Terms,
+} from "../payments/port.ts";
 import { errorInfoType, retryInfoType, type RouterClient } from "../router.ts";
 import { buildMcpServer } from "../server.ts";
 import type { Deps, Register } from "../tools/common.ts";
@@ -150,14 +160,33 @@ export function testConfig(toml = ""): Config {
     };
 }
 
+export interface TestX402Answers {
+    terms?: () => Promise<X402Terms>;
+    account?: (handleSha256: string) => Promise<X402AccountAnswer>;
+    configure?: (
+        handleSha256: string,
+        setup: X402Setup,
+        requestId: string,
+    ) => Promise<X402ConfigureResult>;
+    sellers?: (hosts: string[]) => Promise<Record<string, X402SellerStats>>;
+}
+
 export interface TestPaymentsOptions {
     requirePayment?: boolean;
+    terms?: Partial<X402Terms>;
+    // Each left out answers from dev
+    x402?: TestX402Answers;
 }
 
 export interface TestPayments extends Payments {
     readonly orders: OrderRequest[];
     readonly abandoned: { orderId: string; reason: string }[];
+    readonly configures: { handleSha256: string; setup: X402Setup; requestId: string }[];
     readonly dev: DevPayments;
+}
+
+export function testTerms(patch: Partial<X402Terms> = {}): X402Terms {
+    return { ...devTerms, ...patch };
 }
 
 // Dev payments that settle at once, recording every order and abandon, unless answer decides
@@ -168,14 +197,28 @@ export function testPayments(
     const dev = new DevPayments(testOrderSeed, 10 * 60_000, () => testNow, {
         requirePayment: opts.requirePayment,
         payBaseUrl: "http://127.0.0.1:8787",
+        ...(opts.terms ? { terms: opts.terms } : {}),
     });
     const orders: OrderRequest[] = [];
     const abandoned: { orderId: string; reason: string }[] = [];
+    const configures: TestPayments["configures"] = [];
+    const x402 = opts.x402 ?? {};
     return {
         mode: "dev",
         orders,
         abandoned,
+        configures,
         dev,
+        x402Terms: (signal) => (x402.terms ? x402.terms() : dev.x402Terms(signal)),
+        x402Account: (h, signal) => (x402.account ? x402.account(h) : dev.x402Account(h, signal)),
+        async x402Configure(handleSha256, setup, requestId, signal) {
+            configures.push({ handleSha256, setup, requestId });
+            return x402.configure
+                ? x402.configure(handleSha256, setup, requestId)
+                : dev.x402Configure(handleSha256, setup, requestId, signal);
+        },
+        x402Sellers: (hosts, signal) =>
+            x402.sellers ? x402.sellers(hosts) : dev.x402Sellers(hosts, signal),
         async order(req) {
             orders.push(req);
             return answer ? answer(req) : dev.order(req);

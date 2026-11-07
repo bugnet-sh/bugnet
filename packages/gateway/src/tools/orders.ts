@@ -5,22 +5,30 @@ import {
     claimPattern,
     type AwaitingPayment,
     type OrderResult,
+    type PaidAllowanceOrder,
     type RefusedOrder,
 } from "../payments/port.ts";
 import { GatewayError } from "../router.ts";
 
-export type OrderTool = "bugnet_start" | "bugnet_extend" | "bugnet_redeem";
+export type OrderTool = "bugnet_start" | "bugnet_extend" | "bugnet_redeem" | "bugnet_x402_budget";
 
 export const claimInput = z
     .string()
     .regex(claimPattern, "the 43-character claim from the payment step");
 
-// D3, a call carrying a payment keeps the full path, so only orderId with claim skips the terms
-export function isPaidRetry(
+export type PaidRetry =
+    | { orderId: string; claim: string; payment?: undefined }
+    | { orderId: string; payment: unknown; claim?: undefined };
+
+// A payment wins over a claim, since Payments settles the payment first and the claim is dropped
+export function paidRetry(
     args: { orderId?: string | undefined; claim?: string | undefined },
     payment: unknown,
-): args is { orderId: string; claim: string } {
-    return args.orderId !== undefined && args.claim !== undefined && payment === undefined;
+): PaidRetry | null {
+    if (args.orderId === undefined) return null;
+    if (payment !== undefined) return { orderId: args.orderId, payment };
+    if (args.claim !== undefined) return { orderId: args.orderId, claim: args.claim };
+    return null;
 }
 
 // A claim sent beside a payment is held back, so a paid order that asks for it gets it next
@@ -157,9 +165,22 @@ function spentStep(reason: string, id: string | undefined, tool: OrderTool): str
     }
 }
 
+// A paid x402 allowance order reached a tool that cannot apply it, so the model is sent on
+export function allowanceOrderError(
+    order: PaidAllowanceOrder,
+    what: "start" | "extend",
+    w: RetryWith,
+): GatewayError {
+    return new GatewayError(
+        "invalid",
+        `${what}: order ${order.orderId} adds x402 allowance to a sandbox, call ` +
+            retryCall("bugnet_x402_budget", order.orderId, w),
+    );
+}
+
 export function refusalError(
     r: RefusedOrder,
-    what: "start" | "extend" | "redeem",
+    what: "start" | "extend" | "redeem" | "x402",
     tool: OrderTool,
     opts: {
         sentOrderId?: string;
