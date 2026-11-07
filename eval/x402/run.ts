@@ -75,7 +75,7 @@ export function missingEnv(slice: Slice, env: Record<string, string | undefined>
     if (slice === "s3") {
         need.push("BUGNET_INTERNAL_TOKEN", "BUGNET_QUOTE_KEY", "BUGNET_ORDER_PRIVATE_KEY");
     }
-    return need.filter((n) => !env[n]);
+    return need.filter((n) => (n === "BUGNET_LIVE_X402" ? env[n] !== "1" : !env[n]));
 }
 
 // The most the approver allows in one run is $0.50, $1.10 and $1.10
@@ -400,11 +400,10 @@ async function session(
         if (!stopped.has(h))
             await callTool(gatewayUrl, "bugnet_stop", { handle: h }).catch(() => null);
     }
-    const first = a.slice;
     const startEvent: HarnessEvent = {
         type: "bugnet_harness",
         at: "start",
-        slice: first,
+        slice: a.slice,
         keyName: row.keyName,
         command: row.command,
         readmeHost: a.readmeUrl ? new URL(a.readmeUrl).host : null,
@@ -564,7 +563,11 @@ async function main(): Promise<number> {
                 } catch (err) {
                     console.log(`${job.row.id}-${job.n} ERROR ${(err as Error).message}`);
                 } finally {
-                    gateway?.kill("SIGTERM");
+                    if (gateway !== null && gateway.exitCode === null) {
+                        const exited = new Promise((done) => gateway?.once("close", done));
+                        gateway.kill("SIGTERM");
+                        await exited;
+                    }
                     inFlight--;
                 }
             }

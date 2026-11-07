@@ -440,6 +440,7 @@ describe("run harness guards", () => {
     it("lists exactly which variables are missing", () => {
         expect(missingEnv("main", {})).toEqual(["BUGNET_LIVE_X402"]);
         expect(missingEnv("main", { BUGNET_LIVE_X402: "1" })).toEqual([]);
+        expect(missingEnv("main", { BUGNET_LIVE_X402: "0" })).toEqual(["BUGNET_LIVE_X402"]);
         expect(missingEnv("s3", { BUGNET_LIVE_X402: "1" })).toEqual([
             "BUGNET_INTERNAL_TOKEN",
             "BUGNET_QUOTE_KEY",
