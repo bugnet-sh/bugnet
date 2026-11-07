@@ -1,0 +1,190 @@
+// Paid orders the bridge has not redeemed yet, kept in memory so a retry never pays twice
+import type { CallToolResult } from "@modelcontextprotocol/server";
+import type { PaymentStep } from "./pay.ts";
+
+// Payments refunds a paid order nobody redeemed after 30 minutes
+export const paidOrderTtlMs = 30 * 60_000;
+// Bounds one status read
+export const statusTimeoutMs = 10_000;
+
+export type PublicOrderState = "unpaid" | "settling" | "paid" | "expired" | "refunded" | "review";
+export type UnpaidOutcome = "timeout" | "expired" | "closed" | "unknown_order";
+
+const states: readonly string[] = ["unpaid", "settling", "paid", "expired", "refunded", "review"];
+
+export function orderKey(tool: string, args: Record<string, unknown>): string | null {
+    const { handle, packageId } = args;
+    if (typeof packageId !== "string") return null;
+    if (tool === "bugnet_start") return `start\0${packageId}`;
+    if (tool === "bugnet_extend" && typeof handle === "string") {
+        return `extend\0${handle}\0${packageId}`;
+    }
+    return null;
+}
+
+interface Entry {
+    key: string | null;
+    step: PaymentStep;
+    state: "seen" | "paid" | "unknown";
+    tried: boolean;
+    at: number;
+}
+
+export class PaidOrders {
+    private readonly entries = new Map<string, Entry>();
+    private readonly now: () => number;
+
+    constructor(now: () => number) {
+        this.now = now;
+    }
+
+    private sweep(): void {
+        const t = this.now();
+        for (const [id, e] of this.entries) {
+            if (t >= e.at + paidOrderTtlMs) this.entries.delete(id);
+        }
+    }
+
+    see(key: string | null, step: PaymentStep): void {
+        this.sweep();
+        const e = this.entries.get(step.orderId);
+        this.entries.set(step.orderId, {
+            key,
+            step,
+            state: e?.state ?? "seen",
+            tried: e?.tried ?? false,
+            at: this.now(),
+        });
+    }
+
+    step(orderId: string): PaymentStep | undefined {
+        this.sweep();
+        return this.entries.get(orderId)?.step;
+    }
+
+    markPaid(orderId: string, state: "paid" | "unknown"): void {
+        this.sweep();
+        const e = this.entries.get(orderId);
+        if (e) {
+            e.state = state;
+            e.at = this.now();
+        }
+    }
+
+    heldFor(key: string): (PaymentStep & { state: "paid" | "unknown" }) | undefined {
+        this.sweep();
+        let best: Entry | undefined;
+        for (const e of this.entries.values()) {
+            if (e.key !== key || e.state === "seen") continue;
+            if (!best || e.at >= best.at) best = e;
+        }
+        return best && { ...best.step, state: best.state as "paid" | "unknown" };
+    }
+
+    drop(orderId: string): void {
+        this.entries.delete(orderId);
+    }
+
+    tried(orderId: string): boolean {
+        this.sweep();
+        return this.entries.get(orderId)?.tried ?? false;
+    }
+
+    markTried(orderId: string): void {
+        this.sweep();
+        const e = this.entries.get(orderId);
+        if (e) e.tried = true;
+    }
+}
+
+export async function orderStatus(
+    origin: string,
+    orderId: string,
+    signal: AbortSignal,
+    fetchFn: typeof fetch = fetch,
+): Promise<PublicOrderState | null> {
+    const res = await fetchFn(`${origin}/o/${encodeURIComponent(orderId)}/status`, {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.any([signal, AbortSignal.timeout(statusTimeoutMs)]),
+    });
+    if (res.status === 404) return null;
+    if (res.status === 200) {
+        const body = (await res.json().catch(() => null)) as { state?: unknown } | null;
+        if (typeof body?.state === "string" && states.includes(body.state)) {
+            return body.state as PublicOrderState;
+        }
+    }
+    throw new Error(`order status answered ${res.status}`);
+}
+
+export function afterPaymentText(step: Pick<PaymentStep, "tool" | "orderId" | "claim">): string {
+    return (
+        ` Order ${step.orderId} is paid: call ${step.tool} again with orderId "${step.orderId}" ` +
+        `and claim "${step.claim}" to use it, and never pay it again.`
+    );
+}
+
+// Payments called these orders spent, so a paid one is refunded and must not be paid again
+export function spentOrderText(step: Pick<PaymentStep, "orderId" | "claim">): string {
+    return (
+        ` Order ${step.orderId} (claim "${step.claim}") can no longer be used. If it was paid, ` +
+        "it is refunded automatically, so do not pay it again."
+    );
+}
+
+export const spentRefusals: ReadonlySet<string> = new Set([
+    "order_unknown",
+    "order_expired",
+    "order_closed",
+    "claim_mismatch",
+    "terms_mismatch",
+    "payment_late",
+    "token_expired",
+]);
+
+export function unpaidText(
+    outcome: UnpaidOutcome,
+    step: Pick<PaymentStep, "tool" | "orderId" | "claim" | "payUrl">,
+): string {
+    const id = step.orderId;
+    switch (outcome) {
+        case "timeout":
+            return (
+                `Order ${id} is not paid yet. Once the user pays at ${step.payUrl}, call ` +
+                `${step.tool} again with orderId "${id}" and claim "${step.claim}".`
+            );
+        case "expired":
+            return (
+                `Order ${id} expired before it was paid, so nothing was charged. ` +
+                `Call ${step.tool} again for a new order.`
+            );
+        case "closed":
+            return (
+                `Order ${id} is closed: its payment was refunded or is being checked by hand. ` +
+                "Tell the user before paying again."
+            );
+        case "unknown_order":
+            return (
+                `Order ${id} is unknown to the payment page. ` +
+                `Call ${step.tool} again for a new order.`
+            );
+    }
+}
+
+export function withAfterPayment(
+    result: CallToolResult,
+    step: PaymentStep,
+    spent = false,
+): CallToolResult {
+    const line = spent ? spentOrderText(step) : afterPaymentText(step);
+    const content = [...result.content];
+    const at = content.map((c) => c.type).lastIndexOf("text");
+    const last = content[at];
+    if (last?.type === "text") content[at] = { ...last, text: last.text + line };
+    else content.push({ type: "text", text: line.trimStart() });
+    const out: CallToolResult = { ...result, content };
+    const sc = result.structuredContent as { message?: unknown } | undefined;
+    if (typeof sc?.message === "string")
+        out.structuredContent = { ...sc, message: sc.message + line };
+    return out;
+}
