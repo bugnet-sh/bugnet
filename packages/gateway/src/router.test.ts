@@ -61,6 +61,8 @@ const table: [string, Code, string][] = [
     ["NO_SOURCE", Code.FailedPrecondition, "precondition"],
     ["SECRET_REQUIRED", Code.FailedPrecondition, "precondition"],
     ["TOOL_MISSING", Code.FailedPrecondition, "precondition"],
+    ["X402_DISABLED", Code.FailedPrecondition, "precondition"],
+    ["HOST_IN_USE", Code.FailedPrecondition, "precondition"],
     ["OVER_CAP", Code.OutOfRange, "limit"],
     ["RANGE", Code.OutOfRange, "invalid"],
     ["RATE_LIMITED", Code.ResourceExhausted, "rate_limited"],
