@@ -261,6 +261,8 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             !ownPayment && args.orderId === undefined && key !== null
                 ? orders.heldFor(key)
                 : undefined;
+        // A call that waited on a pay never opens an order, the held one is all it may use
+        let waited = false;
         if (holding?.state === "paying") {
             // A pay for this package is still running, so no second order is opened or paid
             const flight = orders.flight(holding.orderId);
@@ -274,13 +276,23 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
                 return toolError(unpaidText("timeout", holding));
             }
             holding = after;
+            waited = true;
         }
         if (holding && holding.state !== "paying") {
             let use = holding.state === "paid";
             if (!use) {
                 const state = await pay.status(holding.orderId, ctx.mcpReq.signal).catch(() => "?");
                 if (state === "?" || state === "paid" || state === "settling") use = true;
-                else orders.forget(holding.orderId);
+                // A payment under manual review may still land, so no new order is opened
+                else if (state === "review") return toolError(unpaidText("closed", holding));
+                else if (waited) {
+                    // The pay may still settle, so the hold stays and nothing is created
+                    if (state === "unpaid") return toolError(unpaidText("timeout", holding));
+                    orders.forget(holding.orderId);
+                    if (state === "expired") return toolError(unpaidText("expired", holding));
+                    if (state === null) return toolError(unpaidText("unknown_order", holding));
+                    return toolError(unpaidText("closed", holding));
+                } else orders.forget(holding.orderId);
             }
             if (use) {
                 held = holding;
@@ -292,7 +304,13 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         }
         const result = await call(forwarded, ctx, progress.relay);
         const step = ownPayment || isInputRequiredResult(result) ? null : paymentStep(name, result);
-        if (!step) return held ? settle(orders, result, held) : result;
+        // An orderId and claim the model sends itself settle the order's hold the same way
+        const named =
+            typeof args.orderId === "string" && key !== null ? orders.heldFor(key) : undefined;
+        const mine =
+            named?.orderId === args.orderId && named?.state !== "paying" ? named : undefined;
+        const settling: PaymentStep | undefined = held ?? mine;
+        if (!step) return settling ? settle(orders, result, settling) : result;
         const paid: PaymentStep = step;
         orders.see(key, paid);
         if (orders.tried(paid.orderId)) return linkPath(paid, result, ctx);

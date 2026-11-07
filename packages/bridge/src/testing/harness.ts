@@ -358,7 +358,14 @@ export interface PayingPayer extends OrderPayer {
 // Pays a dev order as pay would, after a delay and some progress notes, unless told not to
 export function payingPayer(
     payments: TestPayments,
-    opts: { delayMs?: number; progress?: number; outcome?: PayOutcome; pays?: boolean } = {},
+    opts: {
+        delayMs?: number;
+        progress?: number;
+        outcome?: PayOutcome;
+        pays?: boolean;
+        // Pay waits here after it starts, until the test releases it
+        gate?: Promise<void>;
+    } = {},
 ): PayingPayer {
     let begin = () => {};
     const started = new Promise<void>((resolve) => {
@@ -371,6 +378,7 @@ export function payingPayer(
         async pay(step, maxMicros, onProgress) {
             calls.push({ step, maxMicros });
             begin();
+            await opts.gate;
             await new Promise((r) => setTimeout(r, opts.delayMs ?? 0));
             for (let i = 0; i < (opts.progress ?? 0); i++) onProgress();
             if (opts.pays ?? true) payments.dev.pay(step.orderId);

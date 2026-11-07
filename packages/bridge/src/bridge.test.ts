@@ -19,7 +19,7 @@ import { Code } from "@connectrpc/connect";
 import { CLIENT_CAPABILITIES_META_KEY, inputRequired } from "@modelcontextprotocol/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { afterPaymentText, spentOrderText, unpaidText, type PublicOrderState } from "./orders.ts";
-import type { PaymentStep } from "./pay.ts";
+import type { PayOutcome, PaymentStep } from "./pay.ts";
 import type { X402PaymentRequired } from "./payment.ts";
 import type { CallOptions, RemoteResult, RemoteTools } from "./remote.ts";
 import {
@@ -367,10 +367,19 @@ describe.each(["legacy", "modern"] as const)("paying with pay, %s client", (era)
         expect(gw.payments.orders.filter((o) => o.orderId === undefined)).toHaveLength(1);
     });
 
-    it("waits for a pay still running instead of opening and paying a second order", async () => {
+    const inFlight = async (
+        over: { outcome?: PayOutcome; pays?: boolean; status?: PublicOrderState } = {},
+    ) => {
         const gw = await gateway(requirePayments());
-        const payer = payingPayer(gw.payments, { delayMs: 200 });
-        const pay = devPay(gw.payments, payer);
+        let release = () => {};
+        const gate = new Promise<void>((r) => {
+            release = r;
+        });
+        const payer = payingPayer(gw.payments, { gate, ...over });
+        const pay = devPay(gw.payments, payer, {
+            ...(over.status ? { status: async () => over.status! } : {}),
+        });
+        const flights = vi.spyOn(pay.orders, "flight");
         const b = await bridge({ gateway: gw.url, era, deps: { pay } });
         const args = startArgs(await quoteId(b.client));
         const giveUp = new AbortController();
@@ -381,8 +390,17 @@ describe.each(["legacy", "modern"] as const)("paying with pay, %s client", (era)
         await payer.started;
         giveUp.abort();
         await expect(first).rejects.toThrow();
-        // No wait for the hold, the retry comes while pay still runs
-        const r = await b.client.callTool({ name: "bugnet_start", arguments: args });
+        // Done once the retry has found the pay running and waits on it
+        const retryWaits = () => vi.waitFor(() => expect(flights).toHaveBeenCalled());
+        return { gw, payer, pay, b, args, release, retryWaits };
+    };
+
+    it("waits for a pay still running instead of opening and paying a second order", async () => {
+        const { gw, payer, b, args, release, retryWaits } = await inFlight();
+        const retry = b.client.callTool({ name: "bugnet_start", arguments: args });
+        await retryWaits();
+        release();
+        const r = await retry;
         expect((r.structuredContent as { handle: string }).handle).toBe(testHandle);
         expect(payer.calls).toHaveLength(1);
         const { step } = payer.calls[0]!;
@@ -395,30 +413,87 @@ describe.each(["legacy", "modern"] as const)("paying with pay, %s client", (era)
     });
 
     it("names the order when a retry's own client gives up while pay still runs", async () => {
-        const gw = await gateway(requirePayments());
-        const payer = payingPayer(gw.payments, { delayMs: 300 });
-        const pay = devPay(gw.payments, payer);
-        const b = await bridge({ gateway: gw.url, era, deps: { pay } });
-        const args = startArgs(await quoteId(b.client));
-        const firstGone = new AbortController();
-        const first = b.client.callTool(
-            { name: "bugnet_start", arguments: args },
-            { signal: firstGone.signal },
-        );
-        await payer.started;
-        firstGone.abort();
-        await expect(first).rejects.toThrow();
-        const retry = new AbortController();
+        const { payer, pay, b, args, release, retryWaits } = await inFlight();
+        const gone = new AbortController();
         const second = b.client.callTool(
             { name: "bugnet_start", arguments: args },
-            { signal: retry.signal },
+            { signal: gone.signal },
         );
-        setTimeout(() => retry.abort(), 30);
+        await retryWaits();
+        gone.abort();
         await expect(second).rejects.toThrow();
+        release();
         await vi.waitFor(() => expect(pay.orders.heldFor(key)?.state).toBe("paid"), {
             timeout: 2_000,
         });
         expect(payer.calls).toHaveLength(1);
+    });
+
+    it("never opens an order after a shared pay ends unsure and the page reads unpaid", async () => {
+        const { gw, payer, b, args, release, retryWaits } = await inFlight({
+            outcome: { kind: "unknown" },
+            pays: false,
+            status: "unpaid",
+        });
+        const retry = b.client.callTool({ name: "bugnet_start", arguments: args });
+        await retryWaits();
+        release();
+        const r = await retry;
+        expect(r.isError).toBe(true);
+        const step = payer.calls[0]!.step;
+        expect((r.content as { text: string }[]).at(-1)!.text).toBe(unpaidText("timeout", step));
+        expect(payer.calls).toHaveLength(1);
+        expect(gw.payments.orders.filter((o) => o.orderId === undefined)).toHaveLength(1);
+    });
+
+    it("never opens a new order while an unsure hold's payment is under review", async () => {
+        const gw = await gateway(requirePayments());
+        const payer = payingPayer(gw.payments, { outcome: { kind: "unknown" }, pays: false });
+        const reads: string[] = ["settling", "review"];
+        const pay = devPay(gw.payments, payer, {
+            status: async () => (reads.shift() ?? "review") as PublicOrderState,
+        });
+        const b = await bridge({ gateway: gw.url, era, deps: { pay } });
+        const args = startArgs(await quoteId(b.client));
+        await b.client.callTool({ name: "bugnet_start", arguments: args });
+        const r = await b.client.callTool({ name: "bugnet_start", arguments: args });
+        const step = payer.calls[0]!.step;
+        expect(r.isError).toBe(true);
+        expect((r.content as { text: string }[]).at(-1)!.text).toBe(unpaidText("closed", step));
+        expect(payer.calls).toHaveLength(1);
+        expect(gw.payments.orders.filter((o) => o.orderId === undefined)).toHaveLength(1);
+        expect(pay.orders.heldFor(key)?.state).toBe("unknown");
+    });
+
+    it("settles the hold when the model redeems with its own orderId and claim", async () => {
+        let creates = 0;
+        const router: RouterImpl = {
+            ...startRouter,
+            createPlacement: () => {
+                if (creates++ === 0) throw routerError(Code.Unavailable);
+                return { handle: testHandle, placement: placement(PlacementState.READY) };
+            },
+        };
+        const payments = requirePayments();
+        const gw = await fakeGateway(router, { payments });
+        open.push(gw.close);
+        const payer = payingPayer(payments);
+        const pay = devPay(payments, payer);
+        const b = await bridge({ gateway: gw.url, era, deps: { pay } });
+        const args = startArgs(await quoteId(b.client));
+        await b.client.callTool({ name: "bugnet_start", arguments: args });
+        const old = payer.calls[0]!.step;
+        expect(pay.orders.heldFor(key)?.state).toBe("paid");
+        const explicit = await b.client.callTool({
+            name: "bugnet_start",
+            arguments: { ...args, orderId: old.orderId, claim: old.claim },
+        });
+        expect(explicit.isError).toBeFalsy();
+        expect(pay.orders.heldFor(key)).toBeUndefined();
+        await b.client.callTool({ name: "bugnet_start", arguments: args });
+        expect(payments.orders.filter((o) => o.orderId === undefined)).toHaveLength(2);
+        expect(payer.calls).toHaveLength(2);
+        expect(payer.calls[1]!.step.orderId).not.toBe(old.orderId);
     });
 
     // The first call leaves an unsure hold, then the second call's page read decides
