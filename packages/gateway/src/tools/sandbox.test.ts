@@ -2993,15 +2993,28 @@ describe("bugnet_stop with x402", () => {
     });
 
     it("stops as before when ListX402 shows no services, and when the grep job is slow", async () => {
+        const seen = { exec: 0, account: 0 };
         const none = await setupX402(
             {
                 listX402: () => ({ enabled: true, services: [], refusals: [] }),
+                exec: () => {
+                    seen.exec += 1;
+                    return { state: JobState.EXITED };
+                },
                 stopPlacement: () => ({ placement: endedPlacement() }),
             },
-            closing,
+            testPayments(undefined, {
+                x402: {
+                    account: async () => {
+                        seen.account += 1;
+                        return { x402: testAccount({ state: "closing" }), feeDue: false };
+                    },
+                },
+            }),
         );
         const quiet = await callTool(none.client, "bugnet_stop", { handle: testHandle });
         expect(quiet.text).toBe("Sandbox ended, used for about 90 s.");
+        expect(seen).toEqual({ exec: 0, account: 0 });
         const slow = await setupX402(
             stopImpl([], {
                 exec: () => ({ state: JobState.RUNNING, stdoutTail: new Uint8Array() }),

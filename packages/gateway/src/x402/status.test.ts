@@ -309,6 +309,35 @@ describe("x402StatusPart", () => {
     });
 });
 
+describe("repair limits", () => {
+    it("makes no repair call when ListX402 answers enabled false", async () => {
+        const s = setup({ listed: [] });
+        const list = s.deps.router.listX402.bind(s.deps.router);
+        s.deps.router.listX402 = (async (...a: Parameters<typeof list>) => ({
+            ...(await list(...a)),
+            enabled: false,
+        })) as typeof list;
+        const part = await x402StatusPart(s.deps, running(s.deps));
+        expect(s.counts.enable).toBe(0);
+        expect(part.lines.join("\n")).not.toContain("enabling");
+        expect(part.view?.services[0]?.state).toBe("applying");
+    });
+
+    it("leaves the rows as listed when a per-service reason comes under the wrong code", async () => {
+        const s = setup({
+            listed: [testServiceInfo(X402ServiceState.DISABLED)],
+            enable: () => {
+                throw routerError(Code.Unavailable, "HOST_REFUSED", {
+                    metadata: { service_id: testChatId },
+                });
+            },
+        });
+        const part = await x402StatusPart(s.deps, running(s.deps));
+        expect(part.view?.services[0]?.state).toBe("disabled");
+        expect(part.lines.join("\n")).not.toMatch(/enabling|failed/);
+    });
+});
+
 describe("untilAborted", () => {
     it("rejects with the signal's reason when the work does not settle", async () => {
         const c = new AbortController();
@@ -413,8 +442,22 @@ describe("stop parts", () => {
         ).toBe("");
     });
 
-    it("never hides the account hash in a log", () => {
-        expect(handleHash(testHandle)).toHaveLength(64);
+    it("returns nothing, not the unavailable line, when no allowance exists and the terms fail", async () => {
+        const s = setup({
+            termsError: true,
+            account: async () => ({ x402: null, feeDue: true }),
+        });
+        expect(await stopMoney(s.deps, testHandle)).toBe("");
+    });
+
+    it("never logs the account hash or the handle", async () => {
+        const s = setup({ listError: routerError(Code.Unavailable), termsError: true });
+        await stopServices(s.deps, testHandle);
+        await stopMoney(s.deps, testHandle);
+        const all = s.lines.join("\n");
+        expect(all).toContain("x402 stop");
+        expect(all).not.toContain(handleHash(testHandle));
+        expect(all).not.toContain(testHandle);
     });
 });
 

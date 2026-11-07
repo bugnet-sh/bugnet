@@ -22,7 +22,7 @@ import {
 } from "./render.ts";
 import {
     enableServices,
-    hasOwnReason,
+    hostnamePattern,
     listServices,
     pinToServiceSpec,
     x402RefusalTarget,
@@ -71,10 +71,8 @@ function perServiceReason(err: unknown): string | null {
         : null;
 }
 
-const hostPattern = /^[a-z0-9.-]{1,253}$/;
-
 function hostsOf(rows: readonly X402ServiceInfo[]): string[] {
-    const hosts = rows.map((r) => r.spec?.host ?? "").filter((h) => hostPattern.test(h));
+    const hosts = rows.map((r) => r.spec?.host ?? "").filter((h) => hostnamePattern.test(h));
     return [...new Set(hosts)];
 }
 
@@ -126,7 +124,7 @@ async function repair(
             else out.rows.push(row);
         }
     } catch (e) {
-        const reason = hasOwnReason(e, "NOT_READY") ? null : perServiceReason(e);
+        const reason = perServiceReason(e);
         const target = x402RefusalTarget(e).serviceId;
         deps.log.warn("x402 repair refused", {
             handle: handleTag(handle),
@@ -252,8 +250,8 @@ export async function stopMoney(deps: Deps, handle: string): Promise<string> {
             untilAborted(deps.payments.x402Account(handleHash(handle), signal), signal),
             untilAborted(readTerms(deps, signal), signal),
         ]);
-        if (terms === null) return totalsUnavailable;
-        return answer.x402 === null ? "" : stopMoneyLine(answer.x402, terms);
+        if (answer.x402 === null) return "";
+        return terms === null ? totalsUnavailable : stopMoneyLine(answer.x402, terms);
     } catch {
         deps.log.warn("x402 stop money failed", { handle: handleTag(handle) });
         return totalsUnavailable;

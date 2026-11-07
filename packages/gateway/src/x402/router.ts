@@ -20,6 +20,8 @@ import {
 import { hashKey, idempotencyKey, type Deps } from "../tools/common.ts";
 import { serviceIdPattern, type ServiceLineParts } from "./lines.ts";
 
+export const hostnamePattern = /^[a-z0-9.-]{1,253}$/;
+
 export type ServiceSpecInit = MessageInitShape<typeof X402ServiceSpecSchema>;
 
 export function toServiceSpec(line: ServiceLineParts, indexed: boolean): ServiceSpecInit {
@@ -121,7 +123,7 @@ export function x402RefusalTarget(err: unknown): {
     const host = m.host;
     return {
         serviceId: id !== undefined && serviceIdPattern.test(id) ? id : null,
-        host: host !== undefined && /^[a-z0-9.-]{1,253}$/.test(host) ? host : null,
+        host: host !== undefined && hostnamePattern.test(host) ? host : null,
     };
 }
 

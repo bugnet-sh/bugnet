@@ -8,7 +8,7 @@ import type {
     X402RefundState,
     X402Terms,
 } from "../payments/port.ts";
-import { GatewayError, type GatewayErrorKind } from "../router.ts";
+import { GatewayError, reasonCode, type GatewayErrorKind } from "../router.ts";
 import { usd } from "../tools/common.ts";
 import { refusalError, retryCall, type OrderTool, type RetryWith } from "../tools/orders.ts";
 import { exactEntry, type X402Index } from "./index.ts";
@@ -94,9 +94,12 @@ function stateOf(
     if (info === undefined) return { state: "applying" };
     const state = routerState(info.state);
     return state === "failed" && info.failureReason !== ""
-        ? { state, failureReason: info.failureReason }
+        ? { state, failureReason: reasonCode(info.failureReason) }
         : { state };
 }
+
+// The 6.13 refusal code shape, so router free text never reaches the model
+const refusalCode = /^[a-z0-9_]{1,40}$/;
 
 export function buildView(input: ViewInput): X402View {
     const { account, terms, index } = input;
@@ -134,7 +137,11 @@ export function buildView(input: ViewInput): X402View {
         feeDue: input.feeDue,
         paidCalls: account.paidCalls,
         pendingCalls: account.pendingCalls,
-        refused: Object.fromEntries(input.refusals.map((r) => [r.reason, r.count])),
+        refused: Object.fromEntries(
+            input.refusals
+                .filter((r) => refusalCode.test(r.reason))
+                .map((r) => [r.reason, r.count]),
+        ),
         spendPerMinuteUsd: usd(account.spendPerMinuteMicros),
         services,
         ...(refund
