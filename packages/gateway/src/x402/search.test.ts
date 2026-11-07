@@ -225,6 +225,9 @@ describe("the Bazaar request and the filters", () => {
             {
                 [chatBazaar]: { status: 200, body: { resources: rows } },
                 ...probesOf(rows),
+                [rows[0]?.resource as string]: answer402([
+                    { ...solanaEntry, payTo: sample.services[0]?.payTo },
+                ]),
             },
             { index: sample },
         );
@@ -258,6 +261,8 @@ describe("the index as a source", () => {
         const bad = setup(routes(otherPayTo), { index: sample });
         const b = await run(bad.deps, { api, keyName });
         expect(b.results[0]?.listed).toBe("unlisted");
+        expect(b.results[0]?.indexEntry).toBeNull();
+        expect(a.results[0]?.indexEntry).toEqual(exaEntry);
         expect(b.results[0]?.score).toBeCloseTo((a.results[0]?.score ?? 0) - 100);
     });
 
@@ -430,6 +435,12 @@ describe("PayAI", () => {
         );
         expect(payaiListings(deps)).toMatchObject({ ready: true });
         expect(payaiListings(deps).listings).toHaveLength(before);
+        const everything = rec.lines.join("\n");
+        for (const it of page.items) {
+            for (const a of (it as unknown as Row).accepts) {
+                expect(everything).not.toContain(a.payTo as string);
+            }
+        }
     });
 
     it("matches rows by word", async () => {
@@ -538,7 +549,7 @@ describe("caching and budgets", () => {
 describe("url mode", () => {
     const url = "https://api.chit402.com/v1/chat/completions";
 
-    it("probes only that URL", async () => {
+    it("probes only that URL and asks Payments for that host once", async () => {
         const calls: string[][] = [];
         const { deps, fake } = setup(
             { [url]: answer402(base.accepts) },
@@ -554,7 +565,35 @@ describe("url mode", () => {
         expect(fake.calls[0]?.method).toBe("POST");
         expect(out.results[0]).toMatchObject({ sources: ["user"], payers30d: null });
         expect(out.results[0]?.url).toBe(url);
-        expect(calls).toEqual([]);
+        expect(calls).toEqual([["api.chit402.com"]]);
+    });
+
+    describe("the seller record", () => {
+        const record = (paid: number, failed: number) => async () => ({
+            "api.chit402.com": { paidCalls30d: paid, failedPaid30d: failed },
+        });
+        const routes = { [url]: answer402(base.accepts) };
+
+        it("drops a seller that failed over half its paid calls", async () => {
+            const out = await run(setup(routes, { sellers: record(10, 6) }).deps, { url });
+            expect(out.results).toEqual([]);
+            expect(out.dropped.unreachable).toBe(1);
+        });
+
+        it("takes 50 off a seller that failed over a fifth", async () => {
+            const clean = await run(setup(routes).deps, { url });
+            const out = await run(setup(routes, { sellers: record(10, 3) }).deps, { url });
+            expect(out.results[0]?.score).toBeCloseTo((clean.results[0]?.score ?? 0) - 50);
+        });
+
+        it("keeps the result and sets partial when Payments is down", async () => {
+            const out = await run(
+                setup(routes, { sellers: () => Promise.reject(new Error("down")) }).deps,
+                { url },
+            );
+            expect(out.partial).toBe(true);
+            expect(out.results).toHaveLength(1);
+        });
     });
 
     it("explains its failures", async () => {
@@ -582,5 +621,108 @@ describe("url mode", () => {
         const d = await run(dear.deps, { url });
         expect(d.urlFailure).toBeNull();
         expect(d.dropped.price).toBe(1);
+    });
+});
+
+describe("fix round 1", () => {
+    const exa = "https://api.exa.ai/search";
+    const tryDo = (f: () => void) => {
+        try {
+            f();
+        } catch {
+            // a frozen outcome refuses the write
+        }
+    };
+
+    it("never lets a returned outcome change later answers, the index or PayAI", async () => {
+        const routes: Record<string, FakeAnswer> = {
+            [chatBazaar]: { status: 200, body: { resources: [] } },
+            [exa]: answer402([{ ...solanaEntry, payTo: sample.services[4]?.payTo }]),
+        };
+        for (const l of page.items) routes[l.resource] = answer402([solanaEntry]);
+        const { deps } = setup(routes, { index: sample });
+        await ready(deps, routes);
+        const first = await run(deps, { keyName: "EXA_API_KEY" });
+        const before = JSON.stringify(first);
+        const inputs = sample.services.map((e) => [...e.inputFields]);
+        for (const r of first.results) {
+            tryDo(() => r.inputFields.push("zzz"));
+            tryDo(() => r.sources.push("user"));
+            tryDo(() => r.indexEntry?.keyNames.push("ZZZ"));
+            tryDo(() => (r.probe.accepted as { payTo?: string } | null)?.payTo?.concat("x"));
+        }
+        tryDo(() => first.results.splice(0));
+        tryDo(() => (first.dropped.terms += 5));
+        const again = await run(deps, { keyName: "EXA_API_KEY" });
+        expect(first.partial).toBe(false);
+        expect(JSON.stringify(again)).toBe(before);
+        expect(again).toBe(await run(deps, { keyName: "EXA_API_KEY" }));
+        expect(sample.services.map((e) => e.inputFields)).toEqual(inputs);
+        expect(sample.services[4]?.keyNames).toEqual(["EXA_API_KEY"]);
+        for (const l of payaiListings(deps).listings) {
+            expect(l.inputFields).toEqual([]);
+        }
+    });
+
+    it("ignores a seller record for a host that was not asked", async () => {
+        const rows = Array.from({ length: 22 }, (_, i) =>
+            copy(
+                { quality: { l30DaysUniquePayers: 200 - i, lastCalledAt: null } },
+                `https://s${i}.example/v1/chat/completions`,
+            ),
+        );
+        const routes = {
+            [chatBazaar]: { status: 200, body: { resources: rows } },
+            ...probesOf(rows),
+        };
+        const { deps } = setup(routes, {
+            sellers: async () => ({ "s21.example": { paidCalls30d: 10, failedPaid30d: 9 } }),
+        });
+        const out = await run(deps);
+        expect(out.dropped.unreachable).toBe(0);
+    });
+
+    it("does not hide a valid listing behind a dropped one of the same URL", async () => {
+        const url = "https://a.example/v1/chat/completions";
+        const rows = [copy({ type: "mcp" }, url), copy({}, url)];
+        const { deps } = setup({
+            [chatBazaar]: { status: 200, body: { resources: rows } },
+            [url]: answer402(base.accepts),
+        });
+        const out = await run(deps);
+        expect(out.results.map((r) => r.url)).toEqual([url]);
+        expect(out.dropped.terms).toBe(1);
+    });
+
+    it("takes nothing from a duplicate listing that fails the filters", async () => {
+        const dup = copy(
+            {
+                x402Version: 1,
+                accepts: [{ ...solanaEntry, amount: "7000" }],
+                quality: { l30DaysUniquePayers: 999, lastCalledAt: null },
+            },
+            exa,
+        );
+        const { deps } = setup(
+            {
+                [bazaarUrl("web search", "0.10")]: { status: 200, body: { resources: [dup] } },
+                [exa]: { status: 200, body: {} },
+            },
+            { index: sample },
+        );
+        const out = await run(deps, { api: "web search" });
+        expect(out.results).toEqual([]);
+        expect(out.dropped.unreachable).toBe(1);
+        expect(out.dropped.terms).toBe(0);
+    });
+
+    it("reads payers only when it is a finite number of 0 or more", () => {
+        const row = (n: number) => ({
+            resource: "https://a.example/x",
+            quality: { l30DaysUniquePayers: n },
+        });
+        expect(parseBazaar({ resources: [row(-3)] })[0]?.payers30d).toBeNull();
+        expect(parseBazaar({ resources: [row(NaN)] })[0]?.payers30d).toBeNull();
+        expect(parseBazaar({ resources: [row(0)] })[0]?.payers30d).toBe(0);
     });
 });

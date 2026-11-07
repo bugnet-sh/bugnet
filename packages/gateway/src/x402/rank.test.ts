@@ -54,6 +54,10 @@ describe("score", () => {
         expect(score(withC({ payers30d: payers }), 100_000, ctx)).toBeCloseTo(want);
     });
 
+    it.each([-5, NaN, Infinity])("ignores %f payers", (payers) => {
+        expect(score(withC({ payers30d: payers }), 100_000, ctx)).toBe(0);
+    });
+
     it.each([
         ["2026-11-02T12:00:00Z", 10],
         ["2026-10-16T12:00:00Z", 5],

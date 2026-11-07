@@ -151,7 +151,10 @@ function parseListings(json: unknown, source: Listing["source"]): Listing[] {
             serviceName: str(row.serviceName),
             description: str(row.description),
             payers30d:
-                source === "bazaar" && typeof quality.l30DaysUniquePayers === "number"
+                source === "bazaar" &&
+                typeof quality.l30DaysUniquePayers === "number" &&
+                Number.isFinite(quality.l30DaysUniquePayers) &&
+                quality.l30DaysUniquePayers >= 0
                     ? quality.l30DaysUniquePayers
                     : null,
             lastSettledAt: source === "bazaar" ? str(quality.lastCalledAt) : null,
@@ -326,8 +329,8 @@ function mergeInto(c: Candidate, from: Partial<Candidate> & { source: FindSource
     if (c.sellerText === "") c.sellerText = from.sellerText ?? "";
     c.payers30d ??= from.payers30d ?? null;
     c.lastSettledAt ??= from.lastSettledAt ?? null;
-    if (c.inputFields.length === 0) c.inputFields = from.inputFields ?? [];
-    if (c.outputFields.length === 0) c.outputFields = from.outputFields ?? [];
+    if (c.inputFields.length === 0) c.inputFields = [...(from.inputFields ?? [])];
+    if (c.outputFields.length === 0) c.outputFields = [...(from.outputFields ?? [])];
 }
 
 function indexCandidate(e: IndexEntry): Candidate {
@@ -345,9 +348,30 @@ function indexCandidate(e: IndexEntry): Candidate {
         sellerText: "",
         payers30d: null,
         lastSettledAt: null,
-        inputFields: e.inputFields,
-        outputFields: e.outputFields,
+        inputFields: [...e.inputFields],
+        outputFields: [...e.outputFields],
     };
+}
+
+function askedOnly(
+    answer: Record<string, X402SellerStats>,
+    hosts: readonly string[],
+): Record<string, X402SellerStats> {
+    const out: Record<string, X402SellerStats> = {};
+    for (const h of hosts) if (Object.hasOwn(answer, h)) out[h] = answer[h] as X402SellerStats;
+    return out;
+}
+
+// Plain copies that nothing can write to, so a cached outcome stays what the search made
+function seal(outcome: FindOutcome): FindOutcome {
+    const freeze = (v: unknown): void => {
+        if (typeof v !== "object" || v === null || Object.isFrozen(v)) return;
+        Object.freeze(v);
+        for (const x of Object.values(v)) freeze(x);
+    };
+    const copy = structuredClone(outcome);
+    freeze(copy);
+    return copy;
 }
 
 function highestFirst<T extends { score: number }>(rows: T[]): T[] {
@@ -425,7 +449,8 @@ function finish(
         return { found: null, failure: null };
     }
     const listed = listedEntry(index, c.method, c.host, c.prefix, payTo) !== null;
-    const total = score({ ...c, indexEntry: listed ? c.indexEntry : null }, priceMicros, ctx);
+    const shown = { ...c, indexEntry: listed ? c.indexEntry : null };
+    const total = score(shown, priceMicros, ctx);
     if (total === null) {
         dropped.unreachable++;
         return { found: null, failure: null };
@@ -433,7 +458,7 @@ function finish(
     const kept: Probed = probe;
     return {
         found: {
-            ...c,
+            ...shown,
             probe: kept,
             priceMicros,
             payTo,
@@ -455,12 +480,9 @@ async function findByUrl(
     const index = indexOf(deps);
     const limits = lineLimits(terms);
     const dropped = emptyDropped();
-    const out = (urlFailure: string | null, results: Found[] = []): FindOutcome => ({
-        results,
-        dropped,
-        partial: false,
-        urlFailure,
-    });
+    let partial = false;
+    const out = (urlFailure: string | null, results: Found[] = []): FindOutcome =>
+        seal({ results, dropped, partial, urlFailure });
     const parts = urlParts(url);
     if (parts === null || hostRefused(parts.host, deps.config.router.links_domain)) {
         dropped.terms++;
@@ -488,9 +510,19 @@ async function findByUrl(
         sellerText: "",
         payers30d: null,
         lastSettledAt: null,
-        inputFields: p.indexEntry?.inputFields ?? [],
-        outputFields: p.indexEntry?.outputFields ?? [],
+        inputFields: [...(p.indexEntry?.inputFields ?? [])],
+        outputFields: [...(p.indexEntry?.outputFields ?? [])],
     };
+    let sellers: Record<string, X402SellerStats> = {};
+    try {
+        sellers = askedOnly(
+            await deps.payments.x402Sellers([c.host], budget.signal(sellersCapMs)),
+            [c.host],
+        );
+    } catch {
+        partial = true;
+        deps.log.warn("x402 sellers unavailable");
+    }
     const probe = await createProber(deps).probe(
         { method: c.method, url, indexMatch: c.indexEntry !== null },
         terms,
@@ -499,7 +531,7 @@ async function findByUrl(
     const ctx: RankContext = {
         maxPriceMicros: q.maxPriceMicros,
         now: deps.now(),
-        sellers: {},
+        sellers,
         hostsSeen: hostsSeen(s, deps.log),
     };
     const { found, failure } = finish(deps, c, probe, q, limits, index, ctx, dropped);
@@ -565,61 +597,22 @@ export async function findServices(
         keep(c);
     }
 
-    for (const l of [...(bazaar ?? []), ...payaiMatches]) {
+    type Checked = { drop: keyof Dropped } | { ok: Candidate; micros: number | null };
+
+    const check = (l: Listing): Checked => {
         const cheapest = cheapestExact(l.accepts, terms);
         const method = l.method;
-        const key = `${method} ${l.resource}`;
-        const listedMicros =
-            typeof cheapest === "object" && cheapest.amount <= BigInt(Number.MAX_SAFE_INTEGER)
-                ? Number(cheapest.amount)
-                : null;
-        const fill = {
-            source: l.source,
-            listedPriceMicros: listedMicros,
-            sellerName: l.serviceName,
-            sellerText: `${l.serviceName ?? ""} ${l.description ?? ""}`,
-            payers30d: l.payers30d,
-            lastSettledAt: l.lastSettledAt,
-            inputFields: l.inputFields,
-            outputFields: l.outputFields,
-        } as const;
-        if (kept.has(key)) {
-            const earlier = kept.get(key);
-            if (earlier) mergeInto(earlier, fill);
-            continue;
-        }
-        const drop = (field: keyof Dropped) => {
-            kept.set(key, null);
-            dropped[field]++;
-        };
-        if (l.type !== "http" || l.x402Version !== 2) {
-            drop("terms");
-            continue;
-        }
-        if (method !== "GET" && method !== "POST") {
-            drop("terms");
-            continue;
-        }
-        if (cheapest === "network") {
-            drop("network");
-            continue;
-        }
-        if (cheapest === "terms") {
-            drop("terms");
-            continue;
-        }
-        if (cheapest.amount > BigInt(q.maxPriceMicros)) {
-            drop("price");
-            continue;
-        }
+        if (l.type !== "http" || l.x402Version !== 2) return { drop: "terms" };
+        if (method !== "GET" && method !== "POST") return { drop: "terms" };
+        if (cheapest === "network") return { drop: "network" };
+        if (cheapest === "terms") return { drop: "terms" };
+        if (cheapest.amount > BigInt(q.maxPriceMicros)) return { drop: "price" };
         const parts = urlParts(l.resource);
         if (parts === null || hostRefused(parts.host, deps.config.router.links_domain)) {
-            drop("terms");
-            continue;
+            return { drop: "terms" };
         }
         if (underSuffix(parts.host, s.shared_hosting_suffixes) && !hostIndexed(index, parts.host)) {
-            drop("shared");
-            continue;
+            return { drop: "shared" };
         }
         const p = prefixFor(index, method, parts.host, parts.path);
         const micros = Number(cheapest.amount);
@@ -627,27 +620,58 @@ export async function findServices(
             p === null ||
             !lineOk({ method, url: l.resource, prefix: p.prefix }, micros, cheapest.payTo, limits)
         ) {
-            drop("terms");
+            return { drop: "terms" };
+        }
+        return {
+            ok: {
+                method,
+                url: l.resource,
+                host: parts.host,
+                path: parts.path,
+                prefix: p.prefix,
+                indexEntry: p.indexEntry,
+                listedPriceMicros: null,
+                sources: [],
+                sellerName: null,
+                sellerText: "",
+                payers30d: null,
+                lastSettledAt: null,
+                inputFields: [],
+                outputFields: [],
+            },
+            micros: cheapest.amount <= BigInt(Number.MAX_SAFE_INTEGER) ? micros : null,
+        };
+    };
+
+    // A listing that fails the filters adds nothing, and one already seen is not counted again
+    for (const l of [...(bazaar ?? []), ...payaiMatches]) {
+        const key = `${l.method} ${l.resource}`;
+        const seen = kept.has(key);
+        const checked = check(l);
+        if ("drop" in checked) {
+            if (!seen) {
+                kept.set(key, null);
+                dropped[checked.drop]++;
+            }
             continue;
         }
-        keep({
-            method,
-            url: l.resource,
-            host: parts.host,
-            path: parts.path,
-            prefix: p.prefix,
-            indexEntry: p.indexEntry,
-            listedPriceMicros: null,
-            sources: [],
-            sellerName: null,
-            sellerText: "",
-            payers30d: null,
-            lastSettledAt: null,
-            inputFields: [],
-            outputFields: [],
-        });
-        const c = order[order.length - 1];
-        if (c) mergeInto(c, fill);
+        const fill = {
+            source: l.source,
+            listedPriceMicros: checked.micros,
+            sellerName: l.serviceName,
+            sellerText: `${l.serviceName ?? ""} ${l.description ?? ""}`,
+            payers30d: l.payers30d,
+            lastSettledAt: l.lastSettledAt,
+            inputFields: l.inputFields,
+            outputFields: l.outputFields,
+        } as const;
+        const earlier = kept.get(key);
+        if (earlier) {
+            mergeInto(earlier, fill);
+        } else {
+            keep(checked.ok);
+            mergeInto(checked.ok, fill);
+        }
     }
 
     const ctx: RankContext = {
@@ -667,7 +691,10 @@ export async function findServices(
     const hosts = [...new Set(pre.map((c) => c.host))].slice(0, 20);
     if (hosts.length > 0) {
         try {
-            sellers = await deps.payments.x402Sellers(hosts, budget.signal(sellersCapMs));
+            sellers = askedOnly(
+                await deps.payments.x402Sellers(hosts, budget.signal(sellersCapMs)),
+                hosts,
+            );
         } catch {
             partial = true;
             deps.log.warn("x402 sellers unavailable");
@@ -702,12 +729,12 @@ export async function findServices(
         const r = finish(deps, c, probe, q, limits, index, rctx, dropped);
         if (r.found) found.push(r.found);
     });
-    const outcome: FindOutcome = {
+    const outcome = seal({
         results: highestFirst(found).slice(0, s.max_results),
         dropped,
         partial,
         urlFailure: null,
-    };
+    });
     if (!partial) cache.set(cacheKey, outcome);
     return outcome;
 }

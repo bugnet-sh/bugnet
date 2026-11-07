@@ -35,7 +35,8 @@ export interface RankContext {
 export function score(c: Candidate, priceMicros: number, ctx: RankContext): number | null {
     let total = 0;
     if (c.indexEntry !== null) total += 100;
-    if (c.payers30d !== null) total += Math.min(30, 10 * Math.log10(1 + c.payers30d));
+    if (c.payers30d !== null && Number.isFinite(c.payers30d) && c.payers30d >= 0)
+        total += Math.min(30, 10 * Math.log10(1 + c.payers30d));
     if (c.lastSettledAt !== null) {
         const age = ctx.now - Date.parse(c.lastSettledAt);
         if (age <= 7 * dayMs) total += 10;
