@@ -6,3 +6,4 @@ plugin/hooks/bugnet-hook.mjs
 pnpm-workspace.yaml
 **/src/gen
 eval/agent/results
+.superpowers
