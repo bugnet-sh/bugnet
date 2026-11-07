@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { startHttp } from "./server.ts";
 import { checkSettings, parseSettings } from "./config.ts";
 import type { AwaitingPayment, Payments } from "./payments/port.ts";
-import { testConfig, testDeps, testPayments } from "./testing/harness.ts";
+import { connectTools, testConfig, testDeps, testPayments } from "./testing/harness.ts";
 
 const list = { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} };
 
@@ -195,5 +195,16 @@ describe("dev pay links", () => {
                 expect(await r.text()).toBe("not found\n");
             }
         }
+    });
+});
+
+describe("x402 tools", () => {
+    it("registers bugnet_x402_find only when [x402] enabled is true", async () => {
+        const names = async (toml: string) =>
+            (
+                await (await connectTools(testDeps({ config: testConfig(toml) }))).listTools()
+            ).tools.map((t) => t.name);
+        expect(await names("")).not.toContain("bugnet_x402_find");
+        expect(await names("[x402]\nenabled = true")).toContain("bugnet_x402_find");
     });
 });

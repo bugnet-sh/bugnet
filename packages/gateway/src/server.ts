@@ -20,6 +20,7 @@ import { registerSourceTool } from "./tools/source.ts";
 import { registerTransferTool } from "./tools/transfer.ts";
 import { registerSshTools } from "./tools/ssh.ts";
 import { registerSecretTools } from "./tools/secrets.ts";
+import { registerX402Tools } from "./tools/x402.ts";
 
 export const version = "0.1.0";
 
@@ -36,6 +37,7 @@ export const registrations: Register[] = [
     registerTransferTool,
     registerSshTools,
     registerSecretTools,
+    registerX402Tools,
 ];
 
 type AnyHandler = (...a: unknown[]) => unknown;

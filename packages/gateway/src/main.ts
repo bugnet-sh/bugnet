@@ -6,6 +6,9 @@ import { createRouterClient } from "./router.ts";
 import { startHttp, version } from "./server.ts";
 import { createTracing } from "./trace.ts";
 import { createAssessor } from "./assess/index.ts";
+import { watchHostsSeen } from "./x402/index.ts";
+import { refreshPayai } from "./x402/search.ts";
+import { pollTerms } from "./x402/terms.ts";
 
 function configPath(argv: string[]): string {
     const i = argv.findIndex((a) => a === "-config" || a === "--config");
@@ -27,6 +30,9 @@ try {
         now: Date.now,
         tracing,
     };
+    const x402Stops = config.x402.enabled
+        ? [pollTerms(deps), watchHostsSeen(config.x402, log), refreshPayai(deps)]
+        : [];
     const http = await startHttp(deps);
     const front = config.front.tls_addr ? await startTlsFront(config, http, log) : undefined;
     log.info("listening", {
@@ -38,6 +44,7 @@ try {
     });
     if (front) process.on("SIGHUP", () => front.reload());
     const stop = () => {
+        for (const s of x402Stops) s();
         const closing = [new Promise((r) => http.close(r)), front?.close()];
         void Promise.all(closing)
             .then(() => tracing?.shutdown())
