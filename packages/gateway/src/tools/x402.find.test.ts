@@ -446,6 +446,43 @@ describe("bugnet_x402_find", () => {
         expect(noAccount.seen).toEqual([]);
     });
 
+    it.each([
+        [Code.Internal, "FEATURE_UNAVAILABLE"],
+        [Code.Unavailable, "X402_DISABLED"],
+    ])("treats %s with %s as an error, not as a plain answer", async (code, reason) => {
+        const { client } = await setup({
+            router: {
+                checkX402: () => {
+                    throw routerError(code, reason);
+                },
+            },
+        });
+        const r = await callTool(client, "bugnet_x402_find", {
+            api: "chat completions",
+            handle: testHandle,
+        });
+        expect(r.isError).toBe(true);
+    });
+
+    it("refuses an api that cleans to under 3 characters before any call", async () => {
+        const checked: unknown[] = [];
+        const payments = testPayments();
+        const { client, seen } = await setup({
+            payments,
+            router: { checkX402: (req) => (checked.push(req), {}) },
+        });
+        const r = await callTool(client, "bugnet_x402_find", {
+            api: "a\u200b\u200b\u200b ",
+            handle: testHandle,
+        });
+        expect(r.isError).toBe(true);
+        expect(r.text).toBe(
+            "Input validation error: Invalid arguments for tool bugnet_x402_find: api: Too small: expected string to have >=3 characters",
+        );
+        expect(checked).toEqual([]);
+        expect(seen).toEqual([]);
+    });
+
     it("refuses maxPriceUsd above the terms' ceiling", async () => {
         const { client } = await setup();
         const r = await callTool(client, "bugnet_x402_find", {

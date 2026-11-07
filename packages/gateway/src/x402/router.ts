@@ -150,6 +150,11 @@ const ownCode: Readonly<Record<string, Code>> = {
     TOO_MANY_SERVICES: Code.ResourceExhausted,
 };
 
+// True only for a router answer that carries this reason under its spec code
+export function hasOwnReason(err: unknown, reason: keyof typeof ownCode): boolean {
+    return err instanceof ConnectError && err.code === ownCode[reason] && reasonOf(err) === reason;
+}
+
 export function x402RouterError(
     err: unknown,
     what: X402What,

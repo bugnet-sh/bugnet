@@ -76,7 +76,7 @@ const query: FindQuery = {
 };
 const chatFields = ["model", "messages", "temperature", "max_tokens", "stream", "tools"];
 const replyFields = ["id", "object", "created", "model", "choices", "usage"];
-// Five realistic results: an indexed one and four unlisted OpenAI-shaped sellers
+// Five realistic results, one indexed and four unlisted OpenAI-shaped sellers
 const five: Found[] = [
     found({
         host: "agent402.tools",
@@ -469,6 +469,39 @@ describe("findText", () => {
         expect(r.structured.results).toHaveLength(1);
         expect(r.structured.dropped.terms).toBe(1);
     });
+
+    it("keeps the message within 1,500 characters for the largest inputs the schema allows", () => {
+        const host = `${"a".repeat(63)}.${"b".repeat(63)}.${"c".repeat(63)}.${"d".repeat(55)}.io`;
+        expect(host.length).toBeLessThanOrEqual(253);
+        const big = found({ host, path: "/v1/chat/completions", priceMicros: 2_000 });
+        const q = { ...query, api: "x".repeat(200), keyName: `K${"X".repeat(63)}` };
+        const r = findText({
+            outcome: outcome([big]),
+            query: q,
+            feeDue: null,
+            withHandle: false,
+            terms: testTerms(),
+        });
+        expect(r.structured.results).toHaveLength(1);
+        expect(r.summary.length).toBeLessThanOrEqual(1_500);
+        expect(r.text.length).toBeLessThanOrEqual(4_000);
+    });
+
+    it.each(["GET", "POST"] as const)(
+        "leaves out a %s result whose curl passes 400 characters and counts it in terms",
+        (method) => {
+            const quoted = found({
+                host: "a.example",
+                path: `/v1/${"'".repeat(110)}`,
+                priceMicros: 1_000,
+                method,
+            });
+            const r = render([five[0] as Found, quoted]);
+            expect(r.structured.results).toHaveLength(1);
+            expect(r.structured.dropped.terms).toBe(1);
+            for (const x of r.structured.results) expect(x.curl.length).toBeLessThanOrEqual(400);
+        },
+    );
 
     it("says none was found, or why the url failed, with no results", () => {
         const none = findText({

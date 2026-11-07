@@ -3,7 +3,7 @@ import { GatewayError } from "../router.ts";
 import { cleanText } from "../sanitize.ts";
 import { emptyFindResult, featureUnavailableFindText, findText } from "../x402/findtext.ts";
 import { lineCut, toMicros, urlParts, usdText } from "../x402/lines.ts";
-import { checkServices, routerRows, x402RouterError } from "../x402/router.ts";
+import { checkServices, hasOwnReason, routerRows, x402RouterError } from "../x402/router.ts";
 import { findServices, type FindQuery } from "../x402/search.ts";
 import { readTerms } from "../x402/terms.ts";
 import {
@@ -79,13 +79,27 @@ export const registerX402Tools: Register = (server, deps) => {
                             "query or fragment",
                     );
                 }
+                const api = cleanText(args.api).replace(/\s+/g, " ").trim();
+                if (api.length < 3) {
+                    return {
+                        content: [
+                            {
+                                type: "text" as const,
+                                text:
+                                    "Input validation error: Invalid arguments for tool bugnet_x402_find: " +
+                                    "api: Too small: expected string to have >=3 characters",
+                            },
+                        ],
+                        isError: true,
+                    };
+                }
                 const budget = new Budget(deps);
                 const terms = await readTerms(deps, budget.signal(3_000));
                 if (terms === null) throw unreachable();
                 const given = args.maxPriceUsd !== undefined ? toMicros(args.maxPriceUsd) : null;
                 const wanted = given ?? toMicros(deps.config.x402.default_max_price_usd) ?? 0;
                 const query: FindQuery = {
-                    api: cleanText(args.api).replace(/\s+/g, " ").trim(),
+                    api,
                     keyName: args.keyName ?? null,
                     maxPriceMicros: wanted,
                     url: args.url ?? null,
@@ -114,18 +128,17 @@ export const registerX402Tools: Register = (server, deps) => {
                         deps.payments.x402Account(handleHash(args.handle), budget.signal(3_000)),
                     ]);
                     if (check.status === "rejected") {
-                        const e = x402RouterError(check.reason, "x402", [], terms.maxServices);
-                        if (e.reason === "FEATURE_UNAVAILABLE") {
+                        if (hasOwnReason(check.reason, "FEATURE_UNAVAILABLE")) {
                             return ok(featureUnavailableFindText, {
                                 ...emptyFindResult(query, null),
                             });
                         }
-                        if (e.reason === "X402_DISABLED") {
+                        if (hasOwnReason(check.reason, "X402_DISABLED")) {
                             return ok(`${routerRows.switchedOff("x402")}.`, {
                                 ...emptyFindResult(query, null),
                             });
                         }
-                        throw e;
+                        throw x402RouterError(check.reason, "x402", [], terms.maxServices);
                     }
                     if (account.status === "rejected") throw unreachable();
                     feeDue = account.value.feeDue;
