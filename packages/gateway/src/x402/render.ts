@@ -822,6 +822,11 @@ export function paymentUnconfirmed(
     );
 }
 
+// An answer that says nothing was charged gives way to the paid-order text beside a carried payment
+export function orLost(e: GatewayError, lost: GatewayError | null): GatewayError {
+    return lost !== null && /nothing was charged/i.test(e.message) ? lost : e;
+}
+
 export interface SentOrder {
     orderId: string | undefined;
     // The claim of a retry by claim, null when the call sent none

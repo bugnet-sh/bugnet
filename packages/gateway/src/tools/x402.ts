@@ -33,6 +33,7 @@ import {
     buildView,
     notAllowanceOrder,
     notSandboxAllowance,
+    orLost,
     otherSandboxOrder,
     paidRetryUnreachable,
     paymentUnconfirmed,
@@ -278,19 +279,21 @@ async function paidRetryOrder(c: BudgetCall, retry: PaidRetry): Promise<Applied 
     };
 }
 
+// A carried payment may be a resend Payments already settled, so it gets the paid-order text
+function lostPayment(c: BudgetCall): GatewayError | null {
+    if (c.payment === undefined) return null;
+    const id = paymentMemo(c.payment) ?? c.args.orderId ?? null;
+    return paymentUnconfirmed("x402", budgetTool, id);
+}
+
 // Checks every amount and limit, probes and asks the router before Payments charges anything
 async function newOrder(c: BudgetCall): Promise<Applied | CallToolResult> {
     const { deps, args, ctx, budget, h, key, payment, amount, confirm, spend, disable } = c;
-    // A carried payment may be a resend of one Payments already settled
-    const unconfirmed = () =>
-        paymentUnconfirmed("x402", budgetTool, paymentMemo(payment) ?? args.orderId ?? null);
-    const unreachable = () =>
-        payment !== undefined ? unconfirmed() : x402Fail("unreachable", "x402");
+    const lost = lostPayment(c);
+    const unreachable = () => lost ?? x402Fail("unreachable", "x402");
     const terms = await readTerms(deps, budget.signal(3_000));
     if (terms === null) throw unreachable();
-    if (!terms.enabled) {
-        throw payment !== undefined ? unconfirmed() : x402Fail("switchedOff", "x402");
-    }
+    if (!terms.enabled) throw lost ?? x402Fail("switchedOff", "x402");
     let answer: X402AccountAnswer;
     try {
         answer = await deps.payments.x402Account(h, budget.signal(3_000));
@@ -342,7 +345,7 @@ async function newOrder(c: BudgetCall): Promise<Applied | CallToolResult> {
         feeMicros = confirm - amount;
     }
     if (newServiceCount(planned) > terms.maxNewServicesPerOrder) {
-        throw x402Fail("tooManyNew", "x402", { terms });
+        throw lost ?? x402Fail("tooManyNew", "x402", { terms });
     }
     if (servicesAfter(account, planned, disable) > terms.maxServices) {
         throw x402Fail("tooManyServices", "x402", { terms });
@@ -372,10 +375,10 @@ async function newOrder(c: BudgetCall): Promise<Applied | CallToolResult> {
             budget.signal(3_000),
         );
     } catch (e) {
-        throw x402RouterError(e, "x402", hosts, terms.maxServices);
+        throw lost ?? x402RouterError(e, "x402", hosts, terms.maxServices);
     }
     if (budget.left() < enableWaitMs + 5_000) {
-        if (payment !== undefined) throw unconfirmed();
+        if (lost) throw lost;
         throw new GatewayError(
             "timeout",
             "x402: Bugnet answered slowly, so nothing was charged. Calling bugnet_x402_budget " +
@@ -453,9 +456,10 @@ async function newOrder(c: BudgetCall): Promise<Applied | CallToolResult> {
             budget.signal(10_000, enableWaitMs),
         );
     } catch {
-        throw x402Fail("unreachable", "x402");
+        throw unreachable();
     }
-    if (result.status === "refused") throw paymentsRefusal(result, refusal);
+    // Payments never saw the carried payment, so its words cannot speak for it
+    if (result.status === "refused") throw orLost(paymentsRefusal(result, refusal), lost);
     return {
         terms,
         account: result.x402,
@@ -517,7 +521,10 @@ async function runBudget(
         );
     } catch (e) {
         const order = step.order;
-        if (order === null) throw x402RouterError(e, "x402", step.hosts, step.terms.maxServices);
+        if (order === null) {
+            const free = x402RouterError(e, "x402", step.hosts, step.terms.maxServices);
+            throw orLost(free, lostPayment(c));
+        }
         // The order is paid, so the answer says how it ends rather than asking for a new one
         if (hasOwnReason(e, "NOT_READY")) {
             throw withRefusal(

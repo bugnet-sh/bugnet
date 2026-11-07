@@ -330,19 +330,17 @@ async function startTerms(
     deps: Deps,
     claims: QuoteClaims,
     budget: Budget,
-    payment: unknown,
+    lost: GatewayError | null,
 ): Promise<X402Terms> {
-    if (!deps.config.x402.enabled) throw x402Fail("switchedOff", "start");
+    if (!deps.config.x402.enabled) throw lost ?? x402Fail("switchedOff", "start");
     limitQuotes(deps, "start");
     const terms = await readTerms(deps, budget.signal(3_000));
-    if (terms === null) {
-        throw payment !== undefined
-            ? paymentUnconfirmed("start", startTool, paymentMemo(payment))
-            : x402Fail("unreachable", "start");
+    if (terms === null) throw lost ?? x402Fail("unreachable", "start");
+    if (!terms.enabled) throw lost ?? x402Fail("switchedOff", "start");
+    if (!terms.startWithX402) throw lost ?? x402Fail("startUnavailable", "start");
+    if (!claims.requirements.secrets) {
+        throw lost ?? new GatewayError("invalid", startNeedsSecretsText);
     }
-    if (!terms.enabled) throw x402Fail("switchedOff", "start");
-    if (!terms.startWithX402) throw x402Fail("startUnavailable", "start");
-    if (!claims.requirements.secrets) throw new GatewayError("invalid", startNeedsSecretsText);
     return terms;
 }
 
@@ -366,6 +364,7 @@ async function planStart(
     pkg: QuotedPackage,
     terms: X402Terms,
     budget: Budget,
+    lost: GatewayError | null,
 ): Promise<StartPlan> {
     // The input check holds it to a dollar amount
     const allowance = toMicros(x.allowanceUsd) as number;
@@ -393,7 +392,7 @@ async function planStart(
         });
     }
     if (newServiceCount(planned) > terms.maxNewServicesPerOrder) {
-        throw x402Fail("tooManyNew", "start", { terms });
+        throw lost ?? x402Fail("tooManyNew", "start", { terms });
     }
     if (servicesAfter(null, planned, []) > terms.maxServices) {
         throw x402Fail("tooManyServices", "start", { terms });
@@ -415,7 +414,7 @@ async function planStart(
         probeLines(deps, planned, terms, "start", cap),
         checkServices(deps, { handle: "", add: checkAddOf(planned), disable: [] }, cap).catch(
             (e: unknown) => {
-                throw x402RouterError(e, "start", hosts, terms.maxServices);
+                throw lost ?? x402RouterError(e, "start", hosts, terms.maxServices);
             },
         ),
     ]);
@@ -708,9 +707,16 @@ export const registerSandboxTools: Register = (server, deps) => {
                         ...(key ? { idempotencyKey: key } : {}),
                     };
                 } else {
-                    const terms = args.x402
-                        ? await startTerms(deps, claims, budget, payment)
-                        : null;
+                    // A carried payment may be a resend of one Payments already settled
+                    const lost =
+                        payment !== undefined
+                            ? paymentUnconfirmed(
+                                  "start",
+                                  startTool,
+                                  paymentMemo(payment) ?? args.orderId ?? null,
+                              )
+                            : null;
+                    const terms = args.x402 ? await startTerms(deps, claims, budget, lost) : null;
                     const pkg = quoted(
                         await priceForStart(deps, args.packageId, claims, () =>
                             budget.ms(15_000, reserve),
@@ -724,6 +730,7 @@ export const registerSandboxTools: Register = (server, deps) => {
                             pkg,
                             terms,
                             budget,
+                            lost,
                         );
                     } else {
                         const priced = Number.parseFloat(args.confirmPriceUsd.replace(/^\$/, ""));
@@ -739,11 +746,7 @@ export const registerSandboxTools: Register = (server, deps) => {
                         }
                     }
                     if (budget.left() < reserve + 5_000) {
-                        // A carried payment may be a resend of one Payments already settled
-                        if (payment !== undefined) {
-                            const id = paymentMemo(payment) ?? args.orderId ?? null;
-                            throw paymentUnconfirmed("start", startTool, id);
-                        }
+                        if (lost) throw lost;
                         throw new GatewayError(
                             "timeout",
                             "start: Bugnet answered slowly, so nothing was charged. Calling " +

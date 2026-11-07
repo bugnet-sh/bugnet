@@ -955,11 +955,11 @@ describe("bugnet_start with x402", () => {
         });
         const id = withSecrets(off.deps);
         expect((await callTool(off.client, "bugnet_start", x402Args(id))).text).toBe(startOff);
-        // The payment never left the gateway, so nothing was charged
+        // The carried payment may be a resend of one Payments already settled
         const paying = await callTool(off.client, "bugnet_start", x402Args(id), {
             meta: { "x402/payment": memoPayment },
         });
-        expect(paying.text).toBe(startOff);
+        expect(paying.text).toBe(paidUnreachable(memoId, fromStep(memoId)));
         expect(off.payments.orders).toEqual([]);
         const down = await x402Setup({
             payments: testPayments(undefined, {
@@ -1707,6 +1707,49 @@ describe("bugnet_start with x402", () => {
         const n = await callTool(plain.client, "bugnet_start", startArgs(withSecrets(plain.deps)));
         expect(n.text).toBe("the payment service did not answer, try again in a minute.");
     });
+
+    // A carried payment may be a resend of one Payments already settled
+    it.each([
+        ["[x402] off", { off: true }, true],
+        ["terms off", { payments: testPayments(undefined, { terms: { enabled: false } }) }, true],
+        [
+            "no start with x402",
+            { payments: testPayments(undefined, { terms: { startWithX402: false } }) },
+            true,
+        ],
+        ["a quote without secrets", {}, false],
+        [
+            "too many new services",
+            { payments: testPayments(undefined, { terms: { maxNewServicesPerOrder: 0 } }) },
+            true,
+        ],
+        [
+            "a CheckX402 refusal",
+            {
+                impl: {
+                    checkX402: () => {
+                        throw routerError(Code.InvalidArgument, "HOST_REFUSED");
+                    },
+                },
+            },
+            true,
+        ],
+    ] as const)(
+        "never says nothing was charged beside a carried payment: %s",
+        async (_name, o, secrets) => {
+            const call = async (meta: Record<string, unknown>) => {
+                const s = await x402Setup(o);
+                const quote = secrets ? withSecrets(s.deps) : signed(s.deps);
+                const r = await callTool(s.client, "bugnet_start", x402Args(quote), { meta });
+                expect(s.payments.orders).toEqual([]);
+                return r;
+            };
+            expect((await call({})).text).toMatch(/othing was charged/);
+            const r = await call({ "x402/payment": memoPayment });
+            expect(r.text).toBe(paidUnreachable(memoId, fromStep(memoId)));
+            expect(r.structured).toEqual({ message: r.text, orderId: memoId });
+        },
+    );
 
     it("names the order when a retry of an x402 start without the field cannot reach Payments", async () => {
         const payments = testPayments(undefined, { requirePayment: true });

@@ -632,6 +632,82 @@ describe("bugnet_x402_budget", () => {
         );
     });
 
+    // A carried payment may be a resend of one Payments already settled
+    it.each([
+        [
+            "too many new services",
+            () => ({ payments: testPayments(undefined, { terms: { maxNewServicesPerOrder: 0 } }) }),
+            {},
+        ],
+        [
+            "a CheckX402 refusal",
+            () => ({
+                router: {
+                    checkX402: () => {
+                        throw routerError(Code.InvalidArgument, "HOST_REFUSED");
+                    },
+                },
+            }),
+            {},
+        ],
+        [
+            "a configure call that fails",
+            () => ({
+                payments: withAccount(accountOf([service("chat", "enabled")]), false, {
+                    x402: { configure: () => Promise.reject(new Error("down")) },
+                }),
+            }),
+            { amountUsd: "0", confirmPriceUsd: "0", services: undefined },
+        ],
+        [
+            "a configure refusal",
+            () => ({
+                payments: withAccount(accountOf([service("chat", "enabled")]), false, {
+                    x402: {
+                        configure: async () => ({
+                            status: "refused" as const,
+                            reason: "router_unavailable" as const,
+                        }),
+                    },
+                }),
+            }),
+            { amountUsd: "0", confirmPriceUsd: "0", services: undefined },
+        ],
+        [
+            "an EnableX402 refusal after a free change",
+            () => {
+                const view = accountOf([service("chat", "enabled")]);
+                return {
+                    payments: withAccount(view, false, {
+                        x402: { configure: async () => ({ status: "ok" as const, x402: view }) },
+                    }),
+                    router: {
+                        enableX402: () => {
+                            throw routerError(Code.FailedPrecondition, "X402_DISABLED");
+                        },
+                    },
+                };
+            },
+            { amountUsd: "0", confirmPriceUsd: "0", services: undefined },
+        ],
+    ] as const)(
+        "never says nothing was charged beside a carried payment: %s",
+        async (_name, over, extra) => {
+            const call = async (p: Record<string, unknown>) => {
+                const s = await setup(over());
+                const r = await callTool(s.client, budget, args({ ...extra, ...p }));
+                expect(s.payments.orders).toEqual([]);
+                return r;
+            };
+            expect((await call({})).text).toMatch(/othing was charged/);
+            const r = await call({ payment: memoPayment });
+            expect(r.text).toBe(
+                `x402: order ${memoId} is paid, but Bugnet could not reach its payment service to apply it. Call bugnet_x402_budget with orderId "${memoId}" and the claim from its payment step in a minute.`,
+            );
+            expect(r.structured).toEqual({ message: r.text, orderId: memoId });
+        },
+    );
+
     it("reads the order from the payment's memo only when it has an order id's shape", () => {
         expect(paymentMemo(memoPayment)).toBe(memoId);
         for (const p of [
