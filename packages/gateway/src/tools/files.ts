@@ -2,6 +2,8 @@ import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { z } from "zod";
 import { GatewayError, reasonOf } from "../router.ts";
 import { cleanText, looksLikeText, untrustedLabel } from "../sanitize.ts";
+import { copyBackLine } from "../x402/render.ts";
+import { activeX402Hosts } from "../x402/status.ts";
 import { homePath, ok, okBody, sandboxFailure, type Register, handleInput } from "./common.ts";
 
 const pathInput = z
@@ -83,12 +85,15 @@ export const registerFileTools: Register = (server, deps) => {
         },
         async (args) => {
             try {
-                const res = await deps.router.readFile({
-                    handle: args.handle,
-                    path: homePath(args.path),
-                    offset: BigInt(args.offset),
-                    length: args.length,
-                });
+                const [res, hosts] = await Promise.all([
+                    deps.router.readFile({
+                        handle: args.handle,
+                        path: homePath(args.path),
+                        offset: BigInt(args.offset),
+                        length: args.length,
+                    }),
+                    activeX402Hosts(deps, args.handle),
+                ]);
                 const isText = looksLikeText(res.data);
                 const body = isText
                     ? cleanText(new TextDecoder().decode(res.data))
@@ -97,6 +102,7 @@ export const registerFileTools: Register = (server, deps) => {
                 const head = [
                     `${res.data.length} bytes of ${args.path} from offset ${args.offset}` +
                         (res.eof ? ", end of file." : `, more from offset ${next}.`),
+                    ...(hosts.length > 0 ? [copyBackLine(hosts)] : []),
                     isText ? untrustedLabel : "Binary content, base64 encoded:",
                 ];
                 const text = [...head, body].join("\n");

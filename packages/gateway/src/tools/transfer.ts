@@ -9,6 +9,8 @@ import {
     type CreateTransferResponse,
 } from "../gen/bugnet/router/v1/router_pb.ts";
 import { GatewayError, errorReason, fromRouter } from "../router.ts";
+import { copyBackLine } from "../x402/render.ts";
+import { activeX402Hosts } from "../x402/status.ts";
 import {
     approvalMeta,
     handleTag,
@@ -286,7 +288,12 @@ function uploadResult(args: Args, link: Link): CallToolResult {
     });
 }
 
-function downloadResult(args: Args, link: Link, res: CreateTransferResponse): CallToolResult {
+function downloadResult(
+    args: Args,
+    link: Link,
+    res: CreateTransferResponse,
+    x402Hosts: readonly string[],
+): CallToolResult {
     const named = args.localFile !== undefined;
     const file = shellWord(args.localFile ?? `${downloadDir}/${downloadName(args.path)}`);
     const url = shellQuoted(link.url);
@@ -297,6 +304,7 @@ function downloadResult(args: Args, link: Link, res: CreateTransferResponse): Ca
     const resumeCommand = `curl -fS --create-dirs -C - -o ${file} ${url}`;
     const lines = [
         `Download link for ${link.path}, ${bytes(link.size)}${modified}${until(link)}.`,
+        x402Hosts.length > 0 ? copyBackLine(x402Hosts) : "",
         (named
             ? `command saves it as ${file}, replacing any file of that name.`
             : `command saves it as ${file} under the working directory, a folder of its own, ` +
@@ -352,9 +360,14 @@ export const registerTransferTool: Register = (server, deps) => {
             try {
                 const req = transferRequest(args, ctx);
                 // The router hashes a large download at mint, so progress keeps the call alive
-                const res = await withProgress(ctx, "making the transfer link", () =>
-                    createTransfer(deps, req, ctx.mcpReq.signal),
-                );
+                const [res, x402Hosts] = await Promise.all([
+                    withProgress(ctx, "making the transfer link", () =>
+                        createTransfer(deps, req, ctx.mcpReq.signal),
+                    ),
+                    args.direction === "download"
+                        ? activeX402Hosts(deps, args.handle)
+                        : Promise.resolve([]),
+                ]);
                 const url = routerLink(deps, res.url, "transfer", transferPath);
                 if (!url) {
                     throw new GatewayError(
@@ -376,7 +389,7 @@ export const registerTransferTool: Register = (server, deps) => {
                 });
                 return args.direction === "upload"
                     ? uploadResult(args, link)
-                    : downloadResult(args, link, res);
+                    : downloadResult(args, link, res, x402Hosts);
             } catch (e) {
                 const err = explain(e, args.direction, inlineKib);
                 return sandboxFailure(deps, args.handle, err, "transfer", "no file at that path");

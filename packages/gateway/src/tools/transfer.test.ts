@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
     PlacementState,
     TransferDirection,
+    X402ServiceState,
     type CreateTransferRequest,
 } from "../gen/bugnet/router/v1/router_pb.ts";
 import type { Log } from "../log.ts";
@@ -20,6 +21,7 @@ import {
     testDeps,
     testHandle,
     testNow,
+    testServiceInfo,
     type RouterImpl,
 } from "../testing/harness.ts";
 import { downloadName, shellWord, transferDescription } from "./transfer.ts";
@@ -581,5 +583,60 @@ describe("bugnet_transfer listing", () => {
         );
         expect(example).toMatch(/^confirm_transfers = true\s+#/m);
         expect(testConfig().tools.confirm_transfers).toBe(true);
+    });
+});
+
+describe("bugnet_transfer copy-back reminder", () => {
+    const on = "[x402]\nenabled = true";
+    const reminder =
+        "Bugnet: this sandbox has code pointed at agent402.tools, which works only inside Bugnet. Ask the user before copying those edits into their own files.";
+
+    it("puts the copy-back reminder second on a download, never on an upload", async () => {
+        let listCalls = 0;
+        const { client } = await setup(
+            undefined,
+            {
+                listX402: () => {
+                    listCalls += 1;
+                    return {
+                        enabled: true,
+                        services: [testServiceInfo(X402ServiceState.ACTIVE)],
+                        refusals: [],
+                    };
+                },
+            },
+            on,
+        );
+        const r = await callTool<Download>(client, "bugnet_transfer", download);
+        expect(r.structured.message.split("\n")[1]).toBe(reminder);
+        expect(r.text.split("\n")[1]).toBe(reminder);
+        expect(listCalls).toBe(1);
+        const up = await callTool<Upload>(client, "bugnet_transfer", { ...upload, sizeBytes: 6 });
+        expect(up.text).not.toContain("Bugnet: this sandbox has code");
+        expect(listCalls).toBe(1);
+    });
+
+    it("makes no ListX402 call with [x402] off and downloads normally when it fails", async () => {
+        let listCalls = 0;
+        const off = await setup(undefined, {
+            listX402: () => {
+                listCalls += 1;
+                return { enabled: true, services: [], refusals: [] };
+            },
+        });
+        await callTool(off.client, "bugnet_transfer", download);
+        expect(listCalls).toBe(0);
+        const broken = await setup(
+            undefined,
+            {
+                listX402: () => {
+                    throw routerError(Code.Unavailable);
+                },
+            },
+            on,
+        );
+        const r = await callTool<Download>(broken.client, "bugnet_transfer", download);
+        expect(r.isError).toBe(false);
+        expect(r.text).not.toContain("Bugnet: this sandbox has code");
     });
 });

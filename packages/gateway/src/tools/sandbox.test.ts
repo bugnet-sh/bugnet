@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
     BootstrapSchema,
     BootstrapState,
+    JobState,
     PlacementState,
     X402ServiceState,
     type CheckX402Request,
@@ -15,7 +16,7 @@ import {
     type PricePackageRequest,
 } from "../gen/bugnet/router/v1/router_pb.ts";
 import { handleHash, handleTag } from "./common.ts";
-import type { PaidAllowanceOrder, RefusedOrder } from "../payments/port.ts";
+import type { PaidAllowanceOrder, RefusedOrder, X402Account } from "../payments/port.ts";
 import { signQuote, type QuoteClaims } from "../quote.ts";
 import { withClientAddress } from "../request.ts";
 import { GatewayError } from "../router.ts";
@@ -30,12 +31,14 @@ import {
     sellerFetch,
     testChatId,
     testChatLine,
+    testAccount,
     testChatUrl,
     testConfig,
     testDeps,
     testHandle,
     testNow,
     testPayTo,
+    testServiceInfo,
     testTerms,
     testTtsLine,
     testX402Index,
@@ -2826,5 +2829,240 @@ describe("bugnet_status shows why a sandbox ended, its repo and its SSH alias", 
         });
         const r = await callTool(client, "bugnet_status", { handle: testHandle });
         expect(r.text).toBe("status: too many requests for now. Retry after 4 s.");
+    });
+});
+
+const x402On = "[x402]\nenabled = true";
+
+function setupX402(impl: RouterImpl, payments = testPayments()) {
+    return setup(impl, payments, testConfig(x402On));
+}
+
+function countingPayments(account: () => Promise<{ x402: X402Account | null; feeDue: boolean }>) {
+    const counts = { account: 0 };
+    const payments = testPayments(undefined, {
+        x402: {
+            account: () => {
+                counts.account += 1;
+                return account();
+            },
+        },
+    });
+    return { payments, counts };
+}
+
+const stopLines = [
+    "Sandbox ended, used for about 90 s.",
+    "x402: $0.02 spent in 2 paid calls. About $0.98 goes back to the paying wallet, usually within 10 minutes.",
+    "Files that call x402 services: /root/src/app/main.py, /root/src/app/.env. They work only inside Bugnet, so ask the user before copying them into their own files.",
+];
+
+const endedPlacement = () =>
+    placement(PlacementState.TERMINATED, {
+        readyAt: timestampFromMs(testNow - 90_000),
+        endedAt: timestampFromMs(testNow),
+    });
+
+describe("bugnet_status with x402", () => {
+    const extension = {
+        listExtensions: () => ({ options: [packageOption("more-10m", 40_000n)] }),
+    };
+
+    it("adds the x402 lines after the extend line and the view as x402", async () => {
+        const { client } = await setupX402(
+            {
+                getPlacement: () => ({ placement: placement() }),
+                ...extension,
+                listX402: () => ({
+                    enabled: true,
+                    services: [testServiceInfo(X402ServiceState.ACTIVE)],
+                    refusals: [],
+                }),
+            },
+            testPayments(undefined, {
+                x402: { account: async () => ({ x402: testAccount(), feeDue: false }) },
+            }),
+        );
+        const r = await callTool<{ message: string; x402: unknown }>(client, "bugnet_status", {
+            handle: testHandle,
+        });
+        const lines = r.structured.message.split("\n");
+        expect(lines[lines.indexOf("Extend with bugnet_extend: more-10m +10 min $0.04") + 1]).toBe(
+            "x402: $1.00 paid in, $0.02 spent in 2 paid calls, $0.01 settling, $0.97 left.",
+        );
+        expect(r.structured.x402).toMatchObject({
+            paidInUsd: "$1.00",
+            services: [{ serviceId: testChatId, state: "active" }],
+        });
+    });
+
+    it("makes no x402 call and adds nothing with [x402] off", async () => {
+        const { payments, counts } = countingPayments(async () => ({
+            x402: testAccount(),
+            feeDue: false,
+        }));
+        const list = { n: 0 };
+        const { client } = await setup(
+            {
+                getPlacement: () => ({ placement: placement() }),
+                ...extension,
+                listX402: () => {
+                    list.n += 1;
+                    return { enabled: true, services: [], refusals: [] };
+                },
+            },
+            payments,
+        );
+        const r = await callTool(client, "bugnet_status", { handle: testHandle });
+        expect({ account: counts.account, list: list.n }).toEqual({ account: 0, list: 0 });
+        expect(r.structured).not.toHaveProperty("x402");
+    });
+
+    it("keeps the whole status after a 38 s wait and only says the totals are unavailable", async () => {
+        const { payments, counts } = countingPayments(async () => ({
+            x402: testAccount(),
+            feeDue: false,
+        }));
+        const list = { n: 0 };
+        const clock = { now: testNow };
+        const deps = testDeps({
+            config: testConfig(x402On),
+            payments,
+            now: () => clock.now,
+            router: fakeRouter({
+                getPlacement: (req) => {
+                    if (req.waitMs > 0) clock.now += 39_500;
+                    return { placement: placement() };
+                },
+                ...extension,
+                listX402: () => {
+                    list.n += 1;
+                    return { enabled: true, services: [], refusals: [] };
+                },
+            }),
+        });
+        const client = await connectTools(deps);
+        const r = await callTool<{ message: string }>(client, "bugnet_status", {
+            handle: testHandle,
+            waitSeconds: 38,
+        });
+        const lines = r.structured.message.split("\n");
+        expect(lines[0]).toMatch(/^Sandbox ready, package small-10m/);
+        expect(lines.at(-1)).toBe("x402 totals are unavailable right now.");
+        expect({ account: counts.account, list: list.n }).toEqual({ account: 0, list: 0 });
+    });
+});
+
+describe("bugnet_stop with x402", () => {
+    function stopImpl(order: string[], extra: RouterImpl = {}): RouterImpl {
+        return {
+            listX402: () => {
+                order.push("listX402");
+                return {
+                    enabled: true,
+                    services: [testServiceInfo(X402ServiceState.ACTIVE)],
+                    refusals: [],
+                };
+            },
+            exec: () => {
+                order.push("exec");
+                return {
+                    state: JobState.EXITED,
+                    stdoutTail: new TextEncoder().encode(
+                        "/root/src/app/main.py\n/root/src/app/.env\n",
+                    ),
+                };
+            },
+            stopPlacement: () => {
+                order.push("stopPlacement");
+                return { placement: endedPlacement() };
+            },
+            ...extra,
+        };
+    }
+    const closing = testPayments(undefined, {
+        x402: { account: async () => ({ x402: testAccount({ state: "closing" }), feeDue: false }) },
+    });
+
+    it("lists the x402 files before the stop and the money after it", async () => {
+        const order: string[] = [];
+        const { client } = await setupX402(stopImpl(order), closing);
+        const r = await callTool(client, "bugnet_stop", { handle: testHandle });
+        expect(order).toEqual(["listX402", "exec", "stopPlacement"]);
+        expect(r.text).toBe(stopLines.join("\n"));
+    });
+
+    it("stops as before when ListX402 shows no services, and when the grep job is slow", async () => {
+        const none = await setupX402(
+            {
+                listX402: () => ({ enabled: true, services: [], refusals: [] }),
+                stopPlacement: () => ({ placement: endedPlacement() }),
+            },
+            closing,
+        );
+        const quiet = await callTool(none.client, "bugnet_stop", { handle: testHandle });
+        expect(quiet.text).toBe("Sandbox ended, used for about 90 s.");
+        const slow = await setupX402(
+            stopImpl([], {
+                exec: () => ({ state: JobState.RUNNING, stdoutTail: new Uint8Array() }),
+            }),
+            closing,
+        );
+        const r = await callTool(slow.client, "bugnet_stop", { handle: testHandle });
+        expect(r.text).toBe(stopLines.slice(0, 2).join("\n"));
+    });
+
+    it("still reports the refund when ListX402 fails, and skips the files job", async () => {
+        const order: string[] = [];
+        const { client } = await setupX402(
+            stopImpl(order, {
+                listX402: () => {
+                    order.push("listX402");
+                    throw routerError(Code.Unavailable);
+                },
+            }),
+            closing,
+        );
+        const r = await callTool(client, "bugnet_stop", { handle: testHandle });
+        expect(order).toEqual(["listX402", "stopPlacement"]);
+        expect(r.text).toBe(stopLines.slice(0, 2).join("\n"));
+    });
+
+    it("says nothing about x402 when ListX402 fails and Payments holds no allowance", async () => {
+        const none = testPayments(undefined, {
+            x402: { account: async () => ({ x402: null, feeDue: true }) },
+        });
+        const { client } = await setupX402(
+            stopImpl([], {
+                listX402: () => {
+                    throw routerError(Code.Unavailable);
+                },
+            }),
+            none,
+        );
+        const r = await callTool(client, "bugnet_stop", { handle: testHandle });
+        expect(r.text).toBe("Sandbox ended, used for about 90 s.");
+    });
+
+    it("says the totals are unavailable when the account cannot be read after the stop", async () => {
+        const down = testPayments(undefined, {
+            x402: { account: () => Promise.reject(new Error("down")) },
+        });
+        const { client } = await setupX402(stopImpl([]), down);
+        const r = await callTool(client, "bugnet_stop", { handle: testHandle });
+        expect(r.text.split("\n")[1]).toBe("x402 totals are unavailable right now.");
+    });
+
+    it("adds the refund sentence to the stop description only with [x402] on", async () => {
+        const base =
+            "Destroys the sandbox and everything in it. Download what you need first. Unused paid time is not refunded.";
+        const off = await setup({});
+        const on = await setupX402({});
+        const find = async (c: Client) =>
+            (await c.listTools()).tools.find((t) => t.name === "bugnet_stop");
+        expect((await find(off.client))?.description).toBe(base);
+        expect((await find(on.client))?.description).toBe(
+            `${base} Unspent x402 allowance of $0.01 or more is refunded.`,
+        );
     });
 });

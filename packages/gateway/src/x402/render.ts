@@ -23,7 +23,14 @@ import {
 } from "./lines.ts";
 import { spendUnderPrice, type PlannedService } from "./pins.ts";
 import { reasonWords } from "./probe.ts";
-import { failureText, routerRows, routerState, type X402What } from "./router.ts";
+import {
+    failureText,
+    routerReasonText,
+    routerReasonWords,
+    routerRows,
+    routerState,
+    type X402What,
+} from "./router.ts";
 
 export interface X402ViewService {
     serviceId: string;
@@ -236,6 +243,113 @@ export function x402Lines(
             "when the sandbox ends.",
     );
     return out;
+}
+
+function statusWords(s: X402ViewService): string {
+    if (s.state !== "failed") return s.state;
+    const r = s.failureReason ?? "";
+    return `failed, ${Object.hasOwn(routerReasonWords, r) ? routerReasonText(r) : failureText(r)}`;
+}
+
+// The lines of spec 5.7 for a running sandbox
+export function statusLines(view: X402View, opts: { enabling: readonly string[] }): string[] {
+    const refused = Object.entries(view.refused).sort(
+        ([a, x], [b, y]) => y - x || (a < b ? -1 : a > b ? 1 : 0),
+    );
+    const totals =
+        `x402: ${view.paidInUsd} paid in, ${view.spentUsd} spent in ${view.paidCalls} paid ` +
+        `calls, ${view.heldUsd} settling, ${view.leftUsd} left.` +
+        (refused.length > 0 ? ` Refused: ${refused.map(([c, n]) => `${n} ${c}`).join(", ")}.` : "");
+    const services = view.services.map(
+        (s) =>
+            `${s.method} ${s.host}${s.prefix} at most ${s.maxPriceUsd} a call (${s.serviceId}), ` +
+            `${statusWords(s)}, service line: ${s.serviceLine}`,
+    );
+    const out = [
+        totals,
+        `Services: ${services.join("; ")}. At most ${view.spendPerMinuteUsd} a minute.`,
+    ];
+    for (const s of view.services) {
+        if (!isLive(s) || s.envLines.length === 0) continue;
+        out.push(
+            `Env for ${s.host}: ${s.envLines.join(" ")}. They go in bugnet_exec's env on ` +
+                "every command that runs this code.",
+        );
+    }
+    if (opts.enabling.length > 0) {
+        out.push(
+            `x402: enabling ${opts.enabling.join(", ")}. New commands see them within seconds.`,
+        );
+    }
+    return out;
+}
+
+function spentText(account: X402Account): string {
+    return `x402: ${usd(account.spentMicros)} spent in ${account.paidCalls} paid calls.`;
+}
+
+function underMinimum(account: X402Account, terms: X402Terms): string {
+    return (
+        `About ${usd(account.leftMicros + account.heldMicros)} is under the ` +
+        `${usd(terms.refundMinMicros)} refund minimum and stays with Bugnet.`
+    );
+}
+
+// The line of spec 5.7 for an ended sandbox, by Payments' refund state
+export function statusEndedLine(account: X402Account, terms: X402Terms): string {
+    const s = spentText(account);
+    const r = account.refund;
+    const back = account.leftMicros + account.heldMicros;
+    if (r === undefined || r.state === "waiting") {
+        return back < terms.refundMinMicros
+            ? `${s} ${underMinimum(account, terms)}`
+            : `${s} About ${usd(back)} goes back to the paying wallet, usually within 10 ` +
+                  "minutes of the end.";
+    }
+    const amount = usd(r.amountMicros);
+    switch (r.state) {
+        case "pending":
+            return (
+                `${s} Refund: ${amount} pending, usually within 10 minutes of the end to the ` +
+                "paying wallet."
+            );
+        case "sent":
+            return `${s} Refund: ${amount} sent to the paying wallet.`;
+        case "confirmed":
+            return r.amountMicros === 0 && r.keptMicros === 0
+                ? `${s} Nothing was left to refund.`
+                : `${s} Refund: ${amount} confirmed to the paying wallet.`;
+        case "manual":
+            return `${s} Refund: ${amount} is delayed and Bugnet is sending it by hand.`;
+        case "kept":
+            return (
+                `${s} ${usd(r.keptMicros)} was under the ${usd(terms.refundMinMicros)} refund ` +
+                "minimum and stayed with Bugnet."
+            );
+    }
+}
+
+// The money line of bugnet_stop, chosen by the terms' refund minimum
+export function stopMoneyLine(account: X402Account, terms: X402Terms): string {
+    const back = account.leftMicros + account.heldMicros;
+    return back < terms.refundMinMicros
+        ? `${spentText(account)} ${underMinimum(account, terms)}`
+        : `${spentText(account)} About ${usd(back)} goes back to the paying wallet, usually ` +
+              "within 10 minutes.";
+}
+
+export function stopFilesLine(paths: readonly string[]): string {
+    return (
+        `Files that call x402 services: ${paths.join(", ")}. They work only inside Bugnet, ` +
+        "so ask the user before copying them into their own files."
+    );
+}
+
+export function copyBackLine(hosts: readonly string[]): string {
+    return (
+        `Bugnet: this sandbox has code pointed at ${hosts.join(", ")}, which works only inside ` +
+        "Bugnet. Ask the user before copying those edits into their own files."
+    );
 }
 
 export const totalsUnavailable = "x402 totals are unavailable right now.";

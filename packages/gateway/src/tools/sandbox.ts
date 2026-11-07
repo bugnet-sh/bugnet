@@ -50,6 +50,7 @@ import {
     paymentsRefusal,
     servicesApplyingText,
     startNeedsSecretsText,
+    stopFilesLine,
     startTotalText,
     x402Fail,
     x402Lines,
@@ -64,6 +65,7 @@ import {
     viewChanges,
     x402RouterError,
 } from "../x402/router.ts";
+import { stopFiles, stopMoney, stopServices, x402StatusPart } from "../x402/status.ts";
 import { readTerms } from "../x402/terms.ts";
 import {
     approvalMeta,
@@ -873,6 +875,7 @@ export const registerSandboxTools: Register = (server, deps) => {
             annotations: { readOnlyHint: true, openWorldHint: false },
         },
         async (args, ctx) => {
+            const budget = new Budget(deps);
             try {
                 let p = (await deps.router.getPlacement({ handle: args.handle })).placement;
                 const wait = waitMs(deps, args.waitSeconds ?? 0);
@@ -898,6 +901,14 @@ export const registerSandboxTools: Register = (server, deps) => {
                 }
                 const extensions = ready ? await extensionsFor(deps, args.handle) : [];
                 const offer = extensions.filter((x) => x.available);
+                const part =
+                    deps.config.x402.enabled && p
+                        ? await x402StatusPart(deps, {
+                              handle: args.handle,
+                              state: p.state,
+                              budget,
+                          })
+                        : { lines: [], view: null };
                 const text = [
                     `Sandbox ${view.state}, package ${view.packageId}, time left ${view.timeLeft}` +
                         (view.deadline ? ` (deadline ${view.deadline})` : "") +
@@ -913,10 +924,15 @@ export const registerSandboxTools: Register = (server, deps) => {
                               .map((x) => `${x.packageId} +${x.minutes} min ${x.priceUsd}`)
                               .join(", ")
                         : "",
+                    ...part.lines,
                 ]
                     .filter(Boolean)
                     .join("\n");
-                return ok(text, { ...view, extensions });
+                return ok(text, {
+                    ...view,
+                    extensions,
+                    ...(part.view ? { x402: part.view } : {}),
+                });
             } catch (e) {
                 return failure(e, "status");
             }
@@ -929,7 +945,10 @@ export const registerSandboxTools: Register = (server, deps) => {
             title: "Stop a Bugnet sandbox",
             description:
                 "Destroys the sandbox and everything in it. Download what you need first. " +
-                "Unused paid time is not refunded.",
+                "Unused paid time is not refunded." +
+                (deps.config.x402.enabled
+                    ? " Unspent x402 allowance of $0.01 or more is refunded."
+                    : ""),
             inputSchema: z.object({ handle: handleInput }),
             annotations: {
                 readOnlyHint: false,
@@ -940,14 +959,29 @@ export const registerSandboxTools: Register = (server, deps) => {
         },
         async (args) => {
             try {
+                const listed = deps.config.x402.enabled
+                    ? await stopServices(deps, args.handle)
+                    : null;
+                const files =
+                    listed && !listed.failed
+                        ? await stopFiles(deps, args.handle, listed.hosts)
+                        : [];
                 const res = await deps.router.stopPlacement({ handle: args.handle });
+                const money = listed ? await stopMoney(deps, args.handle) : "";
                 const p = res.placement;
                 const used = usedSeconds(p, deps.now());
                 const view = {
                     ...placementView(p, deps.now()),
                     ...(used !== undefined ? { usedSeconds: used } : {}),
                 };
-                return ok(`Sandbox ${view.state}${usedText(used)}.`, view);
+                const text = [
+                    `Sandbox ${view.state}${usedText(used)}.`,
+                    money,
+                    files.length > 0 ? stopFilesLine(files) : "",
+                ]
+                    .filter(Boolean)
+                    .join("\n");
+                return ok(text, view);
             } catch (e) {
                 return failure(e, "stop");
             }

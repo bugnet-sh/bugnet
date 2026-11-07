@@ -40,6 +40,7 @@ import type {
     OrderResult,
     OrderTerms,
     Payments,
+    X402Account,
     X402AccountAnswer,
     X402ConfigureResult,
     X402SellerStats,
@@ -233,6 +234,50 @@ export const testChatId = "xs_w5a4htopmpzmmhos";
 export const testTtsUrl = "https://tts.example.com/v1/speech";
 export const testTtsLine = `POST ${testTtsUrl} max=0.02 payTo=${otherPayTo}`;
 export const testTtsId = serviceId("POST", "tts.example.com", "/v1/");
+
+export function testAccount(patch: Partial<X402Account> = {}): X402Account {
+    return {
+        state: "open",
+        fundedMicros: 1_000_000,
+        spentMicros: 20_000,
+        heldMicros: 10_000,
+        leftMicros: 970_000,
+        allowanceRoomMicros: 4_000_000,
+        paidCalls: 2,
+        pendingCalls: 1,
+        spendPerMinuteMicros: 500_000,
+        services: [
+            {
+                serviceId: testChatId,
+                method: "POST",
+                host: "agent402.tools",
+                prefix: "/v1/auto/",
+                url: testChatUrl,
+                paidPath: "/v1/auto/chat/completions",
+                maxPriceMicros: 10_000,
+                payTo: testPayTo,
+                listed: "unlisted",
+                state: "enabled",
+            },
+        ],
+        ...patch,
+    };
+}
+
+export function testServiceInfo(state: X402ServiceState, failureReason?: string): X402ServiceInfo {
+    return x402Info(testChatId, state, {
+        spec: {
+            host: "agent402.tools",
+            prefix: "/v1/auto/",
+            method: "POST",
+            maxPriceMicros: 10_000n,
+            payTo: testPayTo,
+            indexed: false,
+            paidPath: "/v1/auto/chat/completions",
+        },
+        ...(failureReason !== undefined ? { failureReason } : {}),
+    });
+}
 
 export function testX402Index(): X402Index {
     return loadIndex({

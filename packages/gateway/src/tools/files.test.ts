@@ -2,7 +2,11 @@ import { timestampFromMs } from "@bufbuild/protobuf/wkt";
 import { Code } from "@connectrpc/connect";
 import type { Client } from "@modelcontextprotocol/client";
 import { describe, expect, it } from "vitest";
-import { PlacementState, type WriteFileRequest } from "../gen/bugnet/router/v1/router_pb.ts";
+import {
+    PlacementState,
+    X402ServiceState,
+    type WriteFileRequest,
+} from "../gen/bugnet/router/v1/router_pb.ts";
 import {
     callTool,
     connectTools,
@@ -13,6 +17,7 @@ import {
     testDeps,
     testHandle,
     testNow,
+    testServiceInfo,
     type RouterImpl,
 } from "../testing/harness.ts";
 
@@ -232,5 +237,80 @@ describe("bugnet_write_file", () => {
             content: "x",
         });
         expect(r.text).toMatch(/^write file: this sandbox has ended/);
+    });
+});
+
+describe("bugnet_read_file copy-back reminder", () => {
+    const on = "[x402]\nenabled = true";
+    const reminder =
+        "Bugnet: this sandbox has code pointed at agent402.tools, which works only inside Bugnet. Ask the user before copying those edits into their own files.";
+    const read = { handle: testHandle, path: "~/src/x.txt" };
+
+    it("reminds before a copy-back when the sandbox has active x402 services", async () => {
+        const client = await connect(
+            {
+                listX402: () => ({
+                    enabled: true,
+                    services: [testServiceInfo(X402ServiceState.ACTIVE)],
+                    refusals: [],
+                }),
+                readFile: () => ({ data: bytes("x\n"), eof: true }),
+            },
+            on,
+        );
+        const r = await callTool<{ message: string }>(client, "bugnet_read_file", read);
+        expect(r.structured.message.split("\n")[1]).toBe(reminder);
+        expect(r.text.split("\n")[1]).toBe(reminder);
+    });
+
+    it("asks ListX402 once for two reads within 30 s and reads normally when it fails", async () => {
+        let listCalls = 0;
+        const client = await connect(
+            {
+                listX402: () => {
+                    listCalls += 1;
+                    return {
+                        enabled: true,
+                        services: [testServiceInfo(X402ServiceState.ACTIVE)],
+                        refusals: [],
+                    };
+                },
+                readFile: () => ({ data: bytes("x\n"), eof: true }),
+            },
+            on,
+        );
+        await callTool(client, "bugnet_read_file", read);
+        await callTool(client, "bugnet_read_file", read);
+        expect(listCalls).toBe(1);
+        const broken = await connect(
+            {
+                listX402: () => {
+                    throw routerError(Code.Unavailable);
+                },
+                readFile: () => ({ data: bytes("x\n"), eof: true }),
+            },
+            on,
+        );
+        const r = await callTool<{ message: string; content: string }>(
+            broken,
+            "bugnet_read_file",
+            read,
+        );
+        expect(r.isError).toBe(false);
+        expect(r.structured.content).toBe("x\n");
+        expect(r.text).not.toContain("Bugnet: this sandbox has code");
+    });
+
+    it("makes no ListX402 call with [x402] off", async () => {
+        let listCalls = 0;
+        const client = await connect({
+            listX402: () => {
+                listCalls += 1;
+                return { enabled: true, services: [], refusals: [] };
+            },
+            readFile: () => ({ data: bytes("x\n"), eof: true }),
+        });
+        await callTool(client, "bugnet_read_file", read);
+        expect(listCalls).toBe(0);
     });
 });

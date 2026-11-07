@@ -6,10 +6,12 @@ import type {
     X402Account,
     X402AccountService,
     X402ConfigureRefused,
+    X402RefundState,
 } from "../payments/port.ts";
 import {
     otherPayTo,
     routerError,
+    testAccount,
     testChatId,
     testChatLine,
     testChatUrl,
@@ -30,11 +32,16 @@ import type { PlannedService } from "./pins.ts";
 import { probeWords } from "./probe.ts";
 import {
     buildView,
+    copyBackLine,
     firstUseLine,
     notAllowanceOrder,
     otherSandboxOrder,
     paidRetryUnreachable,
     paymentsRefusal,
+    statusEndedLine,
+    statusLines,
+    stopFilesLine,
+    stopMoneyLine,
     totalsUnavailable,
     x402Error,
     x402Fail,
@@ -43,6 +50,8 @@ import {
     x402Text,
     type RefusalContext,
     type ViewInput,
+    type X402View,
+    type X402ViewService,
     type X402TextKey,
     type X402TextValues,
 } from "./render.ts";
@@ -1136,5 +1145,144 @@ describe("paymentsRefusal", () => {
             paymentsRefusal(settling, ctx({ retry: { claim: "c".repeat(43), handle: true } }))
                 .message,
         ).toContain("the same orderId and claim");
+    });
+});
+
+describe("status and stop lines", () => {
+    const post = `POST ${testChatUrl} max=0.01 payTo=${testPayTo}`;
+    const get = `GET ${testChatUrl} max=0.01 payTo=${testPayTo}`;
+    const env = ["OPENAI_BASE_URL=https://agent402.tools/v1/auto", "OPENAI_API_KEY=x402"];
+    const service: X402ViewService = {
+        serviceId: testChatId,
+        method: "POST",
+        host: "agent402.tools",
+        prefix: "/v1/auto/",
+        paidPath: "/v1/auto/chat/completions",
+        maxPriceUsd: "$0.01",
+        payTo: testPayTo,
+        listed: "unlisted",
+        state: "active",
+        serviceLine: post,
+        envLines: env,
+    };
+    const view: X402View = {
+        paidInUsd: "$1.00",
+        spentUsd: "$0.02",
+        heldUsd: "$0.01",
+        leftUsd: "$0.97",
+        maxPerSandboxUsd: "$5.00",
+        feeDue: false,
+        paidCalls: 2,
+        pendingCalls: 1,
+        refused: { price_above_max: 1, allowance_spent: 3 },
+        spendPerMinuteUsd: "$0.50",
+        services: [service],
+    };
+    const terms = testTerms();
+
+    it("renders the running totals, the services with the minute limit, and the env lines", () => {
+        expect(statusLines(view, { enabling: [] })).toEqual([
+            "x402: $1.00 paid in, $0.02 spent in 2 paid calls, $0.01 settling, $0.97 left. Refused: 3 allowance_spent, 1 price_above_max.",
+            `Services: POST agent402.tools/v1/auto/ at most $0.01 a call (${testChatId}), active, service line: ${post}. At most $0.50 a minute.`,
+            "Env for agent402.tools: OPENAI_BASE_URL=https://agent402.tools/v1/auto OPENAI_API_KEY=x402. They go in bugnet_exec's env on every command that runs this code.",
+        ]);
+    });
+
+    it("leaves out Refused when nothing was refused and ends with the enabling line", () => {
+        const lines = statusLines(
+            { ...view, refused: {} },
+            { enabling: ["agent402.tools", "api.example.com"] },
+        );
+        expect(lines[0]).toBe(
+            "x402: $1.00 paid in, $0.02 spent in 2 paid calls, $0.01 settling, $0.97 left.",
+        );
+        expect(lines.at(-1)).toBe(
+            "x402: enabling agent402.tools, api.example.com. New commands see them within seconds.",
+        );
+    });
+
+    it("shows failure words for a failed row, router reason words for a refused repair, and no env line for either", () => {
+        const lines = statusLines(
+            {
+                ...view,
+                services: [
+                    { ...service, state: "failed", failureReason: "PORT_443_TAKEN" },
+                    {
+                        ...service,
+                        serviceId: "xs_b3mm6u5x36em5pdt",
+                        method: "GET",
+                        serviceLine: get,
+                        state: "failed",
+                        failureReason: "HOST_REFUSED",
+                    },
+                ],
+            },
+            { enabling: [] },
+        );
+        expect(lines[1]).toBe(
+            `Services: POST agent402.tools/v1/auto/ at most $0.01 a call (${testChatId}), failed, a program in the sandbox holds port 443. Stop it, then send the same service line with amountUsd 0 to enable it again, service line: ${post}; ` +
+                `GET agent402.tools/v1/auto/ at most $0.01 a call (xs_b3mm6u5x36em5pdt), failed, Bugnet does not route to this host, service line: ${get}. At most $0.50 a minute.`,
+        );
+        expect(lines).toHaveLength(2);
+    });
+
+    it("gives the ended line for each refund state", () => {
+        const s = "x402: $0.02 spent in 2 paid calls.";
+        const refund = (state: X402RefundState, amountMicros = 980_000, keptMicros = 0) =>
+            testAccount({ state: "closed", refund: { state, amountMicros, keptMicros, txs: [] } });
+        expect(statusEndedLine(refund("waiting", 0), terms)).toBe(
+            `${s} About $0.98 goes back to the paying wallet, usually within 10 minutes of the end.`,
+        );
+        expect(statusEndedLine(testAccount({ state: "closing" }), terms)).toBe(
+            `${s} About $0.98 goes back to the paying wallet, usually within 10 minutes of the end.`,
+        );
+        expect(
+            statusEndedLine(
+                testAccount({ state: "closing", leftMicros: 4_000, heldMicros: 0 }),
+                terms,
+            ),
+        ).toBe(`${s} About $0.004 is under the $0.01 refund minimum and stays with Bugnet.`);
+        expect(statusEndedLine(refund("pending"), terms)).toBe(
+            `${s} Refund: $0.98 pending, usually within 10 minutes of the end to the paying wallet.`,
+        );
+        expect(statusEndedLine(refund("sent"), terms)).toBe(
+            `${s} Refund: $0.98 sent to the paying wallet.`,
+        );
+        expect(statusEndedLine(refund("confirmed"), terms)).toBe(
+            `${s} Refund: $0.98 confirmed to the paying wallet.`,
+        );
+        expect(statusEndedLine(refund("confirmed", 0, 0), terms)).toBe(
+            `${s} Nothing was left to refund.`,
+        );
+        expect(statusEndedLine(refund("manual"), terms)).toBe(
+            `${s} Refund: $0.98 is delayed and Bugnet is sending it by hand.`,
+        );
+        expect(statusEndedLine(refund("kept", 0, 5_000), terms)).toBe(
+            `${s} $0.005 was under the $0.01 refund minimum and stayed with Bugnet.`,
+        );
+    });
+
+    it("chooses the stop line by the terms' refund minimum", () => {
+        expect(stopMoneyLine(testAccount(), terms)).toBe(
+            "x402: $0.02 spent in 2 paid calls. About $0.98 goes back to the paying wallet, usually within 10 minutes.",
+        );
+        expect(stopMoneyLine(testAccount({ leftMicros: 4_000, heldMicros: 0 }), terms)).toBe(
+            "x402: $0.02 spent in 2 paid calls. About $0.004 is under the $0.01 refund minimum and stays with Bugnet.",
+        );
+        expect(
+            stopMoneyLine(
+                testAccount({ leftMicros: 15_000, heldMicros: 0 }),
+                testTerms({ refundMinMicros: 20_000 }),
+            ),
+        ).toMatch(/is under the \$0\.02 refund minimum/);
+    });
+
+    it("names the stop files and the hosts of the copy-back reminder", () => {
+        expect(stopFilesLine(["/root/src/app/main.py", "/root/src/app/.env"])).toBe(
+            "Files that call x402 services: /root/src/app/main.py, /root/src/app/.env. They work only inside Bugnet, so ask the user before copying them into their own files.",
+        );
+        expect(copyBackLine(["agent402.tools", "api.example.com"])).toBe(
+            "Bugnet: this sandbox has code pointed at agent402.tools, api.example.com, which works only inside Bugnet. Ask the user before copying those edits into their own files.",
+        );
     });
 });
