@@ -1,0 +1,1 @@
+{"error":{"message":"Bugnet sent a payment and the seller did not answer (x402 paid_no_answer): nothing is charged unless it lands on chain; a retry resends the same payment","type":"bugnet_x402","code":"paid_no_answer"},"bugnet_x402":{"host":"agent402.tools"}}

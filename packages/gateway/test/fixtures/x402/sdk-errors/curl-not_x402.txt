@@ -1,0 +1,1 @@
+{"error":{"message":"Bugnet did not pay this call (x402 not_x402): the seller's 402 has no x402 price","type":"bugnet_x402","code":"not_x402"},"bugnet_x402":{"host":"agent402.tools"}}

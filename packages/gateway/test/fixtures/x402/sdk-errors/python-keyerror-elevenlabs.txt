@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import os; os.environ["ELEVENLABS_API_KEY"]
+               ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen os>", line 709, in __getitem__
+KeyError: 'ELEVENLABS_API_KEY'

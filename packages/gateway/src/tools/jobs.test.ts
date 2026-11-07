@@ -1,5 +1,6 @@
 import { Code } from "@connectrpc/connect";
 import type { Client } from "@modelcontextprotocol/client";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
     JobState,
@@ -14,17 +15,32 @@ import {
     fakeRouter,
     placement,
     routerError,
+    testAccount,
     testConfig,
     testDeps,
     testHandle,
+    testNow,
+    testPayments,
+    x402Refusal,
     type RouterImpl,
 } from "../testing/harness.ts";
+import { untrustedLabel } from "../sanitize.ts";
+import type { Deps } from "./common.ts";
 
 const bytes = (s: string) => new TextEncoder().encode(s);
 
 function connect(impl: RouterImpl): Promise<Client> {
     return connectTools(testDeps({ router: fakeRouter(impl) }));
 }
+
+function connectWith(impl: RouterImpl, overrides: Partial<Deps>): Promise<Client> {
+    return connectTools(testDeps({ router: fakeRouter(impl), ...overrides }));
+}
+
+const sdk = (name: string) =>
+    readFileSync(new URL(`../../test/fixtures/x402/sdk-errors/${name}`, import.meta.url), "utf8");
+
+const hintsOn = testConfig("[x402]\nenabled = true");
 
 interface JobResult {
     message: string;
@@ -351,6 +367,99 @@ describe("bugnet_exec", () => {
         const r = await callTool(client, "bugnet_exec", { handle: testHandle, cmd: "true" });
         expect(r.text).toMatch(/^exec: no sandbox has this handle/);
     });
+
+    it("puts both hint lines before the untrusted label, in content and message", async () => {
+        const client = await connectWith(
+            {
+                exec: () => ({
+                    jobId: "j1",
+                    state: JobState.EXITED,
+                    exitCode: 1,
+                    stdoutTail: bytes(""),
+                    stderrTail: bytes(
+                        `${sdk("openai-python-missing-key.txt")}\n${sdk("openai-python-allowance_spent.txt")}`,
+                    ),
+                }),
+                listX402: () => ({
+                    enabled: true,
+                    services: [],
+                    refusals: [x402Refusal("allowance_spent", 3, Date.now())],
+                }),
+            },
+            {
+                config: hintsOn,
+                payments: testPayments(undefined, {
+                    x402: {
+                        account: () =>
+                            Promise.resolve({
+                                x402: testAccount({ services: [] }),
+                                feeDue: false,
+                            }),
+                    },
+                }),
+            },
+        );
+        const r = await callTool<JobResult>(client, "bugnet_exec", {
+            handle: testHandle,
+            cmd: "python app.py",
+        });
+        for (const out of [r.text, r.structured.message]) {
+            const at = out.indexOf(untrustedLabel);
+            expect(at).toBeGreaterThan(0);
+            const missing = out.indexOf(
+                "Bugnet: the command reports a missing API key, OPENAI_API_KEY.",
+            );
+            expect(missing).toBeGreaterThan(0);
+            expect(missing).toBeLessThan(at);
+            const refused = out.indexOf("Bugnet's records show 3 x402 calls");
+            expect(refused).toBeGreaterThan(missing);
+            expect(refused).toBeLessThan(at);
+            expect(out.split("Bugnet's records show").length).toBe(2);
+        }
+    });
+
+    it("keeps the whole output when ListX402 never answers", async () => {
+        const clock = { now: testNow };
+        const client = await connectWith(
+            {
+                exec: () => {
+                    clock.now += 38_800;
+                    return {
+                        jobId: "j1",
+                        state: JobState.EXITED,
+                        exitCode: 1,
+                        stderrTail: bytes(sdk("openai-python-allowance_spent.txt")),
+                    };
+                },
+                listX402: () => new Promise(() => {}),
+            },
+            { config: hintsOn, now: () => clock.now },
+        );
+        const r = await callTool<JobResult>(client, "bugnet_exec", {
+            handle: testHandle,
+            cmd: "python app.py",
+        });
+        expect(r.structured.stderr).toContain(
+            "Bugnet did not pay this call (x402 allowance_spent)",
+        );
+        expect(r.structured.message).not.toContain("Bugnet's records show");
+    });
+
+    it("adds no hint line when [x402] is off and the text holds no missing key", async () => {
+        const client = await connect({
+            exec: () => ({
+                jobId: "j1",
+                state: JobState.EXITED,
+                exitCode: 1,
+                stderrTail: bytes(sdk("openai-python-allowance_spent.txt")),
+            }),
+        });
+        const r = await callTool<JobResult>(client, "bugnet_exec", {
+            handle: testHandle,
+            cmd: "python app.py",
+        });
+        expect(r.structured.message).not.toContain("Bugnet's records");
+    });
 });
 
 describe("bugnet_job", () => {
@@ -449,6 +558,42 @@ describe("bugnet_job", () => {
         expect(r.text).toBe(
             "job: this sandbox has no job with that id, bugnet_exec gives the jobId of each " +
                 "command.",
+        );
+    });
+
+    it("adds the refusal line for a refusal from any time in the sandbox's life", async () => {
+        const client = await connectWith(
+            {
+                async *watchJob() {
+                    yield {
+                        cursor: "c2",
+                        frame: {
+                            case: "output",
+                            value: {
+                                stream: OutputStream.STDERR,
+                                data: bytes(sdk("openai-python-allowance_spent.txt")),
+                            },
+                        },
+                    };
+                    yield { cursor: "c3", frame: { case: "exit", value: { exitCode: 1 } } };
+                },
+                listX402: () => ({
+                    enabled: true,
+                    services: [],
+                    refusals: [x402Refusal("allowance_spent", 3, Date.now() - 3_600_000)],
+                }),
+            },
+            { config: hintsOn },
+        );
+        const r = await callTool<JobResult>(client, "bugnet_job", {
+            handle: testHandle,
+            jobId: "j1",
+            waitSeconds: 5,
+        });
+        const m = r.structured.message;
+        expect(m.indexOf("Bugnet's records show 3 x402 calls")).toBeGreaterThan(0);
+        expect(m.indexOf("Bugnet's records show 3 x402 calls")).toBeLessThan(
+            m.indexOf(untrustedLabel),
         );
     });
 });

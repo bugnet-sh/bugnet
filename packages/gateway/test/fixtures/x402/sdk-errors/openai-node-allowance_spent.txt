@@ -1,0 +1,24 @@
+file:///tmp/sdk/node/node_modules/openai/core/error.mjs:64
+        return new APIError(status, error, message, headers);
+               ^
+
+APIError: 402 Bugnet did not pay this call (x402 allowance_spent): the sandbox's x402 allowance is spent. The agent can add more with the user's approval
+    at APIError.generate (file:///tmp/sdk/node/node_modules/openai/core/error.mjs:64:16)
+    at OpenAI.makeStatusError (file:///tmp/sdk/node/node_modules/openai/client.mjs:446:32)
+    at OpenAI.makeRequest (file:///tmp/sdk/node/node_modules/openai/client.mjs:1014:30)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async file:///tmp/sdk/node/[eval1]:1:30 {
+  status: 402,
+  headers: Headers {},
+  requestID: null,
+  error: {
+    message: "Bugnet did not pay this call (x402 allowance_spent): the sandbox's x402 allowance is spent. The agent can add more with the user's approval",
+    type: 'bugnet_x402',
+    code: 'allowance_spent'
+  },
+  code: 'allowance_spent',
+  param: undefined,
+  type: 'bugnet_x402'
+}
+
+Node.js v26.11.0

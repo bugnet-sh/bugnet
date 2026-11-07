@@ -4,6 +4,7 @@ import { JobState } from "../gen/bugnet/router/v1/router_pb.ts";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { GatewayError, errorReason, waitMargin } from "../router.ts";
 import { tail, untrustedLabel } from "../sanitize.ts";
+import { x402HintLines } from "../x402/hints.ts";
 import {
     Budget,
     callKey,
@@ -225,6 +226,13 @@ export const registerJobTools: Register = (server, deps) => {
                 });
                 const out = tail(res.stdoutTail, cap);
                 const err = tail(res.stderrTail, cap);
+                const hints = await x402HintLines(deps, {
+                    tool: "exec",
+                    handle: args.handle,
+                    text: [out.text, err.text].join("\n"),
+                    startedAt: started,
+                    budget,
+                });
                 const state = jobStateName[res.state];
                 const done = res.state !== JobState.RUNNING;
                 const head = done
@@ -235,6 +243,7 @@ export const registerJobTools: Register = (server, deps) => {
                     head,
                     oomLine(res.oomKilled, 0),
                     res.truncated ? "Earlier output was dropped from the stream." : "",
+                    ...hints,
                     out.text || err.text ? untrustedLabel : "",
                 ];
                 const text = [
@@ -280,6 +289,7 @@ export const registerJobTools: Register = (server, deps) => {
         },
         async (args, ctx) => {
             try {
+                const budget = new Budget(deps);
                 const wait = waitMs(deps, args.waitSeconds);
                 const chunks: Record<"stdout" | "stderr", Uint8Array[]> = {
                     stdout: [],
@@ -324,6 +334,13 @@ export const registerJobTools: Register = (server, deps) => {
                 const join = (parts: Uint8Array[]) => tail(Buffer.concat(parts), cap);
                 const out = join(chunks.stdout);
                 const err = join(chunks.stderr);
+                const hints = await x402HintLines(deps, {
+                    tool: "job",
+                    handle: args.handle,
+                    text: [out.text, err.text].join("\n"),
+                    startedAt: null,
+                    budget,
+                });
                 const finished = exit as {
                     code: number;
                     oomKilled: boolean;
@@ -336,6 +353,7 @@ export const registerJobTools: Register = (server, deps) => {
                         : `Command still running. Next cursor: ${cursor}.`,
                     finished ? oomLine(finished.oomKilled, finished.peakMemoryMib) : "",
                     skipped ? "Some output was skipped, the full log stays in the sandbox." : "",
+                    ...hints,
                     out.text || err.text ? untrustedLabel : "No new output.",
                 ];
                 const text = [

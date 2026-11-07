@@ -1,0 +1,22 @@
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import openai; openai.OpenAI(base_url='http://127.0.0.1:8402/allowance_spent/v1', api_key='x402', max_retries=0).chat.completions.create(model='m', messages=[{'role': 'user', 'content': 'hi'}])
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/sdk/py/lib/python3.14/site-packages/openai/_utils/_utils.py", line 298, in wrapper
+    return func(*args, **kwargs)
+  File "/tmp/sdk/py/lib/python3.14/site-packages/openai/resources/chat/completions/completions.py", line 1611, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^
+    ...<53 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/tmp/sdk/py/lib/python3.14/site-packages/openai/_base_client.py", line 1474, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/sdk/py/lib/python3.14/site-packages/openai/_base_client.py", line 1248, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.APIStatusError: Error code: 402 - Bugnet did not pay this call (x402 allowance_spent): the sandbox's x402 allowance is spent. The agent can add more with the user's approval

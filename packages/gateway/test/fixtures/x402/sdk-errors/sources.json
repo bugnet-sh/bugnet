@@ -1,0 +1,9 @@
+{
+    "v": 1,
+    "openai-python": "3.46.0",
+    "requests": "2.34.2",
+    "openai-node": "7.53.0",
+    "python": "3.14.6",
+    "node": "v26.11.0",
+    "recordedAt": "2026-11-07"
+}

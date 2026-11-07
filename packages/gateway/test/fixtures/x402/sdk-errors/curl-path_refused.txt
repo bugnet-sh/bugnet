@@ -1,0 +1,1 @@
+{"error":{"message":"Bugnet did not send this request (x402 path_refused): the path has `.`, `..`, `//`, `;`, an encoded character or non-ASCII text Bugnet does not forward, or the query has a space, a control byte or non-ASCII text","type":"bugnet_x402","code":"path_refused"},"bugnet_x402":{"host":"agent402.tools"}}

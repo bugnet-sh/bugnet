@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import os; os.environ["JWT_SECRET"]
+               ~~~~~~~~~~^^^^^^^^^^^^^^
+  File "<frozen os>", line 709, in __getitem__
+KeyError: 'JWT_SECRET'

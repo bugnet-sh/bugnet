@@ -1,0 +1,1 @@
+{"error":{"message":"Bugnet did not pay this call (x402 made_up_code): a rule this table does not list","type":"bugnet_x402","code":"made_up_code"},"bugnet_x402":{"host":"agent402.tools"}}
