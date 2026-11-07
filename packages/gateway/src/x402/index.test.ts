@@ -27,11 +27,14 @@ const raw = x402Fixture("index-sample.json") as { v: number; services: Record<st
 const svc = (i: number) => sample.services[i];
 
 describe("the built-in index", () => {
-    it("loads, and every entry has the computed service id", () => {
-        expect(builtinIndex.v).toBe(1);
-        for (const s of builtinIndex.services) expect(s.serviceId).toMatch(/^xs_[a-z2-7]{16}$/);
+    it("loads empty", () => {
+        expect(builtinIndex).toEqual({ v: 1, services: [] });
         expect(indexOf(testDeps())).toBe(builtinIndex);
         expect(indexOf(testDeps({ x402Index: sample }))).toBe(sample);
+    });
+
+    it("gives every entry of a fixture index its computed service id", () => {
+        for (const s of sample.services) expect(s.serviceId).toMatch(/^xs_[a-z2-7]{16}$/);
     });
 });
 
