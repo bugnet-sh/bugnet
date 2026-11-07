@@ -47,9 +47,13 @@ interface Setup {
     clock: { now: number };
 }
 
-async function setup(impl: RouterImpl, payments = testPayments()): Promise<Setup> {
+async function setup(
+    impl: RouterImpl,
+    payments = testPayments(),
+    config = testConfig(),
+): Promise<Setup> {
     const clock = { now: testNow };
-    const deps = testDeps({ router: fakeRouter(impl), payments, now: () => clock.now });
+    const deps = testDeps({ config, router: fakeRouter(impl), payments, now: () => clock.now });
     return { client: await connectTools(deps), deps, payments, clock };
 }
 
@@ -598,10 +602,19 @@ describe("bugnet_start", () => {
             payment: { signed: true },
         });
         expect(r.isError).toBe(false);
-        expect(payments.orders).toEqual([{ orderId: "ord_p", payment: { signed: true } }]);
+        expect(payments.orders).toEqual([
+            expect.objectContaining({
+                kind: "start",
+                packageId: "small-10m",
+                amountMicros: 50_000,
+                orderId: "ord_p",
+                payment: { signed: true },
+            }),
+        ]);
+        expect(payments.orders[0]).not.toHaveProperty("claim");
     });
 
-    it("a start retry with orderId and a payment sends no terms", async () => {
+    it("with x402 on, a start retry with orderId and a payment sends no terms", async () => {
         const seen: { create?: CreatePlacementRequest; waits: GetPlacementRequest[] } = {
             waits: [],
         };
@@ -625,6 +638,7 @@ describe("bugnet_start", () => {
                 },
             },
             payments,
+            testConfig("[x402]\nenabled = true\n"),
         );
         const id = signed(deps, { expiresAt: testNow + 60_000 });
         clock.now = testNow + 11 * 60_000;

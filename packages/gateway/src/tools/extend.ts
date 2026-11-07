@@ -227,7 +227,7 @@ export const registerExtendTool: Register = (server, deps) => {
         async (args, ctx) => {
             try {
                 const payment = ctx.mcpReq._meta?.["x402/payment"] ?? args.payment;
-                const retried = paidRetry(args, payment);
+                const retried = paidRetry(args, payment, deps.config.x402.enabled);
                 const key = toolUseId(ctx);
                 const budget = new Budget(deps);
                 let request: OrderRequest;

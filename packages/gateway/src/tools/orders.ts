@@ -20,12 +20,15 @@ export type PaidRetry =
     | { orderId: string; claim: string; payment?: undefined }
     | { orderId: string; payment: unknown; claim?: undefined };
 
-// A payment wins over a claim, since Payments settles the payment first and the claim is dropped
+// A payment wins over a claim, since Payments settles the payment first and the claim is dropped.
+// Payments before port v3 needs the terms with a payment, so widened is true only with x402 on
 export function paidRetry(
     args: { orderId?: string | undefined; claim?: string | undefined },
     payment: unknown,
+    widened = true,
 ): PaidRetry | null {
     if (args.orderId === undefined) return null;
+    if (payment !== undefined && !widened) return null;
     if (payment !== undefined) return { orderId: args.orderId, payment };
     if (args.claim !== undefined) return { orderId: args.orderId, claim: args.claim };
     return null;

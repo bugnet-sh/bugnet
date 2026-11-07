@@ -365,7 +365,7 @@ export const registerSandboxTools: Register = (server, deps) => {
         async (args, ctx) => {
             try {
                 const payment = ctx.mcpReq._meta?.["x402/payment"] ?? args.payment;
-                const retried = paidRetry(args, payment);
+                const retried = paidRetry(args, payment, deps.config.x402.enabled);
                 const key = toolUseId(ctx);
                 let claims: QuoteClaims;
                 try {

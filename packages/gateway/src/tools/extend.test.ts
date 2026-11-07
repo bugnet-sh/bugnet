@@ -11,6 +11,7 @@ import {
     packageOption,
     placement,
     routerError,
+    testConfig,
     testDeps,
     testHandle,
     testNow,
@@ -431,7 +432,7 @@ describe("bugnet_extend", () => {
         expect(lines.join("\n")).not.toContain(claim);
     });
 
-    it("an extend retry with orderId and a payment sends no terms", async () => {
+    it("with x402 on, an extend retry with orderId and a payment sends no terms", async () => {
         const applied: ExtendPlacementRequest[] = [];
         const payments = testPayments(() => ({
             status: "paid",
@@ -444,6 +445,7 @@ describe("bugnet_extend", () => {
             handleSha256: handleHash(testHandle),
         }));
         const deps = testDeps({
+            config: testConfig("[x402]\nenabled = true\n"),
             router: fakeRouter({
                 checkExtendPlacement: () => {
                     throw new Error("no check");
@@ -472,6 +474,22 @@ describe("bugnet_extend", () => {
                 idempotencyKey: "toolu_p",
             },
         ]);
+    });
+
+    it("with x402 off, an extend payment retry sends all four terms", async () => {
+        const { client, payments, orderId } = await paidSetup({
+            ...checked,
+            extendPlacement: () => ({ placement: extended }),
+        });
+        const payment = { accepted: { extra: { memo: orderId } }, payload: { tx: "late" } };
+        await callTool(client, "bugnet_extend", { ...args(), orderId, payment });
+        expect(payments.orders[0]).toMatchObject({
+            kind: "extend",
+            packageId: "more-10m",
+            amountMicros: 40_000,
+            orderId,
+            payment,
+        });
     });
 
     it("a paid allowance order answers bugnet_extend with the bugnet_x402_budget call", async () => {
@@ -535,13 +553,9 @@ describe("bugnet_extend", () => {
             payment,
         });
         expect(r.isError).toBe(false);
-        expect(r.text).toMatch(/^Extended with more-10m\./);
+        expect(r.text).toMatch(/^Extended by 10 min\./);
         expect(payments.orders).toHaveLength(2);
-        expect(payments.orders[0]).toEqual({
-            orderId,
-            payment,
-            handleSha256: handleHash(testHandle),
-        });
+        expect(payments.orders[0]).not.toHaveProperty("claim");
         expect(payments.orders[1]).toEqual({
             orderId,
             claim: own,
