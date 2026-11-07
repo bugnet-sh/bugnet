@@ -18,10 +18,12 @@ import {
 import { Code } from "@connectrpc/connect";
 import { CLIENT_CAPABILITIES_META_KEY, inputRequired } from "@modelcontextprotocol/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { linkState, lostLinkText, paymentStepResult } from "./linkpay.ts";
 import { afterPaymentText, spentOrderText, unpaidText, type PublicOrderState } from "./orders.ts";
 import type { PayOutcome, PaymentStep } from "./pay.ts";
 import type { X402PaymentRequired } from "./payment.ts";
 import type { CallOptions, RemoteResult, RemoteTools } from "./remote.ts";
+import type { BridgePay } from "./bridge.ts";
 import {
     connectBridge,
     devPay,
@@ -29,6 +31,7 @@ import {
     grantRouter,
     payingPayer,
     testHandle,
+    testNow,
     testPayOrigin,
     type BridgeSetup,
     type ConnectedBridge,
@@ -504,7 +507,8 @@ describe.each(["legacy", "modern"] as const)("paying with pay, %s client", (era)
     ] as const)("redeems an unsure hold when its page reads %s", async (second, pays) => {
         const gw = await gateway(requirePayments());
         const payer = payingPayer(gw.payments, { outcome: { kind: "unknown" }, pays });
-        const reads: string[] = ["settling", second];
+        // The first read fails, so the first call ends unsure without polling
+        const reads: string[] = ["throw", second];
         const pay = devPay(gw.payments, payer, {
             status: async () => {
                 const s = reads.shift() ?? "paid";
@@ -526,9 +530,13 @@ describe.each(["legacy", "modern"] as const)("paying with pay, %s client", (era)
     it("never pays an order again after its unsure hold reads unpaid", async () => {
         const gw = await gateway(requirePayments());
         const payer = payingPayer(gw.payments, { outcome: { kind: "unknown" }, pays: false });
-        const reads: string[] = ["settling", "unpaid", "unpaid"];
+        const reads: string[] = ["throw", "unpaid", "unpaid"];
         const pay = devPay(gw.payments, payer, {
-            status: async () => (reads.shift() ?? "unpaid") as PublicOrderState,
+            status: async () => {
+                const s = reads.shift() ?? "unpaid";
+                if (s === "throw") throw new Error("connect ECONNREFUSED 127.0.0.1:443");
+                return s as PublicOrderState;
+            },
         });
         const b = await bridge({ gateway: gw.url, era, deps: { pay } });
         const args = startArgs(await quoteId(b.client));
@@ -571,7 +579,7 @@ describe.each(["legacy", "modern"] as const)("paying with pay, %s client", (era)
         ["the page says paid", ["paid"], true, "handle"],
         ["the page says unpaid", ["unpaid"], false, "step"],
         ["the page says expired", ["expired"], false, "expired"],
-        ["the page says settling", ["settling"], true, "timeout"],
+        ["the page says settling, then paid", ["settling", "paid"], true, "handle"],
         ["the page cannot be read", ["throw"], true, "timeout"],
     ] as const)("decides an unsure pay outcome when %s", async (_n, states, pays, answer) => {
         const gw = await gateway(requirePayments());
@@ -925,4 +933,287 @@ describe("pass-through", () => {
             expect(retry.inputResponses).toEqual({ pay: { action: "accept", content: {} } });
         });
     }
+});
+
+/* Paying by link */
+
+// Answers the queued states in turn, the last one again, and pays the dev order before "paid"
+function queued(payments: TestPayments, states: PublicOrderState[]): BridgePay["status"] {
+    let i = 0;
+    return async (id) => {
+        const s = states[Math.min(i++, states.length - 1)]!;
+        if (s === "paid") payments.dev.pay(id);
+        return s;
+    };
+}
+
+// The stand-in's paid retry starts a sandbox, its first call answers the payment step
+const handled = (p: Record<string, unknown>): CallToolResult =>
+    (p.arguments as { claim?: string }).claim === undefined
+        ? stepResult()
+        : {
+              content: [{ type: "text", text: "fine" }],
+              structuredContent: { message: "fine", handle: testHandle },
+          };
+
+describe.each(["legacy", "modern"] as const)("paying by link, %s client", (era) => {
+    it("opens the pay link, polls the payment page and finishes the order", async () => {
+        const gw = await gateway(requirePayments());
+        const started = new Set<string>();
+        const b = await bridge({
+            gateway: gw.url,
+            era,
+            elicitUrl: () => ({ action: "accept" }),
+            deps: {
+                started,
+                pay: devPay(gw.payments, null, {
+                    status: queued(gw.payments, ["unpaid", "unpaid", "paid"]),
+                }),
+            },
+        });
+        const r = await b.client.callTool({
+            name: "bugnet_start",
+            arguments: startArgs(await quoteId(b.client)),
+        });
+        expect((r.structuredContent as { handle: string }).handle).toBe(testHandle);
+        const create = gw.payments.orders[0]!;
+        const redeem = gw.payments.orders[1]!;
+        expect(gw.payments.orders).toHaveLength(2);
+        expect(b.urls).toEqual([`${testPayOrigin}/o/${redeem.orderId}`]);
+        expect(b.prompts).toEqual([
+            `Pay $0.05 USDC for Bugnet order ${redeem.orderId} with a Solana ` +
+                "wallet in your browser. The agent goes on once it is paid.",
+        ]);
+        expect(create.orderId).toBeUndefined();
+        expect(redeem.claim).toMatch(/^[A-Za-z0-9_-]{43}$/);
+        expect(started).toEqual(new Set([testHandle]));
+    });
+
+    it("falls back to the pay link when pay is unavailable", async () => {
+        const gw = await gateway(requirePayments());
+        const payer = payingPayer(gw.payments, {
+            outcome: { kind: "unavailable", reason: "start" },
+            pays: false,
+        });
+        const b = await bridge({
+            gateway: gw.url,
+            era,
+            elicitUrl: () => ({ action: "accept" }),
+            deps: { pay: devPay(gw.payments, payer, { status: queued(gw.payments, ["paid"]) }) },
+        });
+        const r = await b.client.callTool({
+            name: "bugnet_start",
+            arguments: startArgs(await quoteId(b.client)),
+        });
+        expect((r.structuredContent as { handle: string }).handle).toBe(testHandle);
+        expect(payer.calls).toHaveLength(1);
+        expect(b.urls).toEqual([payer.calls[0]!.step.payUrl]);
+    });
+
+    it("polls a payment pay left settling, without asking the user", async () => {
+        const gw = await gateway(requirePayments());
+        const payer = payingPayer(gw.payments, { outcome: { kind: "unknown" }, pays: false });
+        const status = queued(gw.payments, ["settling", "settling", "paid"]);
+        const b = await bridge({
+            gateway: gw.url,
+            era,
+            elicitUrl: () => ({ action: "accept" }),
+            deps: { pay: devPay(gw.payments, payer, { status }) },
+        });
+        const r = await b.client.callTool({
+            name: "bugnet_start",
+            arguments: startArgs(await quoteId(b.client)),
+        });
+        expect((r.structuredContent as { handle: string }).handle).toBe(testHandle);
+        expect(b.urls).toEqual([]);
+    });
+
+    it("keeps a link order the client gave up on, and redeems it next call once paid", async () => {
+        const gw = await gateway(requirePayments());
+        let reads = 0;
+        const pay = devPay(gw.payments, null, {
+            status: async (id) => {
+                reads += 1;
+                const a = gw.payments.dev.status(id);
+                return a.status === 404 ? null : (a.body.state as PublicOrderState);
+            },
+            // The harness clock stands still, so the poll ends only when the client gives up
+            sleep: (_ms, signal) =>
+                new Promise<void>((resolve, reject) => {
+                    if (signal.aborted) return reject(signal.reason);
+                    const t = setTimeout(resolve, 20);
+                    signal.addEventListener(
+                        "abort",
+                        () => {
+                            clearTimeout(t);
+                            reject(signal.reason);
+                        },
+                        { once: true },
+                    );
+                }),
+        });
+        const b = await bridge({
+            gateway: gw.url,
+            era,
+            elicitUrl: () => ({ action: "accept" }),
+            deps: { pay },
+        });
+        const args = startArgs(await quoteId(b.client));
+        const giveUp = new AbortController();
+        const first = b.client.callTool(
+            { name: "bugnet_start", arguments: args },
+            { signal: giveUp.signal },
+        );
+        await vi.waitFor(() => expect(reads).toBeGreaterThan(0), { timeout: 2_000 });
+        giveUp.abort();
+        await expect(first).rejects.toThrow();
+        await vi.waitFor(() => expect(pay.orders.heldFor(key)?.state).toBe("unknown"), {
+            timeout: 2_000,
+        });
+        gw.payments.dev.pay(b.urls[0]!.split("/o/")[1]!);
+        const r = await b.client.callTool({ name: "bugnet_start", arguments: args });
+        expect((r.structuredContent as { handle: string }).handle).toBe(testHandle);
+        expect(b.urls).toHaveLength(1);
+        expect(gw.payments.orders.filter((o) => o.orderId === undefined)).toHaveLength(1);
+    });
+
+    it("forwards neither the link state nor the answer to the gateway", async () => {
+        const remote = fakeRemote(handled);
+        const b = await bridge({
+            remote,
+            era,
+            elicitUrl: () => ({ action: "accept" }),
+            deps: { pay: devPay(testPayments(), null, { status: async () => "paid" }) },
+        });
+        const r = await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
+        expect((r.structuredContent as { handle: string }).handle).toBe(testHandle);
+        expect(remote.calls).toHaveLength(2);
+        const retry = remote.calls[1]!.params;
+        expect(retry.arguments).toEqual({
+            ...standInArgs,
+            orderId: standInOrder,
+            claim: standInClaim,
+        });
+        expect(retry.inputResponses).toBeUndefined();
+        expect(retry.requestState).toBeUndefined();
+    });
+
+    it("returns the payment step unchanged to a client that cannot open links", async () => {
+        const remote = fakeRemote(handled);
+        const b = await bridge({
+            remote,
+            era,
+            deps: { pay: devPay(testPayments(), null, { status: async () => "paid" }) },
+        });
+        const r = await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
+        expect(r.structuredContent).toEqual(stepResult().structuredContent);
+        expect(remote.calls).toHaveLength(1);
+    });
+
+    it.each([
+        ["timeout", "unpaid"],
+        ["expired", "expired"],
+        ["closed", "refunded"],
+        ["unknown_order", null],
+    ] as const)("words a %s link outcome", async (outcome, state) => {
+        // deps.now and pay.sleep share one clock, so the 600_000 ms of a timeout pass at once
+        const clock = { t: testNow };
+        const remote = fakeRemote(handled);
+        const b = await bridge({
+            remote,
+            era,
+            elicitUrl: () => ({ action: "accept" }),
+            deps: {
+                now: () => clock.t,
+                pay: devPay(testPayments(), null, {
+                    status: async () => state,
+                    sleep: async (ms) => {
+                        clock.t += ms;
+                    },
+                }),
+            },
+        });
+        const r = await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
+        expect(r.isError).toBe(true);
+        expect((r.content as { text: string }[])[0]!.text).toBe(unpaidText(outcome, standInStep));
+        expect(remote.calls).toHaveLength(1);
+    });
+
+    it("answers a declined link with the payment step and forwards nothing", async () => {
+        const remote = fakeRemote(handled);
+        const b = await bridge({
+            remote,
+            era,
+            elicitUrl: () => ({ action: "decline" }),
+            deps: { pay: devPay(testPayments(), null, { status: async () => "paid" }) },
+        });
+        const r = await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
+        expect(r).toEqual(expect.objectContaining(paymentStepResult(standInStep, "q")));
+        expect(remote.calls).toHaveLength(1);
+    });
+});
+
+describe("paying by link, the gateway stand-in", () => {
+    it("answers a link state it did not sign or no longer holds, and forwards it to nobody", async () => {
+        const remote = fakeRemote(handled);
+        const b = await bridge({
+            remote,
+            era: "modern",
+            deps: { pay: devPay(testPayments(), null) },
+        });
+        // A client that cannot open links gets the step back, and the bridge has seen it
+        await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
+        const forged = linkState(standInStep, testNow).replace(/[0-9a-f]{64}$/, "0".repeat(64));
+        const unseen = linkState(
+            { ...standInStep, orderId: "ord_bbbbbbbbbbbbbbbbbbbbbbbbbb" },
+            testNow,
+        );
+        const call = (requestState: string) =>
+            b.client.request({
+                method: "tools/call",
+                params: {
+                    name: "bugnet_start",
+                    arguments: standInArgs,
+                    inputResponses: { pay: { action: "accept" } },
+                    requestState,
+                },
+            });
+        expect(await call(forged)).toEqual(
+            expect.objectContaining(paymentStepResult(standInStep, "q")),
+        );
+        expect(await call(unseen)).toEqual(
+            expect.objectContaining({
+                isError: true,
+                content: [{ type: "text", text: lostLinkText("bugnet_start") }],
+            }),
+        );
+        expect(remote.calls).toHaveLength(1);
+        expect(JSON.stringify(remote.calls.map((c) => c.params))).not.toContain("p1.");
+    });
+
+    it("counts a redeemed start of an order it relayed as its own", async () => {
+        const mine = "sbx_dddddddddddddddddddddddddd";
+        const theirs = "sbx_zzzzzzzzzzzzzzzzzzzzzzzzzz";
+        const remote = fakeRemote((p) => {
+            if (p.name === "bugnet_start") return stepResult();
+            const id = (p.arguments as { orderId: string }).orderId;
+            return {
+                content: [{ type: "text", text: "fine" }],
+                structuredContent: { message: "fine", handle: id === standInOrder ? mine : theirs },
+            };
+        });
+        const started = new Set<string>();
+        const b = await bridge({ remote, deps: { started, pay: devPay(testPayments(), null) } });
+        await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
+        await b.client.callTool({
+            name: "bugnet_redeem",
+            arguments: { orderId: "ord_cccccccccccccccccccccccccc", claim: standInClaim },
+        });
+        expect(started).toEqual(new Set());
+        await b.client.callTool({
+            name: "bugnet_redeem",
+            arguments: { orderId: standInOrder, claim: standInClaim },
+        });
+        expect(started).toEqual(new Set([mine]));
+    });
 });

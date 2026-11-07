@@ -269,6 +269,8 @@ export interface BridgeSetup {
     era?: "legacy" | "modern";
     // Leave out to connect a client that cannot elicit
     elicit?: Elicit;
+    // Declares url mode too, and answers a request to open a link
+    elicitUrl?: (url: string, message: string) => ElicitResult | Promise<ElicitResult>;
     deps?: Partial<BridgeDeps>;
 }
 
@@ -277,6 +279,7 @@ export interface ConnectedBridge {
     remote: RemoteTools;
     lines: string[];
     prompts: string[];
+    urls: string[];
     close(): Promise<void>;
 }
 
@@ -305,19 +308,28 @@ export async function connectBridge(setup: BridgeSetup): Promise<ConnectedBridge
     const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
     const handle = serveStdio(() => buildBridgeServer(deps), { transport: serverSide });
     const prompts: string[] = [];
+    const urls: string[] = [];
     const client = new Client(
         { name: "test", version: "0" },
         {
             ...(setup.era === "modern" ? { versionNegotiation: { mode: "auto" as const } } : {}),
-            ...(setup.elicit ? { capabilities: { elicitation: { form: {} } } } : {}),
+            ...(setup.elicitUrl
+                ? { capabilities: { elicitation: { form: {}, url: {} } } }
+                : setup.elicit
+                  ? { capabilities: { elicitation: { form: {} } } }
+                  : {}),
         },
     );
-    const elicit = setup.elicit;
-    if (elicit) {
+    const { elicit, elicitUrl } = setup;
+    if (elicit || elicitUrl) {
         client.setRequestHandler("elicitation/create", async (req) => {
-            const message = (req.params as { message: string }).message;
-            prompts.push(message);
-            return elicit(message);
+            const params = req.params as { message: string; mode?: string; url?: string };
+            prompts.push(params.message);
+            if (params.mode === "url") {
+                urls.push(params.url!);
+                return elicitUrl ? elicitUrl(params.url!, params.message) : { action: "decline" };
+            }
+            return elicit ? elicit(params.message) : { action: "decline" };
         });
     }
     await client.connect(clientSide);
@@ -326,6 +338,7 @@ export async function connectBridge(setup: BridgeSetup): Promise<ConnectedBridge
         remote,
         lines,
         prompts,
+        urls,
         close: async () => {
             await client.close();
             await handle.close();

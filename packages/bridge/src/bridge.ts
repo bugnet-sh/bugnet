@@ -8,6 +8,7 @@ import {
     CLIENT_CAPABILITIES_META_KEY,
     ProtocolError,
     Server,
+    inputResponse,
     isInputRequiredResult,
     type CallToolRequest,
     type CallToolResult,
@@ -17,6 +18,16 @@ import {
 } from "@modelcontextprotocol/server";
 import type { PinnedKey } from "@bugnet/seal";
 import pkg from "../package.json" with { type: "json" };
+import {
+    canElicitUrl,
+    lostLinkText,
+    linkStateOrderId,
+    payLinkRequest,
+    paymentStepResult,
+    readLinkState,
+    waitPaid,
+    type LinkOutcome,
+} from "./linkpay.ts";
 import type { Log } from "./log.ts";
 import {
     orderKey,
@@ -86,17 +97,20 @@ function noteStarted(
     started: Set<string>,
     relayed: Set<string>,
 ): void {
-    if (req.params.name !== "bugnet_start" || isInputRequiredResult(result)) return;
+    const tool = req.params.name;
+    if ((tool !== "bugnet_start" && tool !== "bugnet_redeem") || isInputRequiredResult(result)) {
+        return;
+    }
     const r = result as CallToolResult;
     const due = paymentRequired(r);
     const orderId = (r.structuredContent as { orderId?: unknown } | undefined)?.orderId;
-    if (due && typeof orderId === "string") relayed.add(orderId);
+    if (tool === "bugnet_start" && due && typeof orderId === "string") relayed.add(orderId);
     // The handle follows the order, so an order or payment the agent named may be anyone's sandbox
     const args = (req.params.arguments ?? {}) as { orderId?: unknown; payment?: unknown };
     const own =
         typeof args.orderId === "string"
             ? relayed.has(args.orderId)
-            : args.orderId === undefined && args.payment === undefined;
+            : tool === "bugnet_start" && args.orderId === undefined && args.payment === undefined;
     const handle = (r.structuredContent as { handle?: unknown } | undefined)?.handle;
     if (own && !r.isError && typeof handle === "string" && handlePattern.test(handle)) {
         started.add(handle);
@@ -107,6 +121,14 @@ function errText(e: unknown): string {
     return e instanceof Error ? e.message.split("\n")[0]!.slice(0, 200) : "unknown error";
 }
 
+function isLinkState(state: unknown): state is string {
+    return typeof state === "string" && state.startsWith("p1.");
+}
+
+function quoteIdOf(args: Record<string, unknown>): string | undefined {
+    return typeof args.quoteId === "string" ? args.quoteId : undefined;
+}
+
 // The SDK lifts a request's envelope and input responses out of params, so they are put back
 function forwardParams(
     req: CallToolRequest,
@@ -115,13 +137,15 @@ function forwardParams(
 ): Record<string, unknown> {
     const params: Record<string, unknown> = { ...req.params };
     for (const lifted of ["_meta", "inputResponses", "requestState"]) delete params[lifted];
+    const state = ctx.mcpReq.requestState();
     const meta: Record<string, unknown> = { ...ctx.mcpReq._meta };
     // The bridge's client asks for progress itself and relays it under the caller's token
     delete meta.progressToken;
     if (caps) meta[CLIENT_CAPABILITIES_META_KEY] = caps;
     params._meta = meta;
+    // A link state and its answer are the bridge's own, the gateway never sees them
+    if (isLinkState(state)) return params;
     if (ctx.mcpReq.inputResponses) params.inputResponses = ctx.mcpReq.inputResponses;
-    const state = ctx.mcpReq.requestState();
     if (typeof state === "string") params.requestState = state;
     return params;
 }
@@ -178,11 +202,6 @@ function settle(orders: PaidOrders, result: RemoteResult, step: PaymentStep): Re
     return withAfterPayment(result, step);
 }
 
-// The pay link path comes with Task A5, until then the payment step goes back as it is
-function linkPath(_step: PaymentStep, result: RemoteResult, _ctx: ServerContext): RemoteResult {
-    return result;
-}
-
 export function buildBridgeServer(deps: BridgeDeps): Server {
     const instructions = deps.remote.instructions();
     const server = new Server(
@@ -197,6 +216,9 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             CLIENT_CAPABILITIES_META_KEY
         ] as ClientCapabilities | undefined) ?? server.getClientCapabilities();
     const secretDeps = { ...deps, clientCapabilities };
+    // A client that can open links gets the pay link, any other the payment step as it is
+    const linkPath = (step: PaymentStep, result: RemoteResult, ctx: ServerContext): RemoteResult =>
+        canElicitUrl(clientCapabilities(ctx)) ? payLinkRequest(step, deps.now()) : result;
     // Orders whose payment step this bridge passed on, the only ones a start may name as its own
     const relayed = new Set<string>();
 
@@ -255,6 +277,70 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         const ownPayment =
             args.payment !== undefined || ctx.mcpReq._meta?.["x402/payment"] !== undefined;
         const key = orderKey(name, args);
+        // Redeems an order paid by pay, at its link or found paid, and settles its hold
+        const redeemOrder = async (paid: PaymentStep): Promise<RemoteResult> => {
+            let again: RemoteResult;
+            try {
+                again = await call(
+                    { ...params, arguments: { ...args, orderId: paid.orderId, claim: paid.claim } },
+                    ctx,
+                    progress.relay,
+                );
+            } catch (e) {
+                if (ctx.mcpReq.signal.aborted) throw e;
+                deps.log.warn("gateway call failed", { tool: name, err: errText(e) });
+                return toolError(
+                    "Bugnet's gateway did not answer, a retry may work." + afterPaymentText(paid),
+                );
+            }
+            return settle(orders, again, paid);
+        };
+        // Polls the order's page until it is paid, and redeems it then
+        const waitAndRedeem = async (paid: PaymentStep): Promise<RemoteResult> => {
+            let outcome: LinkOutcome;
+            try {
+                outcome = await waitPaid(
+                    paid.orderId,
+                    {
+                        status: pay.status,
+                        ...(pay.sleep ? { sleep: pay.sleep } : {}),
+                        now: deps.now,
+                    },
+                    ctx.mcpReq.signal,
+                    () => progress.note(`waiting for order ${paid.orderId} to be paid`),
+                );
+            } catch (e) {
+                // The client gave up, so the next call reads the page and redeems if it was paid
+                orders.markPaid(paid.orderId, "unknown");
+                throw e;
+            }
+            if (outcome === "paid") {
+                orders.markPaid(paid.orderId, "paid");
+                return redeemOrder(paid);
+            }
+            // A timeout or a review may still end in a payment, so the hold stays
+            if (outcome === "timeout" || outcome === "closed")
+                orders.markPaid(paid.orderId, "unknown");
+            else orders.forget(paid.orderId);
+            return toolError(unpaidText(outcome, paid));
+        };
+        const linkReturn = ctx.mcpReq.requestState();
+        if (isLinkState(linkReturn)) {
+            const link = readLinkState(linkReturn, name, deps.now());
+            const known = orders.step(link?.orderId ?? linkStateOrderId(linkReturn) ?? "");
+            const step = known?.tool === name ? known : undefined;
+            if (!link) {
+                return step
+                    ? paymentStepResult(step, quoteIdOf(args))
+                    : toolError(lostLinkText(name));
+            }
+            if (!step) return toolError(lostLinkText(name));
+            const answer = inputResponse(ctx.mcpReq.inputResponses, "pay");
+            if (answer.kind !== "elicit" || answer.action !== "accept") {
+                return paymentStepResult(step, quoteIdOf(args));
+            }
+            return waitAndRedeem(step);
+        }
         let held: PaymentStep | undefined;
         let forwarded = params;
         let holding =
@@ -313,6 +399,7 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         if (!step) return settling ? settle(orders, result, settling) : result;
         const paid: PaymentStep = step;
         orders.see(key, paid);
+        if (name === "bugnet_start") relayed.add(paid.orderId);
         if (orders.tried(paid.orderId)) return linkPath(paid, result, ctx);
         const confirmed = priceMicros(args.confirmPriceUsd);
         const why = payRefusal(
@@ -357,22 +444,8 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             return linkPath(paid, result, ctx);
         }
 
-        async function redeem(): Promise<RemoteResult> {
-            let again: RemoteResult;
-            try {
-                again = await call(
-                    { ...params, arguments: { ...args, orderId: paid.orderId, claim: paid.claim } },
-                    ctx,
-                    progress.relay,
-                );
-            } catch (e) {
-                if (ctx.mcpReq.signal.aborted) throw e;
-                deps.log.warn("gateway call failed", { tool: name, err: errText(e) });
-                return toolError(
-                    "Bugnet's gateway did not answer, a retry may work." + afterPaymentText(paid),
-                );
-            }
-            return settle(orders, again, paid);
+        function redeem(): Promise<RemoteResult> {
+            return redeemOrder(paid);
         }
 
         // Pay may have paid, so the order's own page says whether it did
@@ -384,9 +457,8 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
                 orders.forget(paid.orderId);
                 return result;
             }
-            if (state === "?" || state === "settling") {
-                return toolError(unpaidText("timeout", paid));
-            }
+            if (state === "settling") return waitAndRedeem(paid);
+            if (state === "?") return toolError(unpaidText("timeout", paid));
             orders.forget(paid.orderId);
             if (state === "expired") return toolError(unpaidText("expired", paid));
             if (state === null) return toolError(unpaidText("unknown_order", paid));
