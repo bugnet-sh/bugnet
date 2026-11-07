@@ -7,11 +7,62 @@ import {
     PlacementState,
     type PackageOption,
     type Placement,
+    type X402ServiceInfo,
 } from "../gen/bugnet/router/v1/router_pb.ts";
 import { extensionsFor } from "./extend.ts";
-import { verifyQuote, QuoteError, type QuoteClaims } from "../quote.ts";
-import { GatewayError, errorReason, fromRouter, waitMargin } from "../router.ts";
-import type { OrderRequest, PaidOrder } from "../payments/port.ts";
+import { verifyQuote, QuoteError, type QuoteClaims, type QuotedPackage } from "../quote.ts";
+import {
+    GatewayError,
+    errorReason,
+    fromRouter,
+    reasonCode,
+    reasonOf,
+    waitMargin,
+} from "../router.ts";
+import {
+    paymentMemo,
+    type OrderRequest,
+    type OrderResult,
+    type PaidOrder,
+    type RefusedOrder,
+    type X402Account,
+    type X402ServicePin,
+    type X402Terms,
+} from "../payments/port.ts";
+import { indexOf } from "../x402/index.ts";
+import { serviceLine, toMicros, usdText } from "../x402/lines.ts";
+import {
+    allowanceDescription,
+    checkAddOf,
+    newServiceCount,
+    orderSetup,
+    planLines,
+    probeLines,
+    servicesAfter,
+    spendUnderPrice,
+    type PlannedService,
+} from "../x402/pins.ts";
+import {
+    buildView,
+    paidRetryUnreachable,
+    paymentUnconfirmed,
+    paymentsRefusal,
+    startNeedsSecretsText,
+    startTotalText,
+    x402Fail,
+    x402Lines,
+    x402Text,
+    type X402View,
+} from "../x402/render.ts";
+import {
+    checkServices,
+    enableRequestId,
+    enableServices,
+    hasOwnReason,
+    viewChanges,
+    x402RouterError,
+} from "../x402/router.ts";
+import { readTerms } from "../x402/terms.ts";
 import {
     approvalMeta,
     Budget,
@@ -38,7 +89,7 @@ import {
     refusalError,
     retryCall,
 } from "./orders.ts";
-import { describeSize, quoted, unavailableWords } from "./quote.ts";
+import { describeSize, limitQuotes, quoted, unavailableWords } from "./quote.ts";
 import { fetchAfterStart, sentence, sourceView, unplacedNote, type SourceView } from "./source.ts";
 
 export { describeSize } from "./quote.ts";
@@ -149,14 +200,32 @@ const startInput = z
             .unknown()
             .optional()
             .describe("x402 PaymentPayload for this order if your wallet tool produced one"),
+        x402: z
+            .object({
+                allowanceUsd: usdText.describe("Allowance for x402 services, 0.10 to 5.00"),
+                services: z.array(serviceLine).max(5).optional(),
+                allowUnlisted: z.boolean().optional(),
+                spendPerMinuteUsd: usdText.optional(),
+            })
+            .optional()
+            .describe(
+                "Only when a missing key is already known and the user agreed to the allowance, each service and the total. confirmPriceUsd then includes the package, the allowance and a one-time $0.003 fee",
+            ),
     })
     .refine((a) => a.claim === undefined || a.orderId !== undefined, {
         message: "claim goes with the orderId of its payment step",
         path: ["claim"],
     });
 
+type StartArgs = z.infer<typeof startInput>;
+type StartX402Args = NonNullable<StartArgs["x402"]>;
+
+const startTool = "bugnet_start";
+
 // What CreatePlacement and a first look at the sandbox need after the payment
 export const placeReserveMs = 12_000;
+// EnableX402 before the ready wait and the probes before payment need 5 s more
+export const x402PlaceReserveMs = 17_000;
 // The repo fetch's own cap, left out when less than this remains
 const fetchMs = 5_000;
 
@@ -250,6 +319,226 @@ async function priceForStart(
     return option;
 }
 
+// Spec 5.4 step 1, all before the package is priced, so a refusal here charged nothing
+async function startTerms(
+    deps: Deps,
+    claims: QuoteClaims,
+    budget: Budget,
+    payment: unknown,
+): Promise<X402Terms> {
+    if (!deps.config.x402.enabled) throw x402Fail("switchedOff", "start");
+    limitQuotes(deps, "start");
+    const terms = await readTerms(deps, budget.signal(3_000));
+    if (terms === null) {
+        throw payment !== undefined
+            ? paymentUnconfirmed("start", startTool, paymentMemo(payment))
+            : x402Fail("unreachable", "start");
+    }
+    if (!terms.enabled) throw x402Fail("switchedOff", "start");
+    if (!terms.startWithX402) throw x402Fail("startUnavailable", "start");
+    if (!claims.requirements.secrets) throw new GatewayError("invalid", startNeedsSecretsText);
+    return terms;
+}
+
+// What a first call with x402 checked and probed before Payments charges anything
+interface StartPlan {
+    pkg: QuotedPackage;
+    terms: X402Terms;
+    allowance: number;
+    total: number;
+    planned: PlannedService[];
+    pins: X402ServicePin[];
+    spend: number | undefined;
+    limit: number;
+}
+
+// Spec 5.4 steps 2 and 3, every amount and limit first, then the probes and CheckX402 at once
+async function planStart(
+    deps: Deps,
+    x: StartX402Args,
+    confirmPriceUsd: string,
+    pkg: QuotedPackage,
+    terms: X402Terms,
+    budget: Budget,
+): Promise<StartPlan> {
+    // The input check holds it to a dollar amount
+    const allowance = toMicros(x.allowanceUsd) as number;
+    const total = pkg.priceMicros + terms.sessionFeeMicros + allowance;
+    if (toMicros(confirmPriceUsd) !== total) {
+        throw new GatewayError(
+            "invalid",
+            startTotalText(pkg.id, pkg.priceMicros, allowance, terms),
+        );
+    }
+    const planned = planLines(deps, {
+        what: "start",
+        lines: x.services ?? [],
+        disable: [],
+        allowUnlisted: x.allowUnlisted === true,
+        account: null,
+        terms,
+    });
+    if (allowance < terms.minAllowanceMicros) throw x402Fail("amountTooSmall", "start", { terms });
+    if (allowance > terms.maxAllowancePerSandboxMicros) {
+        throw x402Fail("overCeiling", "start", {
+            terms,
+            amountMicros: allowance,
+            roomMicros: terms.maxAllowancePerSandboxMicros,
+        });
+    }
+    if (newServiceCount(planned) > terms.maxNewServicesPerOrder) {
+        throw x402Fail("tooManyNew", "start", { terms });
+    }
+    if (servicesAfter(null, planned, []) > terms.maxServices) {
+        throw x402Fail("tooManyServices", "start", { terms });
+    }
+    const spend =
+        x.spendPerMinuteUsd === undefined ? undefined : (toMicros(x.spendPerMinuteUsd) as number);
+    if (
+        spend !== undefined &&
+        (spend < terms.minSpendPerMinuteMicros || spend > terms.maxSpendPerMinuteMicros)
+    ) {
+        throw x402Fail("spendRange", "start", { terms });
+    }
+    const limit = spend ?? terms.defaultSpendPerMinuteMicros;
+    const under = spendUnderPrice(limit, null, planned, []);
+    if (under !== null) throw x402Fail("spendUnderMax", "start", { limitMicros: limit, ...under });
+    const hosts = [...new Set(planned.map((p) => p.parts.host))];
+    const cap = budget.signal(3_000);
+    const [pins] = await Promise.all([
+        probeLines(deps, planned, terms, "start", cap),
+        checkServices(deps, { handle: "", add: checkAddOf(planned), disable: [] }, cap).catch(
+            (e: unknown) => {
+                throw x402RouterError(e, "start", hosts, terms.maxServices);
+            },
+        ),
+    ]);
+    return { pkg, terms, allowance, total, planned, pins, spend, limit };
+}
+
+// A first call's refusal, worded with the total and services this call asked for
+function startRefusal(
+    r: RefusedOrder,
+    plan: StartPlan,
+    args: StartArgs,
+    payment: unknown,
+): GatewayError {
+    const { pkg, terms } = plan;
+    if (r.reason === "fee_mismatch") {
+        return new GatewayError(
+            "invalid",
+            startTotalText(pkg.id, pkg.priceMicros, plan.allowance, terms),
+        );
+    }
+    if (r.reason === "router_unavailable" && payment !== undefined) {
+        return paymentUnconfirmed("start", startTool, r.orderId ?? paymentMemo(payment));
+    }
+    return paymentsRefusal(r, {
+        what: "start",
+        tool: startTool,
+        terms,
+        feeDue: true,
+        amountMicros: plan.allowance,
+        chargedMicros: plan.total,
+        orderId: args.orderId ?? null,
+        planned: plan.planned,
+        account: null,
+        retry: { quoteId: args.quoteId, ...(payment !== undefined ? { payment: true } : {}) },
+        spendPerMinuteMicros: plan.limit,
+        disable: [],
+    });
+}
+
+// Spec 5.3 names no amount for a paid retry, whose confirmPriceUsd is never checked
+function paidStartRefusal(r: RefusedOrder, orderId: string): GatewayError | null {
+    if (r.refundPending !== undefined) {
+        return x402Fail("paidRefused", "start", {
+            reason: r.reason,
+            refundPending: r.refundPending,
+            orderId: r.orderId ?? orderId,
+        });
+    }
+    if (r.charged === false) {
+        return x402Fail(r.reason === "x402_paused" ? "paused" : "switchedOff", "start");
+    }
+    return null;
+}
+
+interface StartEnable {
+    // Null when EnableX402 failed or was skipped
+    infos: X402ServiceInfo[] | null;
+    terms: X402Terms | null;
+    // NOT_READY under its own code, so the new sandbox already ended
+    ended: boolean;
+}
+
+// Spec 5.4 step 6, a sandbox ready inside CreatePlacement would overrun a wait for the services
+async function enableAtStart(
+    deps: Deps,
+    ctx: ServerContext,
+    orderId: string,
+    account: X402Account,
+    handle: string,
+    budget: Budget,
+): Promise<StartEnable> {
+    if (budget.left() < 1_000) return { infos: null, terms: null, ended: false };
+    let ended = false;
+    const [infos, terms] = await Promise.all([
+        enableServices(
+            deps,
+            {
+                handle,
+                ...viewChanges(account),
+                requestId: enableRequestId(ctx, ["x402-start", orderId]),
+                waitActive: false,
+            },
+            budget.signal(5_000),
+        ).catch((e: unknown) => {
+            deps.log.warn("x402 enable failed", {
+                handle: handleTag(handle),
+                orderId,
+                reason: reasonCode(reasonOf(e) ?? ""),
+            });
+            ended = hasOwnReason(e, "NOT_READY");
+            return null;
+        }),
+        readTerms(deps, budget.signal(3_000)),
+    ]);
+    return { infos, terms, ended };
+}
+
+// The lines of spec 5.3 for a paid start, or the line that says how it ends without them
+function startX402Part(
+    deps: Deps,
+    order: PaidOrder,
+    account: X402Account,
+    e: StartEnable,
+): { lines: string[]; view: X402View | null } {
+    const amountMicros = order.allowanceMicros ?? 0;
+    if (e.ended) {
+        const reason = "sandbox_ended";
+        const text = x402Text.paidRefused("x402", { reason, refundPending: true, amountMicros });
+        return { lines: [`${text}.`], view: null };
+    }
+    if (e.terms === null) {
+        return { lines: [`${x402Text.paidNotEnabled("x402", { amountMicros })}.`], view: null };
+    }
+    const view = buildView({
+        account,
+        feeDue: false,
+        router: e.infos,
+        refusals: [],
+        terms: e.terms,
+        index: indexOf(deps),
+    });
+    const lines = x402Lines(view, {
+        firstUse: order.firstUse === true,
+        terms: e.terms,
+        notEnabled: e.infos === null,
+    });
+    return { lines, view };
+}
+
 export interface StartPaidOptions {
     retry: string | null;
 }
@@ -294,6 +583,10 @@ export async function startPaid(
         throw afterPayment(err, order.orderId, opts.retry);
     }
     const handle = created.handle;
+    const account = order.x402;
+    const enabled = account
+        ? await enableAtStart(deps, ctx, order.orderId, account, handle, budget)
+        : null;
     const keep = claims.github ? fetchMs + 1_000 : 0;
     const waitBudget = Math.min(25_000, budget.left() - keep);
     // Past the deadline or on a lost wait the handle still goes back as starting
@@ -320,6 +613,9 @@ export async function startPaid(
         order.paymentResponse !== undefined
             ? { "x402/payment-response": order.paymentResponse }
             : undefined;
+    const x402 = account && enabled ? startX402Part(deps, order, account, enabled) : null;
+    // A sandbox that failed to start has no services to finish enabling
+    const x402Shown = x402 && p?.state !== PlacementState.FAILED ? x402.lines : [];
     const text = [
         `Sandbox ${view.state}. handle: ${handle}`,
         ready ? `Time left: ${view.timeLeft} (deadline ${view.deadline}).` : "",
@@ -331,6 +627,7 @@ export async function startPaid(
             : "",
         view.source ? sentence(view.source.note) : "",
         sshLine(view.sshAlias),
+        ...x402Shown,
         "Keep the handle, it is the only key to this sandbox. Commands run as root " +
             "or as a user with passwordless sudo: use $HOME, prefix system changes with sudo.",
         p?.state === PlacementState.FAILED
@@ -340,7 +637,11 @@ export async function startPaid(
     ]
         .filter(Boolean)
         .join("\n");
-    return ok(text, { handle, orderId: order.orderId, ...view }, meta);
+    return ok(
+        text,
+        { handle, orderId: order.orderId, ...view, ...(x402?.view ? { x402: x402.view } : {}) },
+        meta,
+    );
 }
 
 export const registerSandboxTools: Register = (server, deps) => {
@@ -352,7 +653,10 @@ export const registerSandboxTools: Register = (server, deps) => {
                 "Starts a cloud sandbox from a quote and charges the package price in USDC. " +
                 "Only call it after the user agreed to the price. Returns the sandbox handle, " +
                 "the only key to the sandbox, or a payment step to complete first. When the " +
-                "quote named a GitHub repo, the result says where the repo is or how to get it.",
+                "quote named a GitHub repo, the result says where the repo is or how to get it. " +
+                "With x402, the price the user approves includes the allowance and a one-time " +
+                "$0.003 fee, and services listed there are enabled as soon as the sandbox is " +
+                "ready.",
             inputSchema: startInput,
             annotations: {
                 readOnlyHint: false,
@@ -382,7 +686,9 @@ export const registerSandboxTools: Register = (server, deps) => {
                     throw new GatewayError("invalid", e.message + keep);
                 }
                 const budget = new Budget(deps);
+                const reserve = args.x402 ? x402PlaceReserveMs : placeReserveMs;
                 let request: OrderRequest;
+                let plan: StartPlan | null = null;
                 if (retried) {
                     // The order holds its own terms, so the price is not asked again
                     request = {
@@ -390,56 +696,90 @@ export const registerSandboxTools: Register = (server, deps) => {
                         ...(key ? { idempotencyKey: key } : {}),
                     };
                 } else {
+                    const terms = args.x402
+                        ? await startTerms(deps, claims, budget, payment)
+                        : null;
                     const pkg = quoted(
                         await priceForStart(deps, args.packageId, claims, () =>
-                            budget.ms(15_000, placeReserveMs),
+                            budget.ms(15_000, reserve),
                         ),
                     );
-                    const priced = Number.parseFloat(args.confirmPriceUsd.replace(/^\$/, ""));
-                    if (
-                        !Number.isFinite(priced) ||
-                        Math.abs(priced * 1e6 - pkg.priceMicros) > 0.5
-                    ) {
-                        throw new GatewayError(
-                            "invalid",
-                            `${args.packageId} costs ${usd(pkg.priceMicros)}, tell the user that ` +
-                                "price and pass it as confirmPriceUsd",
+                    if (args.x402 && terms) {
+                        plan = await planStart(
+                            deps,
+                            args.x402,
+                            args.confirmPriceUsd,
+                            pkg,
+                            terms,
+                            budget,
                         );
+                    } else {
+                        const priced = Number.parseFloat(args.confirmPriceUsd.replace(/^\$/, ""));
+                        if (
+                            !Number.isFinite(priced) ||
+                            Math.abs(priced * 1e6 - pkg.priceMicros) > 0.5
+                        ) {
+                            throw new GatewayError(
+                                "invalid",
+                                `${args.packageId} costs ${usd(pkg.priceMicros)}, tell the user ` +
+                                    "that price and pass it as confirmPriceUsd",
+                            );
+                        }
                     }
-                    if (budget.left() < placeReserveMs + 5_000) {
+                    if (budget.left() < reserve + 5_000) {
                         throw new GatewayError(
                             "timeout",
                             "start: Bugnet answered slowly, so nothing was charged. Calling " +
                                 "bugnet_start again starts it",
                         );
                     }
+                    const named = [`Bugnet sandbox ${describeSize(pkg)}`, `${pkg.minutes} min`];
+                    if (plan) {
+                        const fee = plan.terms.sessionFeeMicros;
+                        named.push(allowanceDescription(plan.allowance, fee, plan.pins));
+                    }
                     // A claim never goes with a payment, which Payments settles before the claim
                     request = {
                         kind: "start",
                         packageId: pkg.id,
-                        amountMicros: pkg.priceMicros,
-                        description: `Bugnet sandbox ${describeSize(pkg)}, ${pkg.minutes} min`,
+                        amountMicros: plan ? plan.total : pkg.priceMicros,
+                        description: named.join(", "),
+                        ...(plan
+                            ? {
+                                  allowanceMicros: plan.allowance,
+                                  feeMicros: plan.terms.sessionFeeMicros,
+                                  x402: orderSetup(plan.pins, [], plan.spend),
+                              }
+                            : {}),
                         ...(args.orderId ? { orderId: args.orderId } : {}),
                         ...(payment !== undefined ? { payment } : {}),
                         ...(key ? { idempotencyKey: key } : {}),
                     };
                 }
-                let order = await deps.payments.order(
-                    request,
-                    budget.signal(30_000, placeReserveMs),
-                );
                 let byClaim = retried?.claim !== undefined;
+                const ask = async (req: OrderRequest): Promise<OrderResult> => {
+                    try {
+                        return await deps.payments.order(req, budget.signal(30_000, reserve));
+                    } catch (e) {
+                        if (!args.x402) throw e;
+                        // A payment may have moved, so the answer names the order
+                        if (retried) {
+                            const w = byClaim ? { claim: args.claim as string } : { payment: true };
+                            throw paidRetryUnreachable("start", startTool, retried.orderId, w);
+                        }
+                        if (payment === undefined) throw x402Fail("unreachable", "start");
+                        throw paymentUnconfirmed("start", startTool, paymentMemo(payment));
+                    }
+                };
+                let order = await ask(request);
                 if (claimAsked(order, args, payment)) {
                     // Asking with the claim alone moves no money
-                    order = await deps.payments.order(
-                        {
-                            orderId: args.orderId,
-                            claim: args.claim,
-                            ...(key ? { idempotencyKey: key } : {}),
-                        },
-                        budget.signal(30_000, placeReserveMs),
-                    );
                     byClaim = true;
+                    order = await ask({
+                        orderId: args.orderId,
+                        claim: args.claim,
+                        ...(key ? { idempotencyKey: key } : {}),
+                    });
                 }
                 if (order.status === "payment_required") {
                     return paymentRequiredResult(order, {
@@ -450,6 +790,9 @@ export const registerSandboxTools: Register = (server, deps) => {
                     });
                 }
                 if (order.status === "refused") {
+                    if (plan) throw startRefusal(order, plan, args, payment);
+                    const paid = retried ? paidStartRefusal(order, retried.orderId) : null;
+                    if (paid) throw paid;
                     throw refusalError(order, "start", "bugnet_start", {
                         ...(args.orderId ? { sentOrderId: args.orderId } : {}),
                         paymentSent: payment !== undefined,

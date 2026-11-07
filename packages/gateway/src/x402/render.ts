@@ -621,7 +621,7 @@ export function paymentsRefusal(
 }
 
 export function paidRetryUnreachable(
-    what: "x402" | "redeem",
+    what: "x402" | "redeem" | "start",
     tool: OrderTool,
     orderId: string,
     w: RetryWith,
@@ -632,6 +632,39 @@ export function paidRetryUnreachable(
         "unavailable",
         null,
         { orderId },
+    );
+}
+
+// A payment may have moved, so the answer names its order and never says nothing was charged
+export function paymentUnconfirmed(
+    what: "x402" | "start",
+    tool: OrderTool,
+    orderId: string | null,
+): GatewayError {
+    if (orderId !== null) return paidRetryUnreachable(what, tool, orderId, { payment: true });
+    return x402Error(
+        `${what}: the payment was sent, but Bugnet could not confirm it. Call ${tool} again with ` +
+            "the same arguments and payment in a minute, and do not pay again",
+        "unavailable",
+    );
+}
+
+export const startNeedsSecretsText =
+    "start: x402 needs a sandbox with the secrets need. Quote again with needs " +
+    '["secrets"] and start from that quote. Nothing was charged';
+
+export function startTotalText(
+    packageId: string,
+    priceMicros: number,
+    allowanceMicros: number,
+    terms: X402Terms,
+): string {
+    const fee = terms.sessionFeeMicros;
+    return (
+        `start: ${packageId} costs ${usd(priceMicros)}, and with the ${usd(allowanceMicros)} ` +
+        `allowance and the one-time ${usd(fee)} fee the total is ` +
+        `${usd(priceMicros + fee + allowanceMicros)}. Tell the user that total and pass it as ` +
+        "confirmPriceUsd"
     );
 }
 

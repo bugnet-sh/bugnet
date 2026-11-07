@@ -34,8 +34,8 @@ import {
     notAllowanceOrder,
     otherSandboxOrder,
     paidRetryUnreachable,
+    paymentUnconfirmed,
     paymentsRefusal,
-    x402Error,
     x402Fail,
     x402Lines,
     type RefusalContext,
@@ -175,18 +175,6 @@ export function configureRequestId(ctx: ServerContext): string {
 
 const budgetTool = "bugnet_x402_budget";
 
-// A payment may have moved, so the answer names its order and never says nothing was charged
-function paymentUnconfirmed(orderId: string | null): GatewayError {
-    if (orderId !== null) {
-        return paidRetryUnreachable("x402", budgetTool, orderId, { payment: true });
-    }
-    return x402Error(
-        "x402: the payment was sent, but Bugnet could not confirm it. Call bugnet_x402_budget " +
-            "again with the same arguments and payment in a minute, and do not pay again",
-        "unavailable",
-    );
-}
-
 // A paid answer of another kind or for another handle never enables anything on this one
 function paidAllowance(order: PaidOrder | PaidAllowanceOrder, h: string): PaidAllowanceOrder {
     if (order.kind !== "allowance") throw notAllowanceOrder(order.orderId);
@@ -292,7 +280,7 @@ async function newOrder(c: BudgetCall): Promise<Applied | CallToolResult> {
     const { deps, args, ctx, budget, h, key, payment, amount, confirm, spend, disable } = c;
     const unreachable = () =>
         payment !== undefined
-            ? paymentUnconfirmed(paymentMemo(payment))
+            ? paymentUnconfirmed("x402", budgetTool, paymentMemo(payment))
             : x402Fail("unreachable", "x402");
     const terms = await readTerms(deps, budget.signal(3_000));
     if (terms === null) throw unreachable();
@@ -433,7 +421,7 @@ async function newOrder(c: BudgetCall): Promise<Applied | CallToolResult> {
         }
         if (order.status === "refused" && order.reason === "router_unavailable") {
             throw payment !== undefined
-                ? paymentUnconfirmed(order.orderId ?? paymentMemo(payment))
+                ? paymentUnconfirmed("x402", budgetTool, order.orderId ?? paymentMemo(payment))
                 : x402Fail("unreachable", "x402");
         }
         if (order.status === "refused") throw paymentsRefusal(order, refusal);
