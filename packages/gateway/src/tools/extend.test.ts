@@ -104,6 +104,7 @@ describe("bugnet_extend", () => {
         const payments = testPayments(() => ({
             status: "payment_required",
             orderId: "ord_x",
+            payUrl: "https://pay.bugnet.sh/o/ord_x",
             paymentRequired: { x402Version: 2, accepts: [{ amount: "40000" }] },
         }));
         const deps = testDeps({ router: fakeRouter(checked), payments });

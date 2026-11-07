@@ -25,6 +25,7 @@ import {
 } from "../gen/bugnet/router/v1/router_pb.ts";
 import { silentLog } from "../log.ts";
 import { DevPayments } from "../payments/dev.ts";
+import type { OrderClaims } from "../payments/ordertoken.ts";
 import type { OrderRequest, OrderResult, Payments } from "../payments/port.ts";
 import { errorInfoType, retryInfoType, type RouterClient } from "../router.ts";
 import { buildMcpServer } from "../server.ts";
@@ -233,4 +234,10 @@ export async function callTool<S = Record<string, unknown>>(
         structured: (r.structuredContent ?? {}) as S,
         meta: r._meta,
     };
+}
+
+// The claims of a v1 order token, read without checking its signature
+export function tokenClaims(token: string): OrderClaims {
+    const segment = token.split(".")[1] ?? "";
+    return JSON.parse(Buffer.from(segment, "base64url").toString("utf8")) as OrderClaims;
 }

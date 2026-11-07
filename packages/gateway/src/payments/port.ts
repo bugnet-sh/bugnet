@@ -17,7 +17,9 @@ export interface X402PaymentRequired {
     extensions?: Record<string, unknown>;
 }
 
-export interface OrderRequest {
+export const claimPattern = /^[A-Za-z0-9_-]{43}$/;
+
+export interface OrderTerms {
     kind: OrderKind;
     packageId: string;
     amountMicros: number;
@@ -25,32 +27,91 @@ export interface OrderRequest {
     description: string;
     // Lowercase hex sha256 of the handle, extend orders only
     handleSha256?: string;
+}
+
+// A new order, or an orderId or payment retry that carries the terms
+export interface NewOrderRequest extends OrderTerms {
     // An order the client was given earlier and now retries
     orderId?: string;
     // The x402 PaymentPayload from _meta["x402/payment"], passed through untouched
     payment?: unknown;
     // Stable for one tool call across the client's retries
     idempotencyKey?: string;
+    claim?: undefined;
 }
 
-export type OrderResult =
-    | {
-          status: "payment_required";
-          orderId: string;
-          paymentRequired: X402PaymentRequired;
-          // A page or x402 resource where the order can be paid outside the MCP client
-          payUrl?: string;
-      }
-    | {
-          status: "paid";
-          orderId: string;
-          orderToken: string;
-          // The Solana address that paid
-          payer: string;
-          // Goes back to the client as _meta["x402/payment-response"]
-          paymentResponse?: unknown;
-      }
-    | { status: "refused"; orderId?: string; reason: string };
+// An orderId with its claim, each term sent is compared with the stored order
+export interface ClaimOrderRequest extends Partial<OrderTerms> {
+    orderId: string;
+    claim: string;
+    payment?: undefined;
+    idempotencyKey?: string;
+}
+
+export type OrderRequest = NewOrderRequest | ClaimOrderRequest;
+
+export const refusalReasons = [
+    "order_unknown",
+    "order_expired",
+    "order_closed",
+    "payment_malformed",
+    "payment_invalid",
+    "payment_replayed",
+    "payment_order_mismatch",
+    "payer_blocked",
+    "payer_busy",
+    "payer_rate_limited",
+    "payer_invalid",
+    "router_unavailable",
+    "rpc_unavailable",
+    "settlement_unavailable",
+    "too_many_attempts",
+    "bad_request",
+    "unauthorized",
+    "claim_mismatch",
+    "terms_mismatch",
+    "idempotency_conflict",
+    "settling",
+    "payment_late",
+    "token_expired",
+    "paid_claim_required",
+] as const;
+
+export type RefusalReason = (typeof refusalReasons)[number];
+
+export interface AwaitingPayment {
+    status: "payment_required";
+    orderId: string;
+    // Only on a create or its idempotent replay
+    claim?: string;
+    // A page or x402 resource where the order can be paid outside the MCP client
+    payUrl: string;
+    paymentRequired: X402PaymentRequired;
+}
+
+export interface PaidOrder {
+    status: "paid";
+    orderId: string;
+    orderToken: string;
+    // The Solana address that paid
+    payer: string;
+    kind: OrderKind;
+    packageId: string;
+    amountMicros: number;
+    // Extend orders only
+    handleSha256?: string;
+    // Goes back to the client as _meta["x402/payment-response"]
+    paymentResponse?: unknown;
+}
+
+export interface RefusedOrder {
+    status: "refused";
+    orderId?: string;
+    reason: RefusalReason;
+    retryAfterSeconds?: number;
+}
+
+export type OrderResult = AwaitingPayment | PaidOrder | RefusedOrder;
 
 export interface Payments {
     readonly mode: "dev" | "http";

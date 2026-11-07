@@ -210,6 +210,7 @@ describe("bugnet_start", () => {
         const payments = testPayments((req) => ({
             status: "payment_required",
             orderId: "ord_1",
+            payUrl: "https://pay.bugnet.sh/o/ord_1",
             paymentRequired: { x402Version: 2, accepts: [{ amount: String(req.amountMicros) }] },
         }));
         const { client } = await setup(startRouter({ waits: [] }), payments);
@@ -890,9 +891,17 @@ describe("bugnet_start on a router with PricePackage", () => {
                     return { placement: placement(PlacementState.PLACING) };
                 },
             }),
-            testPayments((req) => {
+            testPayments(() => {
                 clock.now += 10_000;
-                return { status: "paid", orderId: "o1", orderToken: "t", payer: "p", ...req };
+                return {
+                    status: "paid",
+                    orderId: "o1",
+                    orderToken: "t",
+                    payer: "p",
+                    kind: "start",
+                    packageId: "small-10m",
+                    amountMicros: 50_000,
+                };
             }),
         );
         deps.now = () => clock.now;

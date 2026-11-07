@@ -52,12 +52,20 @@ const startRouter: RouterImpl = {
 function x402Payments(): TestPayments {
     return testPayments((req) =>
         req.payment === undefined
-            ? { status: "payment_required", orderId: "o1", paymentRequired: required }
+            ? {
+                  status: "payment_required",
+                  orderId: "o1",
+                  payUrl: "https://pay.bugnet.sh/o/o1",
+                  paymentRequired: required,
+              }
             : {
                   status: "paid",
                   orderId: "o1",
                   orderToken: "order-token",
                   payer: "Payer1",
+                  kind: "start",
+                  packageId: "small-10m",
+                  amountMicros: 50_000,
                   paymentResponse: { success: true },
               },
     );
