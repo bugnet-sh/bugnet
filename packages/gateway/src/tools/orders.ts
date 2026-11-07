@@ -130,8 +130,12 @@ function spentStep(reason: string, id: string | undefined, tool: OrderTool): str
         `Start a new order with ${paid} and no orderId, ` + "once the user agrees to its price";
     switch (reason) {
         case "order_expired":
-        case "order_unknown":
             return `${order} can no longer be paid. ${fresh}`;
+        case "order_unknown":
+            return (
+                "Check that the orderId was copied exactly from the payment step. If it was, " +
+                `${order.toLowerCase()} can no longer be paid. ${fresh}`
+            );
         case "payment_late":
             return (
                 `${order} expired before its payment landed, so that payment is refunded ` +

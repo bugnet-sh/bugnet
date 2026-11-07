@@ -210,6 +210,8 @@ describe("refusalError", () => {
     it("gives a spent order's refusal a next step", () => {
         const fresh =
             "Start a new order with bugnet_start and no orderId, once the user agrees to its price";
+        const check =
+            "Check that the orderId was copied exactly from the payment step. If it was, ";
         const words = (reason: RefusalReason, tool: OrderTool = "bugnet_start") => {
             const e = refusalError(refused(reason), "start", tool);
             return [e.kind, e.message, e.fields];
@@ -220,10 +222,10 @@ describe("refusalError", () => {
             { orderId: "ord_1", refusal: "order_expired" },
         ]);
         expect(words("order_unknown")[1]).toBe(
-            `payment refused: order_unknown. Order ord_1 can no longer be paid. ${fresh}`,
+            `payment refused: order_unknown. ${check}order ord_1 can no longer be paid. ${fresh}`,
         );
         expect(words("order_unknown", "bugnet_redeem")[1]).toBe(
-            "payment refused: order_unknown. Order ord_1 can no longer be paid. Start a new " +
+            `payment refused: order_unknown. ${check}order ord_1 can no longer be paid. Start a new ` +
                 "order with bugnet_start or bugnet_extend and no orderId, once the user agrees " +
                 "to its price",
         );
@@ -247,7 +249,7 @@ describe("refusalError", () => {
             "bugnet_start",
         );
         expect(none.message).toBe(
-            `payment refused: order_unknown. This order can no longer be paid. ${fresh}`,
+            `payment refused: order_unknown. ${check}this order can no longer be paid. ${fresh}`,
         );
     });
 
