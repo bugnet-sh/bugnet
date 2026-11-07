@@ -21,18 +21,17 @@ import {
     PlacementSchema,
     PlacementState,
     ResourcesSchema,
+    SandboxRouterService,
     X402RefusalSchema,
     X402ServiceInfoSchema,
-    type X402ServiceState,
-    SandboxRouterService,
     type PackageOption,
     type Placement,
     type Resources,
     type X402Refusal,
     type X402ServiceInfo,
+    type X402ServiceState,
 } from "../gen/bugnet/router/v1/router_pb.ts";
 import { silentLog, type Log } from "../log.ts";
-import type { ServiceSpecInit } from "../x402/router.ts";
 import { DevPayments, devTerms } from "../payments/dev.ts";
 export { DevPayments, type DevPaymentsOptions } from "../payments/dev.ts";
 import type { OrderClaims } from "../payments/ordertoken.ts";
@@ -51,6 +50,7 @@ import { errorInfoType, retryInfoType, type RouterClient } from "../router.ts";
 import { buildMcpServer } from "../server.ts";
 import type { Deps, Register } from "../tools/common.ts";
 import { base58Encode } from "../x402/lines.ts";
+import type { ServiceSpecInit } from "../x402/router.ts";
 
 export const testNow = Date.parse("2026-11-05T12:00:00Z");
 export const testHandle = "sbx_abcdefghijklmnopqrstuvwxyz";

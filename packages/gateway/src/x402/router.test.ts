@@ -2,8 +2,8 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import type { ServerContext } from "@modelcontextprotocol/server";
 import { describe, expect, it } from "vitest";
 import { X402ServiceState } from "../gen/bugnet/router/v1/router_pb.ts";
-import type { X402Account, X402AccountService } from "../payments/port.ts";
-import { GatewayError, notOpenText, reasonOf } from "../router.ts";
+import type { X402Account, X402AccountService, X402Listed } from "../payments/port.ts";
+import { fromRouter, GatewayError, notOpenText, reasonOf } from "../router.ts";
 import { failure, hashKey } from "../tools/common.ts";
 import {
     fakeRouter,
@@ -16,7 +16,6 @@ import {
     x402Refusal,
 } from "../testing/harness.ts";
 import { parseServiceLine, type ServiceLineParts } from "./lines.ts";
-import type { X402Listed } from "../payments/port.ts";
 import {
     checkServices,
     enableRequestId,
@@ -274,6 +273,17 @@ describe("x402RouterError", () => {
     ])("maps %s before payment", (reason, code, kind, metadata, text) => {
         const e = x402RouterError(refused(code, reason, metadata), "x402", hosts, 5);
         expect(e).toEqual(expect.objectContaining({ kind, message: text, reason }));
+    });
+
+    it.each([
+        ["X402_DISABLED", Code.Internal],
+        ["FEATURE_UNAVAILABLE", Code.NotFound],
+        ["NOT_READY", Code.Internal],
+        ["TOO_MANY_SERVICES", Code.FailedPrecondition],
+    ])("takes %s only under its own code", (reason, code) => {
+        const e = x402RouterError(refused(code, reason), "x402", hosts, 5);
+        expect(e.message).not.toMatch(/ended|switched off|cannot use x402|at most/);
+        expect(e.message).toBe(fromRouter(refused(code, reason), "x402").message);
     });
 
     it("takes the service cap from the terms and the prefix from the caller", () => {

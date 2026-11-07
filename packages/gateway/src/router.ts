@@ -555,6 +555,11 @@ export function routerText(text: string): string {
         .slice(0, 200);
 }
 
+// Only a router code reaches the model, never free text
+export function reasonCode(reason: string): string {
+    return /^[A-Z0-9_]{1,64}$/.test(reason) ? reason : "UNKNOWN";
+}
+
 export function safeMessage(err: ConnectError): string {
     return routerText(err.rawMessage) || "refused";
 }

@@ -1,7 +1,7 @@
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { SecretState, type SecretInfo } from "../gen/bugnet/router/v1/router_pb.ts";
-import { GatewayError, fromRouter } from "../router.ts";
+import { GatewayError, fromRouter, reasonCode } from "../router.ts";
 import { cleanText } from "../sanitize.ts";
 import {
     failure,
@@ -59,11 +59,6 @@ export interface SecretView {
     state: string;
     failureReason?: string;
     updatedAt: string | null;
-}
-
-// Router codes only, so free text from anywhere else never reaches the model
-function reasonCode(reason: string): string {
-    return /^[A-Z0-9_]{1,64}$/.test(reason) ? reason : "UNKNOWN";
 }
 
 export function secretView(s: SecretInfo): SecretView {

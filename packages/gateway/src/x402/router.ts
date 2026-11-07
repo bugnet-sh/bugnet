@@ -1,4 +1,5 @@
 import type { MessageInitShape } from "@bufbuild/protobuf";
+import { Code, ConnectError } from "@connectrpc/connect";
 import type { ServerContext } from "@modelcontextprotocol/server";
 import {
     X402ServiceState,
@@ -11,11 +12,11 @@ import {
     errorMetadata,
     fromRouter,
     GatewayError,
+    reasonCode,
     reasonOf,
     waitMargin,
     x402OffText,
 } from "../router.ts";
-import { ConnectError } from "@connectrpc/connect";
 import { hashKey, idempotencyKey, type Deps } from "../tools/common.ts";
 import { serviceIdPattern, type ServiceLineParts } from "./lines.ts";
 
@@ -85,20 +86,15 @@ export const failureWords: Readonly<Record<string, string>> = {
     HOST_BLOCKED: "Bugnet blocked this host, so calls to it are neither sent nor paid",
 };
 
-// Free text from a router never reaches the model
-function code(text: string): string {
-    return /^[A-Z0-9_]{1,64}$/.test(text) ? text : "UNKNOWN";
-}
-
 export function routerReasonText(reason: string): string {
-    const c = code(reason);
+    const c = reasonCode(reason);
     return Object.hasOwn(routerReasonWords, c)
         ? (routerReasonWords[c] as string)
         : `Bugnet's rule ${c}`;
 }
 
 export function failureText(failure: string): string {
-    const c = code(failure);
+    const c = reasonCode(failure);
     return Object.hasOwn(failureWords, c)
         ? (failureWords[c] as string)
         : `the setup failed (${c}). Send the same service line with amountUsd 0 to try again`;
@@ -135,7 +131,8 @@ export const routerRows = {
         `${what}: this sandbox cannot use x402 services. A sandbox started from a quote with ` +
         'needs ["secrets"] can, and the other Bugnet tools work here as usual',
     ended: (what: X402What) =>
-        `${what}: this sandbox has ended and everything in it was deleted. Quote and start a new one`,
+        `${what}: this sandbox has ended and everything in it was deleted. ` +
+        "Quote and start a new one",
     tooManyServices: (what: X402What, maxServices: number) =>
         `${what}: a sandbox takes at most ${maxServices} services. Disable one first, ` +
         "bugnet_status lists their ids",
@@ -144,6 +141,14 @@ export const routerRows = {
             ? `${what}: ${hosts.join(", ")} cannot be enabled (${words}). Nothing was charged`
             : `${what}: Bugnet cannot make this change (${words}). Nothing was charged`,
 } as const;
+
+// Spec 6.2 gives each of these reasons one Connect code
+const ownCode: Readonly<Record<string, Code>> = {
+    X402_DISABLED: Code.FailedPrecondition,
+    FEATURE_UNAVAILABLE: Code.FailedPrecondition,
+    NOT_READY: Code.FailedPrecondition,
+    TOO_MANY_SERVICES: Code.ResourceExhausted,
+};
 
 export function x402RouterError(
     err: unknown,
@@ -156,6 +161,9 @@ export function x402RouterError(
     if (reason === null || reason === "HANDLE_UNKNOWN" || reason === "RATE_LIMITED") {
         return fromRouter(err, what);
     }
+    const own = ownCode[reason];
+    if (own !== undefined && err instanceof ConnectError && own !== err.code)
+        return fromRouter(err, what);
     switch (reason) {
         case "X402_DISABLED":
             return new GatewayError("precondition", routerRows.switchedOff(what), null, reason);
