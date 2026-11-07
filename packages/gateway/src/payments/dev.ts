@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { base58Encode, solanaNetwork, urlParts, usdcAsset } from "../x402/lines.ts";
 import { orderKey, signOrderToken } from "./ordertoken.ts";
+import { orderIdPattern, paymentMemo } from "./port.ts";
 import type {
     AwaitingPayment,
     OrderRequest,
@@ -179,23 +180,41 @@ export class DevX402Ledger {
         return this.configureRefusals.shift() ?? null;
     }
 
-    private enabledAfter(
+    // The prices of the services left after the change, held ones only in the states counted
+    private pricesAfter(
         held: LedgerAccount | undefined,
         pins: X402ServicePin[],
         disable: string[],
+        counted: (state: X402ServiceState) => boolean,
     ): Map<string, number> {
         const prices = new Map<string, number>();
         for (const s of held?.services ?? []) {
-            if (s.state !== "disabled") prices.set(s.serviceId, s.maxPriceMicros);
+            if (counted(s.state)) prices.set(s.serviceId, s.maxPriceMicros);
         }
         for (const p of pins) prices.set(p.serviceId, p.maxPriceMicros);
         for (const id of disable) prices.delete(id);
         return prices;
     }
 
-    private rateProblem(prices: Map<string, number>, limit: number): boolean {
+    // maxServices counts every service not disabled, unreliable ones included
+    private servicesAfter(
+        held: LedgerAccount | undefined,
+        pins: X402ServicePin[],
+        disable: string[],
+    ): number {
+        return this.pricesAfter(held, pins, disable, (s) => s !== "disabled").size;
+    }
+
+    // Spec 7.15 holds the minute limit against the enabled services' max only
+    private rateProblem(
+        held: LedgerAccount | undefined,
+        pins: X402ServicePin[],
+        disable: string[],
+        limit: number,
+    ): boolean {
         const t = this.terms;
         if (limit < t.minSpendPerMinuteMicros || limit > t.maxSpendPerMinuteMicros) return true;
+        const prices = this.pricesAfter(held, pins, disable, (s) => s === "enabled");
         for (const price of prices.values()) if (price > limit) return true;
         return false;
     }
@@ -214,14 +233,15 @@ export class DevX402Ledger {
         if (held && held.state !== "open") return refuse("sandbox_ended");
         const pins = req.x402?.services ?? [];
         const disable = req.x402?.disable ?? [];
-        const prices = this.enabledAfter(held, pins, disable);
-        if (prices.size > t.maxServices) return refuse("too_many_services");
+        if (this.servicesAfter(held, pins, disable) > t.maxServices) {
+            return refuse("too_many_services");
+        }
         if (pins.some((p) => p.maxPriceMicros > t.maxPricePerCallMicros)) {
             return refuse("price_above_ceiling");
         }
         const limit =
             req.x402?.spendPerMinuteMicros ?? held?.spendPerMinute ?? t.defaultSpendPerMinuteMicros;
-        if (this.rateProblem(prices, limit)) return refuse("spend_rate_out_of_range");
+        if (this.rateProblem(held, pins, disable, limit)) return refuse("spend_rate_out_of_range");
         const fresh = pins.filter((p) => {
             const h = held?.services.find((s) => s.serviceId === p.serviceId);
             return (
@@ -365,13 +385,15 @@ export class DevX402Ledger {
         if (pins.some((p) => p.maxPriceMicros > this.terms.maxPricePerCallMicros)) {
             return refuse("price_above_ceiling");
         }
-        const prices = this.enabledAfter(a, pins, setup.disable ?? []);
-        if (prices.size > this.terms.maxServices) return refuse("too_many_services");
+        const disable = setup.disable ?? [];
+        if (this.servicesAfter(a, pins, disable) > this.terms.maxServices) {
+            return refuse("too_many_services");
+        }
         const limit =
             setup.spendPerMinuteMicros ??
             a.spendPerMinute ??
             this.terms.defaultSpendPerMinuteMicros;
-        if (this.rateProblem(prices, limit)) return refuse("spend_rate_out_of_range");
+        if (this.rateProblem(a, pins, disable, limit)) return refuse("spend_rate_out_of_range");
         this.apply(a, setup);
         const answer: X402ConfigureResult = { status: "ok", x402: this.view(a) };
         this.configured.set(requestId, { request, answer });
@@ -393,7 +415,6 @@ export interface DevPublicAnswer {
     body: Record<string, unknown>;
 }
 
-const paymentsIdPattern = /^ord_[a-z2-7]{26}$/;
 const idAlphabet = "abcdefghijklmnopqrstuvwxyz234567";
 const minIdempotencyKeyLength = 16;
 const solanaMainnet = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
@@ -419,12 +440,6 @@ type SettledAllowance = Pick<PaidAllowanceOrder, "allowanceMicros" | "firstUse" 
 
 const carriesAllowance = (t: Partial<OrderTerms>): boolean =>
     t.kind === "allowance" || (t.kind === "start" && (t.allowanceMicros ?? 0) > 0);
-
-function memoOf(payment: unknown): string | null {
-    const accepted = (payment as { accepted?: { extra?: { memo?: unknown } } } | null)?.accepted;
-    const memo = accepted?.extra?.memo;
-    return typeof memo === "string" && paymentsIdPattern.test(memo) ? memo : null;
-}
 
 function newOrderId(): string {
     let id = "ord_";
@@ -597,7 +612,7 @@ export class DevPayments implements Payments {
     private unknown(orderId: string): RefusedOrder {
         return {
             status: "refused",
-            ...(paymentsIdPattern.test(orderId) ? { orderId } : {}),
+            ...(orderIdPattern.test(orderId) ? { orderId } : {}),
             reason: "order_unknown",
         };
     }
@@ -637,7 +652,7 @@ export class DevPayments implements Payments {
 
     // Follows Payments' handleOrderRequest, with the pay link standing in for the chain
     private requireOrder(req: OrderRequest): OrderResult {
-        const memo = memoOf(req.payment);
+        const memo = paymentMemo(req.payment);
         const keyed =
             req.idempotencyKey !== undefined && req.idempotencyKey.length >= minIdempotencyKeyLength
                 ? req.idempotencyKey

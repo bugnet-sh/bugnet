@@ -246,6 +246,30 @@ describe("DevPayments x402 ledger", () => {
         );
     });
 
+    it("holds the minute limit against enabled services only, and counts unreliable ones in maxServices", async () => {
+        const costly = pin({ maxPriceMicros: 400_000 });
+        expect((await dev.order(allowance({ x402: { services: [costly] } }))).status).toBe("paid");
+        const slow = { spendPerMinuteMicros: 300_000 };
+        expect(await dev.x402Configure(h, slow, "req_rate_enabled_0001", signal())).toEqual({
+            status: "refused",
+            reason: "spend_rate_out_of_range",
+        });
+        expect(await dev.order(topUp("toolu_allowance_0002", { x402: slow }))).toEqual({
+            status: "refused",
+            reason: "spend_rate_out_of_range",
+        });
+        dev.x402.patch(h, { serviceStates: { [costly.serviceId]: "unreliable" } });
+        const order = await dev.order(topUp("toolu_allowance_0003", { x402: slow }));
+        expect(order.status).toBe("paid");
+        const set = await dev.x402Configure(h, slow, "req_rate_unreliable_01", signal());
+        expect(set.status).toBe("ok");
+        const four = { x402: { services: [other(1), other(2), other(3), other(4)] } };
+        expect((await dev.order(topUp("toolu_allowance_0004", four))).status).toBe("paid");
+        expect(
+            await dev.order(topUp("toolu_allowance_0005", { x402: { services: [other(5)] } })),
+        ).toEqual({ status: "refused", reason: "too_many_services" });
+    });
+
     it("refuses an allowance past the ceiling at create, without refundPending", async () => {
         const first = await dev.order(
             allowance({ allowanceMicros: 4_000_000, amountMicros: 4_003_000 }),

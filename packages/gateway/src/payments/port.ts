@@ -118,6 +118,15 @@ export interface X402PaymentRequired {
 }
 
 export const claimPattern = /^[A-Za-z0-9_-]{43}$/;
+export const orderIdPattern = /^ord_[a-z2-7]{26}$/;
+
+// Spec 7.15 binds a payment to its order by the memo, read without trusting the payload's shape
+export function paymentMemo(payment: unknown): string | null {
+    const field = (v: unknown, key: string): unknown =>
+        typeof v === "object" && v !== null ? (v as Record<string, unknown>)[key] : undefined;
+    const memo = field(field(field(payment, "accepted"), "extra"), "memo");
+    return typeof memo === "string" && orderIdPattern.test(memo) ? memo : null;
+}
 
 export interface OrderTerms {
     kind: OrderKind;
