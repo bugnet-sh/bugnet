@@ -10,18 +10,28 @@ import { appendFileSync } from "node:fs";
 import process from "node:process";
 import { createInterface } from "node:readline";
 
-const maxUsd = Number(process.env.BUGNET_E2E_MAX_USD ?? "0.5");
+const limitText = process.env.BUGNET_E2E_MAX_USD ?? "0.5";
 const log = process.env.BUGNET_E2E_APPROVALS;
 
+// Whole micros, so a price is never compared as a float
+function microsOf(text) {
+    const m = /^\$?(\d{1,6})(?:\.(\d{1,6}))?$/.exec(String(text).trim());
+    return m ? Number(m[1]) * 1_000_000 + Number((m[2] ?? "").padEnd(6, "0")) : null;
+}
+
+const maxMicros = microsOf(limitText) ?? 0;
+const bugnetTool =
+    /^mcp__(?:bugnet|plugin_bugnet_sandbox|plugin_bugnet-wallet_sandbox)__bugnet_[a-z0-9_]+$/;
+
 function decide(toolName, input) {
-    if (!/^mcp__bugnet__bugnet_[a-z_]+$/.test(toolName)) {
+    if (!bugnetTool.test(toolName)) {
         return { behavior: "deny", message: "Only Bugnet tools are allowed in this run" };
     }
     const price = input?.confirmPriceUsd;
     if (price !== undefined) {
-        const usd = Number.parseFloat(String(price).replace(/^\$/, ""));
-        if (!Number.isFinite(usd) || usd > maxUsd) {
-            return { behavior: "deny", message: `The user agreed to at most $${maxUsd}` };
+        const micros = microsOf(price);
+        if (micros === null || micros > maxMicros) {
+            return { behavior: "deny", message: `The user agreed to at most $${limitText}` };
         }
     }
     return { behavior: "allow", updatedInput: input ?? {} };

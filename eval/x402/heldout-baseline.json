@@ -1,0 +1,2275 @@
+{
+    "source": "2026-11-06T15-19-22-950Z-test-sonnet-final2-heldout.json",
+    "split": "test",
+    "model": "sonnet",
+    "results": [
+        {
+            "id": "untrusted-code-test-015",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-036",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-015",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-015",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-036",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-046",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-046",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-036",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-007",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-046",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-007",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-007",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-018",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-018",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-018",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-030",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": true
+        },
+        {
+            "id": "everyday-test-030",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-030",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-052",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-052",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-052",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-056",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-056",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-056",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-014",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": true
+        },
+        {
+            "id": "everyday-test-014",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-023",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-014",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-023",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-023",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-037",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-037",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-037",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-033",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-006",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-033",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-033",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-031",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-006",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-031",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-006",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-031",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-027",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-027",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-027",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-029",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-029",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-029",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-053",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-053",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-053",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-054",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-054",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-054",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-022",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-022",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-020",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-022",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-006",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-006",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-020",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-020",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": true
+        },
+        {
+            "id": "everyday-test-048",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-006",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-048",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-048",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-041",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-041",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-045",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-041",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-045",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-045",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-058",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-058",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-058",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-010",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-010",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-010",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-011",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-012",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-012",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-012",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-011",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-055",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-011",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-055",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-049",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-049",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-049",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-055",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-031",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-031",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-035",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-035",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-031",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-035",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-044",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-044",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-044",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-025",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-025",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-025",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-017",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-019",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-017",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-019",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-017",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-049",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-049",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-019",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-049",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-011",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-011",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-039",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-011",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-039",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-050",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-039",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-050",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-050",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-001",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-001",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-001",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-008",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-008",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-024",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-024",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-008",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-024",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-046",
+            "arm": "baseline",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-046",
+            "arm": "mcp",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-055",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-046",
+            "arm": "plugin",
+            "label": "suggest",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-055",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-027",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-055",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-027",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-027",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-001",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-001",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-001",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-010",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-010",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-010",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-024",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-024",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-005",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-024",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-005",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-005",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-042",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-042",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-049",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-042",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-049",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-049",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-044",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-044",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-044",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-032",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-032",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-032",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-054",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-054",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-054",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-059",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-059",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-007",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-007",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-059",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-012",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-007",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-012",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-012",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-014",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-014",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-032",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-014",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-032",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-032",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-040",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-040",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-040",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-016",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-016",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-038",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-016",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-038",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-008",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-008",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-038",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-008",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-019",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-019",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-019",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-047",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-047",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-051",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-051",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-047",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-020",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-051",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-020",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-020",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-036",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "untrusted-code-test-036",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-036",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-010",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-010",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-010",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-048",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-048",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-048",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-016",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-016",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-016",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-037",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-040",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-037",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-040",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-037",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-040",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-050",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-018",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-018",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-018",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-050",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-050",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-047",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-047",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-059",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-059",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-059",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-035",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-047",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-035",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-004",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-035",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-004",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-004",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-015",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-015",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-060",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-015",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-060",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-060",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-026",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-025",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-025",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-025",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-026",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-026",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-009",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-009",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-041",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-009",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-041",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-041",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-042",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-042",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-042",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-003",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-003",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-003",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-032",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-032",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-050",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-050",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-050",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-012",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-012",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-012",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-034",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-034",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-034",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-009",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-009",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-032",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-009",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-026",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-026",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-026",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-026",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-026",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-026",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-039",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-039",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-039",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-052",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-057",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-057",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-057",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-052",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-052",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-038",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "ai-models-test-038",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-060",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-038",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-060",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-060",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-030",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-030",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-030",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-030",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-030",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-030",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-028",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-028",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-045",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-028",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-045",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-045",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-046",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-046",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-057",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-046",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-057",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "untrusted-code-test-057",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-008",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": true,
+            "told": true
+        },
+        {
+            "id": "everyday-test-036",
+            "arm": "baseline",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-008",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "ai-models-test-008",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-036",
+            "arm": "mcp",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        },
+        {
+            "id": "everyday-test-036",
+            "arm": "plugin",
+            "label": "no",
+            "toldBeforeRun": false,
+            "told": false
+        }
+    ]
+}

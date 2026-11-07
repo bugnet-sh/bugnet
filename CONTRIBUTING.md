@@ -24,6 +24,7 @@ out, and what a pull request needs. What Bugnet is and how people install it is 
 | `integrations`                    | Rules for clients without hooks (Cursor, Codex, `AGENTS.md`)                                           |
 | `eval/intent`                     | Labelled prompts and commands, dev and held-out test splits, and the offline judge                     |
 | `eval/agent`                      | The live judge: real Claude Code sessions with and without Bugnet                                      |
+| `eval/x402`                       | The x402 eval: 20-repo harness, user simulator, transcript judge and the held-out interval check       |
 | `config`                          | `example.toml` with every setting, `dev.toml` for a local run                                          |
 | `deploy`                          | The systemd units the server runs the gateway and its daily x402 crawl with                            |
 
@@ -138,6 +139,45 @@ The header of [`eval/agent/run.ts`](eval/agent/run.ts) lists every flag.
 `packages/gateway/src/readme.test.ts` checks that the README's tools table names every tool the
 gateway serves, once each, and marks as paid exactly the tools whose title says paid. Adding,
 removing or renaming a tool means updating that table in the same pull request.
+
+### The x402 eval
+
+`eval/x402/run.ts` runs Claude Code with the `bugnet-wallet` plugin on the 20 repos of
+`eval/agent/x402-repos.json`, each a demo that needs an API key the session does not have, and
+judges every run (spec 11.4). It needs the live stack with x402 switched on, and a `pay`
+account that holds the eval's $30 USDC with `auth_required: false` on that account only. It
+refuses to start unless `BUGNET_LIVE_X402=1` is set, and names every variable that is missing:
+
+```sh
+node_modules/.bin/tsx eval/x402/run.ts --gateway-url http://127.0.0.1:8787/mcp
+node_modules/.bin/tsx eval/x402/run.ts --slice decline --gateway-url http://127.0.0.1:8787/mcp
+node_modules/.bin/tsx eval/x402/run.ts --slice readme-url --readme-url URL --gateway-url http://127.0.0.1:8787/mcp
+node_modules/.bin/tsx eval/x402/run.ts --slice s3 --gateway-config FILE
+```
+
+The `s3` slice starts its own gateway per run from `FILE`, a copy of `config/dev.toml` with
+`[x402] enabled = true`, so each run pays as a new fake payer. The harness stops before a run
+that could take the eval past `--budget-usd` (30), counting every approved payment less what the
+run's status shows coming back, across runs, in `eval/agent/results/x402-spend.json`. About 70
+runs each refund near $1.00, more than Payments' $50 daily refund cap, so spread the runs over
+two UTC days or raise `refund_daily_cap_micros` for the window and lower it after. A repo runs
+only once a person has run its command once with a real key and set its `checkedAt`;
+`eval/x402/select.ts` lists candidates with the gateway's `GITHUB_TOKEN` in the environment.
+
+The held-out rerun (spec 11.5) runs the unchanged judge on the whole held-out set, all 44
+suggest and 64 no prompts (the default sample is 20 of each), for the mcp and plugin arms only,
+216 runs, against a gateway with `[x402] enabled = true`, then compares it with the 2026-11-06
+baseline, whose rows are frozen in `eval/x402/heldout-baseline.json`. The two arms cost about
+$12 of Claude usage on 2026-11-06:
+
+```sh
+node_modules/.bin/tsx eval/agent/run.ts --split test --arms mcp,plugin --suggest 44 --no 64 --budget 25 --gateway-url http://127.0.0.1:8787/mcp --tag x402-heldout
+node_modules/.bin/tsx eval/x402/heldout.ts --rerun RESULTS.json
+```
+
+It exits 1 when an arm ran fewer prompts than the baseline, an arm's told-before-run share fell
+by more than the 95% interval of the difference, or told(no) is above 0. x402 stays off until
+it passes.
 
 ## Tools
 
