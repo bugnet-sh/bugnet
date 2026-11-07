@@ -649,6 +649,17 @@ export function paymentUnconfirmed(
     );
 }
 
+// The payment also covered the package and the fee, so the line names the allowance alone
+export function allowanceEndedText(allowanceMicros: number): string {
+    return (
+        `x402: the sandbox ended before the allowance of ${usd(allowanceMicros)} was applied, so ` +
+        "it is refunded in full to the paying wallet within 10 minutes"
+    );
+}
+
+export const servicesApplyingText =
+    "x402: the services are being applied. Call bugnet_status with the handle to see them";
+
 export const startNeedsSecretsText =
     "start: x402 needs a sandbox with the secrets need. Quote again with needs " +
     '["secrets"] and start from that quote. Nothing was charged';

@@ -93,6 +93,7 @@ describe("claimInput and paidRetry", () => {
     it("names bugnet_x402_budget for a paid allowance order", () => {
         const e = allowanceOrderError(allowancePaid, "start", { claim, handle: true });
         expect(e.kind).toBe("invalid");
+        expect(e.fields).toEqual({ orderId: "ord_a" });
         expect(e.message).toBe(
             `start: order ord_a adds x402 allowance to a sandbox, call bugnet_x402_budget with the handle, orderId "ord_a" and claim "${claim}"`,
         );

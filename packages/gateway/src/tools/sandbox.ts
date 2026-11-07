@@ -43,10 +43,12 @@ import {
     type PlannedService,
 } from "../x402/pins.ts";
 import {
+    allowanceEndedText,
     buildView,
     paidRetryUnreachable,
     paymentUnconfirmed,
     paymentsRefusal,
+    servicesApplyingText,
     startNeedsSecretsText,
     startTotalText,
     x402Fail,
@@ -88,6 +90,7 @@ import {
     paymentRequiredResult,
     refusalError,
     retryCall,
+    type PaidRetry,
 } from "./orders.ts";
 import { describeSize, limitQuotes, quoted, unavailableWords } from "./quote.ts";
 import { fetchAfterStart, sentence, sourceView, unplacedNote, type SourceView } from "./source.ts";
@@ -449,6 +452,29 @@ function startRefusal(
     });
 }
 
+// Once money may have moved the answer names the order, chosen by what the call sent
+function orderLost(
+    e: unknown,
+    args: StartArgs,
+    retried: PaidRetry | null,
+    byClaim: boolean,
+    payment: unknown,
+): unknown {
+    if (byClaim) {
+        const w = { claim: args.claim as string };
+        return paidRetryUnreachable("start", startTool, args.orderId as string, w);
+    }
+    if (retried) {
+        return paidRetryUnreachable("start", startTool, retried.orderId, { payment: true });
+    }
+    if (payment !== undefined) {
+        // With [x402] off an orderId beside a payment makes a first call for that order
+        const id = paymentMemo(payment) ?? args.orderId ?? null;
+        return paymentUnconfirmed("start", startTool, id);
+    }
+    return args.x402 ? x402Fail("unreachable", "start") : e;
+}
+
 // Spec 5.3 names no amount for a paid retry, whose confirmPriceUsd is never checked
 function paidStartRefusal(r: RefusedOrder, orderId: string): GatewayError | null {
     if (r.refundPending !== undefined) {
@@ -513,15 +539,18 @@ function startX402Part(
     order: PaidOrder,
     account: X402Account,
     e: StartEnable,
+    failed: boolean,
 ): { lines: string[]; view: X402View | null } {
     const amountMicros = order.allowanceMicros ?? 0;
-    if (e.ended) {
-        const reason = "sandbox_ended";
-        const text = x402Text.paidRefused("x402", { reason, refundPending: true, amountMicros });
-        return { lines: [`${text}.`], view: null };
-    }
+    // Spec 7.10 closes the account on a failed placement just as on an ended one
+    if (e.ended || failed) return { lines: [`${allowanceEndedText(amountMicros)}.`], view: null };
     if (e.terms === null) {
-        return { lines: [`${x402Text.paidNotEnabled("x402", { amountMicros })}.`], view: null };
+        // Only a failed or skipped EnableX402 leaves the services for bugnet_status to finish
+        const line =
+            e.infos !== null
+                ? servicesApplyingText
+                : x402Text.paidNotEnabled("x402", { amountMicros });
+        return { lines: [`${line}.`], view: null };
     }
     const view = buildView({
         account,
@@ -613,9 +642,8 @@ export async function startPaid(
         order.paymentResponse !== undefined
             ? { "x402/payment-response": order.paymentResponse }
             : undefined;
-    const x402 = account && enabled ? startX402Part(deps, order, account, enabled) : null;
-    // A sandbox that failed to start has no services to finish enabling
-    const x402Shown = x402 && p?.state !== PlacementState.FAILED ? x402.lines : [];
+    const failed = p?.state === PlacementState.FAILED;
+    const x402 = account && enabled ? startX402Part(deps, order, account, enabled, failed) : null;
     const text = [
         `Sandbox ${view.state}. handle: ${handle}`,
         ready ? `Time left: ${view.timeLeft} (deadline ${view.deadline}).` : "",
@@ -627,7 +655,7 @@ export async function startPaid(
             : "",
         view.source ? sentence(view.source.note) : "",
         sshLine(view.sshAlias),
-        ...x402Shown,
+        ...(x402?.lines ?? []),
         "Keep the handle, it is the only key to this sandbox. Commands run as root " +
             "or as a user with passwordless sudo: use $HOME, prefix system changes with sudo.",
         p?.state === PlacementState.FAILED
@@ -761,14 +789,7 @@ export const registerSandboxTools: Register = (server, deps) => {
                     try {
                         return await deps.payments.order(req, budget.signal(30_000, reserve));
                     } catch (e) {
-                        if (!args.x402) throw e;
-                        // A payment may have moved, so the answer names the order
-                        if (retried) {
-                            const w = byClaim ? { claim: args.claim as string } : { payment: true };
-                            throw paidRetryUnreachable("start", startTool, retried.orderId, w);
-                        }
-                        if (payment === undefined) throw x402Fail("unreachable", "start");
-                        throw paymentUnconfirmed("start", startTool, paymentMemo(payment));
+                        throw orderLost(e, args, retried, byClaim, payment);
                     }
                 };
                 let order = await ask(request);
@@ -818,6 +839,9 @@ export const registerSandboxTools: Register = (server, deps) => {
                     throw new GatewayError(
                         "invalid",
                         `start: order ${order.orderId} adds time to a sandbox, call ${next}`,
+                        null,
+                        null,
+                        { orderId: order.orderId },
                     );
                 }
                 const retry = byClaim

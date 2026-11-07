@@ -177,6 +177,9 @@ export function allowanceOrderError(
         "invalid",
         `${what}: order ${order.orderId} adds x402 allowance to a sandbox, call ` +
             retryCall("bugnet_x402_budget", order.orderId, w),
+        null,
+        null,
+        { orderId: order.orderId },
     );
 }
 

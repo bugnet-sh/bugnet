@@ -516,6 +516,7 @@ describe("bugnet_extend", () => {
         expect(r.text).toBe(
             `extend: order ord_a adds x402 allowance to a sandbox, call bugnet_x402_budget with the handle, orderId "ord_a" and claim "${claim}".`,
         );
+        expect(r.structured).toEqual({ message: r.text, orderId: "ord_a" });
         expect(extendCalls).toBe(0);
     });
 

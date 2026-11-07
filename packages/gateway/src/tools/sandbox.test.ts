@@ -691,6 +691,7 @@ describe("bugnet_start", () => {
         expect(r.text).toBe(
             `start: order ord_a adds x402 allowance to a sandbox, call bugnet_x402_budget with the handle, orderId "ord_a" and claim "${claim}".`,
         );
+        expect(r.structured).toEqual({ message: r.text, orderId: "ord_a" });
         expect(seen.create).toBeUndefined();
         expect(payments.abandoned).toEqual([]);
         expect(handleHash(testHandle)).toBe(allowancePaid.handleSha256);
@@ -776,6 +777,7 @@ describe("bugnet_start", () => {
             "start: order ord_e adds time to a sandbox, call bugnet_extend with the handle, " +
                 `orderId "ord_e" and claim "${claim}".`,
         );
+        expect(r.structured).toEqual({ message: r.text, orderId: "ord_e" });
         expect(created).toBe(0);
     });
 
@@ -865,6 +867,10 @@ const startUnreachable =
     "start: Bugnet could not reach its payment service, so nothing was charged. Try again in a minute.";
 const freeRetryLine =
     "x402: the allowance is paid ($1.00), but the services were not enabled yet. Call bugnet_status with the handle; it finishes enabling them at no charge.";
+const startEndedLine =
+    "x402: the sandbox ended before the allowance of $1.00 was applied, so it is refunded in full to the paying wallet within 10 minutes.";
+const appliedLine =
+    "x402: the services are being applied. Call bugnet_status with the handle to see them.";
 const memoId = `ord_${"a".repeat(26)}`;
 // The 7.15 binding names the order in the payment's memo
 const memoPayment = { x402Version: 2, accepted: { extra: { memo: memoId } } };
@@ -1290,9 +1296,7 @@ describe("bugnet_start with x402", () => {
         );
         expect(r.isError).toBe(false);
         expect(r.structured.handle).toBe(testHandle);
-        expect(r.text).toContain(
-            "x402: the sandbox ended before the payment of $1.00 was applied, so it is refunded in full to the paying wallet within 10 minutes.",
-        );
+        expect(r.text).toContain(startEndedLine);
         expect(r.text).not.toContain("bugnet_status with the handle; it finishes enabling");
         expect(r.structured).not.toHaveProperty("x402");
         // A reason sent under another code is not the router's NOT_READY
@@ -1325,7 +1329,7 @@ describe("bugnet_start with x402", () => {
         expect(r.structured).not.toHaveProperty("x402");
     });
 
-    it("leaves the x402 lines out of a start that failed and keeps the view", async () => {
+    it("says the allowance is refunded when a paid x402 start failed, with no view", async () => {
         const { client, deps } = await x402Setup({
             impl: {
                 createPlacement: () => ({
@@ -1334,39 +1338,60 @@ describe("bugnet_start with x402", () => {
                 }),
             },
         });
-        const r = await callTool<{ x402: unknown }>(
-            client,
-            "bugnet_start",
-            x402Args(withSecrets(deps)),
-        );
+        const r = await callTool(client, "bugnet_start", x402Args(withSecrets(deps)));
         expect(r.text).toMatch(/failed to start, the payment will be refunded/);
-        expect(r.text).not.toContain("x402");
-        expect(r.structured.x402).toEqual(expect.objectContaining({ paidInUsd: "$1.00" }));
+        expect(r.text).toContain(startEndedLine);
+        expect(r.text).not.toContain("x402 for this sandbox:");
+        expect(r.text).not.toContain(freeRetryLine);
+        expect(r.structured).not.toHaveProperty("x402");
     });
 
-    it("replaces the x402 lines by the free-retry line when the terms cannot be read after payment", async () => {
-        let termsDown = false;
-        const payments = testPayments(undefined, {
-            requirePayment: true,
-            x402: {
-                terms: () =>
-                    termsDown ? Promise.reject(new Error("down")) : Promise.resolve(testTerms()),
-            },
-        });
-        const { client, deps, clock } = await x402Setup({ payments });
-        const id = withSecrets(deps);
-        const { orderId, claim: paidClaim } = await paidFirst(client, payments, id);
-        clock.now += 6 * 60_000;
-        termsDown = true;
-        const r = await callTool(
-            client,
-            "bugnet_start",
-            x402Args(id, { orderId, claim: paidClaim }),
-        );
-        expect(r.isError).toBe(false);
-        expect(r.text).toContain(freeRetryLine);
-        expect(r.text).not.toContain("x402 for this sandbox:");
-        expect(r.structured).not.toHaveProperty("x402");
+    it("says the services are being applied when the terms cannot be read after EnableX402", async () => {
+        for (const enableFails of [false, true]) {
+            let termsDown = false;
+            const payments = testPayments(undefined, {
+                requirePayment: true,
+                x402: {
+                    terms: () =>
+                        termsDown
+                            ? Promise.reject(new Error("down"))
+                            : Promise.resolve(testTerms()),
+                },
+            });
+            const { client, deps, clock, seen } = await x402Setup({
+                payments,
+                ...(enableFails
+                    ? {
+                          impl: {
+                              enableX402: () => {
+                                  throw routerError(Code.Unavailable);
+                              },
+                          },
+                      }
+                    : {}),
+            });
+            const id = withSecrets(deps);
+            const { orderId, claim: paidClaim } = await paidFirst(client, payments, id);
+            clock.now += 6 * 60_000;
+            termsDown = true;
+            const r = await callTool(
+                client,
+                "bugnet_start",
+                x402Args(id, { orderId, claim: paidClaim }),
+            );
+            expect(r.isError).toBe(false);
+            expect(seen.enables).toHaveLength(enableFails ? 0 : 1);
+            // Only a failed or skipped EnableX402 leaves the services to bugnet_status
+            if (enableFails) {
+                expect(r.text).toContain(freeRetryLine);
+                expect(r.text).not.toContain(appliedLine);
+            } else {
+                expect(r.text).toContain(appliedLine);
+                expect(r.text).not.toContain(freeRetryLine);
+            }
+            expect(r.text).not.toContain("x402 for this sandbox:");
+            expect(r.structured).not.toHaveProperty("x402");
+        }
     });
 
     it("lets a paid retry skip the quote expiry, price, probes and CheckX402, and send no terms or handleSha256", async () => {
@@ -1601,6 +1626,109 @@ describe("bugnet_start with x402", () => {
             }),
         );
         expect(p.text).toBe(paidUnreachable("ord_paid", fromStep("ord_paid")));
+    });
+
+    it("names the order when Payments fails after money may have moved, without the x402 field", async () => {
+        const down = (o: { off?: boolean } = {}) =>
+            x402Setup({ ...o, payments: testPayments(() => Promise.reject(new Error("down"))) });
+        const byClaim = await down();
+        const c = await callTool(byClaim.client, "bugnet_start", {
+            ...startArgs(withSecrets(byClaim.deps)),
+            orderId: "ord_paid",
+            claim,
+        });
+        expect(c.text).toBe(
+            paidUnreachable("ord_paid", `with orderId "ord_paid" and claim "${claim}"`),
+        );
+        expect(c.structured).toEqual(expect.objectContaining({ orderId: "ord_paid" }));
+        const byPayment = await down();
+        const p = await callTool(byPayment.client, "bugnet_start", {
+            ...startArgs(withSecrets(byPayment.deps)),
+            orderId: "ord_paid",
+            payment: { x402Version: 2 },
+        });
+        expect(p.text).toBe(paidUnreachable("ord_paid", fromStep("ord_paid")));
+        expect(p.structured).toEqual(expect.objectContaining({ orderId: "ord_paid" }));
+        const memo = await down();
+        const m = await callTool(memo.client, "bugnet_start", startArgs(withSecrets(memo.deps)), {
+            meta: { "x402/payment": memoPayment },
+        });
+        expect(m.text).toBe(paidUnreachable(memoId, fromStep(memoId)));
+        expect(m.structured).toEqual(expect.objectContaining({ orderId: memoId }));
+        // With [x402] off an orderId beside a payment makes a first call, which names that order
+        const off = await down({ off: true });
+        const o = await callTool(off.client, "bugnet_start", {
+            ...startArgs(withSecrets(off.deps)),
+            orderId: "ord_paid",
+            payment: { x402Version: 2 },
+        });
+        expect(o.text).toBe(paidUnreachable("ord_paid", fromStep("ord_paid")));
+        expect(o.structured).toEqual(expect.objectContaining({ orderId: "ord_paid" }));
+        const bare = await down();
+        const b = await callTool(bare.client, "bugnet_start", startArgs(withSecrets(bare.deps)), {
+            meta: { "x402/payment": { x402Version: 2 } },
+        });
+        expect(b.text).toBe(startUnconfirmed);
+        expect(b.structured).not.toHaveProperty("orderId");
+        // No payment and no orderId moved no money, so Plan A's answer stays
+        const plain = await x402Setup({
+            payments: testPayments(() =>
+                Promise.reject(
+                    new GatewayError(
+                        "unavailable",
+                        "the payment service did not answer, try again in a minute",
+                    ),
+                ),
+            ),
+        });
+        const n = await callTool(plain.client, "bugnet_start", startArgs(withSecrets(plain.deps)));
+        expect(n.text).toBe("the payment service did not answer, try again in a minute.");
+    });
+
+    it("names the order when a retry of an x402 start without the field cannot reach Payments", async () => {
+        const payments = testPayments(undefined, { requirePayment: true });
+        const { client, deps } = await x402Setup({ payments });
+        const id = withSecrets(deps);
+        const { orderId, claim: paidClaim } = await paidFirst(client, payments, id);
+        payments.order = () => Promise.reject(new Error("down"));
+        const r = await callTool(client, "bugnet_start", {
+            ...startArgs(id, "9.99"),
+            orderId,
+            claim: paidClaim,
+        });
+        expect(r.text).toBe(
+            paidUnreachable(orderId, `with orderId "${orderId}" and claim "${paidClaim}"`),
+        );
+        expect(r.structured).toEqual(expect.objectContaining({ orderId }));
+    });
+
+    it("names the order when the claim-alone ask after a payment cannot reach Payments", async () => {
+        for (const field of [false, true]) {
+            let asks = 0;
+            const s = await x402Setup({
+                payments: testPayments(() => {
+                    asks += 1;
+                    if (asks > 1) return Promise.reject(new Error("down"));
+                    return {
+                        status: "refused",
+                        orderId: "ord_paid",
+                        reason: "paid_claim_required",
+                    };
+                }),
+            });
+            const id = withSecrets(s.deps);
+            const sent = { orderId: "ord_paid", claim, payment: { x402Version: 2 } };
+            const r = await callTool(
+                s.client,
+                "bugnet_start",
+                field ? x402Args(id, sent) : { ...startArgs(id), ...sent },
+            );
+            expect(s.payments.orders[1]).toEqual({ orderId: "ord_paid", claim });
+            expect(r.text).toBe(
+                paidUnreachable("ord_paid", `with orderId "ord_paid" and claim "${claim}"`),
+            );
+            expect(r.structured).toEqual(expect.objectContaining({ orderId: "ord_paid" }));
+        }
     });
 
     it("rate-limits a start with x402 in the quote bucket, and not one without or a paid retry", async () => {
