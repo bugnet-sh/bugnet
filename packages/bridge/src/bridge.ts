@@ -257,16 +257,30 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         const key = orderKey(name, args);
         let held: PaymentStep | undefined;
         let forwarded = params;
-        const holding =
+        let holding =
             !ownPayment && args.orderId === undefined && key !== null
                 ? orders.heldFor(key)
                 : undefined;
-        if (holding) {
+        if (holding?.state === "paying") {
+            // A pay for this package is still running, so no second order is opened or paid
+            const flight = orders.flight(holding.orderId);
+            const aborted = new Promise<void>((resolve) => {
+                if (ctx.mcpReq.signal.aborted) resolve();
+                ctx.mcpReq.signal.addEventListener("abort", () => resolve(), { once: true });
+            });
+            if (flight) await Promise.race([flight, aborted]);
+            const after = ctx.mcpReq.signal.aborted ? undefined : orders.heldFor(key!);
+            if (!after || after.orderId !== holding.orderId || after.state === "paying") {
+                return toolError(unpaidText("timeout", holding));
+            }
+            holding = after;
+        }
+        if (holding && holding.state !== "paying") {
             let use = holding.state === "paid";
             if (!use) {
                 const state = await pay.status(holding.orderId, ctx.mcpReq.signal).catch(() => "?");
                 if (state === "?" || state === "paid" || state === "settling") use = true;
-                else orders.drop(holding.orderId);
+                else orders.forget(holding.orderId);
             }
             if (use) {
                 held = holding;
@@ -296,23 +310,31 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         if (!pay.payer) return linkPath(paid, result, ctx);
         orders.markTried(paid.orderId);
         // Never raced against the client's signal, since pay may have paid by the time it gives up
-        const outcome = await pay.payer.pay(paid, maxPaymentMicros([confirmed!]), () =>
-            progress.note(waitingInPay),
-        );
-        return afterPay(outcome);
+        // The outcome is recorded as it lands, even when this call is already gone
+        const flight = pay.payer
+            .pay(paid, maxPaymentMicros([confirmed!]), () => progress.note(waitingInPay))
+            .catch((): PayOutcome => ({ kind: "unknown" }))
+            .then((o) => {
+                record(o);
+                return o;
+            });
+        orders.markPaying(paid.orderId, flight);
+        return afterPay(await flight);
+
+        function record(outcome: PayOutcome): void {
+            if (outcome.kind === "paid") orders.markPaid(paid.orderId, "paid");
+            else if (outcome.kind === "unknown" || spent(outcome)) {
+                orders.markPaid(paid.orderId, "unknown");
+            } else orders.forget(paid.orderId);
+        }
+
+        function spent(outcome: PayOutcome): boolean {
+            return outcome.kind === "declined" && spentRefusals.has(outcome.reason);
+        }
 
         function afterPay(outcome: PayOutcome): Promise<RemoteResult> | RemoteResult {
-            if (outcome.kind === "paid") {
-                orders.markPaid(paid.orderId, "paid");
-                return redeem();
-            }
-            if (
-                outcome.kind === "unknown" ||
-                (outcome.kind === "declined" && spentRefusals.has(outcome.reason))
-            ) {
-                orders.markPaid(paid.orderId, "unknown");
-                return reread();
-            }
+            if (outcome.kind === "paid") return redeem();
+            if (outcome.kind === "unknown" || spent(outcome)) return reread();
             if (outcome.kind === "declined") return result;
             return linkPath(paid, result, ctx);
         }
@@ -341,15 +363,13 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             if (state === "paid") return redeem();
             if (state === "unpaid") {
                 // The order stays tried, so pay is never started for it again
-                orders.drop(paid.orderId);
-                orders.see(key, paid);
-                orders.markTried(paid.orderId);
+                orders.forget(paid.orderId);
                 return result;
             }
             if (state === "?" || state === "settling") {
                 return toolError(unpaidText("timeout", paid));
             }
-            orders.drop(paid.orderId);
+            orders.forget(paid.orderId);
             if (state === "expired") return toolError(unpaidText("expired", paid));
             if (state === null) return toolError(unpaidText("unknown_order", paid));
             return toolError(unpaidText("closed", paid));

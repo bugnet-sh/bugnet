@@ -61,6 +61,20 @@ it("holds a paid or unsure order for 30 minutes and an order it tried for as lon
     expect(paidOrderTtlMs).toBe(1_800_000);
 });
 
+it("holds a pay in flight and forgets an order without forgetting it was tried", async () => {
+    const orders = new PaidOrders(() => 1_000);
+    const k = "start\0small-10m";
+    orders.see(k, step);
+    const flight = Promise.resolve("done");
+    orders.markPaying(step.orderId, flight);
+    expect(orders.heldFor(k)).toEqual({ ...step, state: "paying" });
+    expect(orders.flight(step.orderId)).toBe(flight);
+    orders.forget(step.orderId);
+    expect(orders.heldFor(k)).toBeUndefined();
+    expect(orders.tried(step.orderId)).toBe(true);
+    expect(orders.step(step.orderId)).toEqual(step);
+});
+
 describe("orderStatus", () => {
     const seen: { path: string; accept: string | undefined }[] = [];
     const answers: Record<string, [number, unknown]> = {

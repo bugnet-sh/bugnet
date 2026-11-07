@@ -25,13 +25,14 @@ export function orderKey(tool: string, args: Record<string, unknown>): string | 
 interface Entry {
     key: string | null;
     step: PaymentStep;
-    state: "seen" | "paid" | "unknown";
+    state: "seen" | "paying" | "paid" | "unknown";
     tried: boolean;
     at: number;
 }
 
 export class PaidOrders {
     private readonly entries = new Map<string, Entry>();
+    private readonly flights = new Map<string, Promise<unknown>>();
     private readonly now: () => number;
 
     constructor(now: () => number) {
@@ -41,7 +42,7 @@ export class PaidOrders {
     private sweep(): void {
         const t = this.now();
         for (const [id, e] of this.entries) {
-            if (t >= e.at + paidOrderTtlMs) this.entries.delete(id);
+            if (t >= e.at + paidOrderTtlMs) this.drop(id);
         }
     }
 
@@ -71,18 +72,41 @@ export class PaidOrders {
         }
     }
 
-    heldFor(key: string): (PaymentStep & { state: "paid" | "unknown" }) | undefined {
+    // A pay in flight is held too, so a retry waits for it instead of opening a second order
+    heldFor(key: string): (PaymentStep & { state: "paying" | "paid" | "unknown" }) | undefined {
         this.sweep();
         let best: Entry | undefined;
         for (const e of this.entries.values()) {
             if (e.key !== key || e.state === "seen") continue;
             if (!best || e.at >= best.at) best = e;
         }
-        return best && { ...best.step, state: best.state as "paid" | "unknown" };
+        return best && { ...best.step, state: best.state as "paying" | "paid" | "unknown" };
+    }
+
+    // Marks the order as being paid, with the one pay promise every waiting call shares
+    markPaying(orderId: string, flight: Promise<unknown>): void {
+        this.sweep();
+        const e = this.entries.get(orderId);
+        if (!e) return;
+        e.state = "paying";
+        e.tried = true;
+        e.at = this.now();
+        this.flights.set(orderId, flight);
+    }
+
+    flight(orderId: string): Promise<unknown> | undefined {
+        return this.flights.get(orderId);
+    }
+
+    // Stops holding an order but remembers pay was tried for it, so it is never paid twice
+    forget(orderId: string): void {
+        const e = this.entries.get(orderId);
+        if (e) e.state = "seen";
     }
 
     drop(orderId: string): void {
         this.entries.delete(orderId);
+        this.flights.delete(orderId);
     }
 
     tried(orderId: string): boolean {

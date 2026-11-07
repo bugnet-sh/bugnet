@@ -367,6 +367,110 @@ describe.each(["legacy", "modern"] as const)("paying with pay, %s client", (era)
         expect(gw.payments.orders.filter((o) => o.orderId === undefined)).toHaveLength(1);
     });
 
+    it("waits for a pay still running instead of opening and paying a second order", async () => {
+        const gw = await gateway(requirePayments());
+        const payer = payingPayer(gw.payments, { delayMs: 200 });
+        const pay = devPay(gw.payments, payer);
+        const b = await bridge({ gateway: gw.url, era, deps: { pay } });
+        const args = startArgs(await quoteId(b.client));
+        const giveUp = new AbortController();
+        const first = b.client.callTool(
+            { name: "bugnet_start", arguments: args },
+            { signal: giveUp.signal },
+        );
+        await payer.started;
+        giveUp.abort();
+        await expect(first).rejects.toThrow();
+        // No wait for the hold, the retry comes while pay still runs
+        const r = await b.client.callTool({ name: "bugnet_start", arguments: args });
+        expect((r.structuredContent as { handle: string }).handle).toBe(testHandle);
+        expect(payer.calls).toHaveLength(1);
+        const { step } = payer.calls[0]!;
+        expect(gw.payments.orders.filter((o) => o.orderId === undefined)).toHaveLength(1);
+        expect(gw.payments.orders.at(-1)).toMatchObject({
+            orderId: step.orderId,
+            claim: step.claim,
+        });
+        expect(gw.payments.orders.every((o) => o.payment === undefined)).toBe(true);
+    });
+
+    it("names the order when a retry's own client gives up while pay still runs", async () => {
+        const gw = await gateway(requirePayments());
+        const payer = payingPayer(gw.payments, { delayMs: 300 });
+        const pay = devPay(gw.payments, payer);
+        const b = await bridge({ gateway: gw.url, era, deps: { pay } });
+        const args = startArgs(await quoteId(b.client));
+        const firstGone = new AbortController();
+        const first = b.client.callTool(
+            { name: "bugnet_start", arguments: args },
+            { signal: firstGone.signal },
+        );
+        await payer.started;
+        firstGone.abort();
+        await expect(first).rejects.toThrow();
+        const retry = new AbortController();
+        const second = b.client.callTool(
+            { name: "bugnet_start", arguments: args },
+            { signal: retry.signal },
+        );
+        setTimeout(() => retry.abort(), 30);
+        await expect(second).rejects.toThrow();
+        await vi.waitFor(() => expect(pay.orders.heldFor(key)?.state).toBe("paid"), {
+            timeout: 2_000,
+        });
+        expect(payer.calls).toHaveLength(1);
+    });
+
+    // The first call leaves an unsure hold, then the second call's page read decides
+    it.each([
+        ["paid", true],
+        ["settling", true],
+        ["throw", true],
+    ] as const)("redeems an unsure hold when its page reads %s", async (second, pays) => {
+        const gw = await gateway(requirePayments());
+        const payer = payingPayer(gw.payments, { outcome: { kind: "unknown" }, pays });
+        const reads: string[] = ["settling", second];
+        const pay = devPay(gw.payments, payer, {
+            status: async () => {
+                const s = reads.shift() ?? "paid";
+                if (s === "throw") throw new Error("connect ECONNREFUSED 127.0.0.1:443");
+                return s as PublicOrderState;
+            },
+        });
+        const b = await bridge({ gateway: gw.url, era, deps: { pay } });
+        const args = startArgs(await quoteId(b.client));
+        const first = await b.client.callTool({ name: "bugnet_start", arguments: args });
+        expect(first.isError).toBe(true);
+        expect(pay.orders.heldFor(key)?.state).toBe("unknown");
+        const r = await b.client.callTool({ name: "bugnet_start", arguments: args });
+        expect((r.structuredContent as { handle: string }).handle).toBe(testHandle);
+        expect(payer.calls).toHaveLength(1);
+        expect(pay.orders.heldFor(key)).toBeUndefined();
+    });
+
+    it("never pays an order again after its unsure hold reads unpaid", async () => {
+        const gw = await gateway(requirePayments());
+        const payer = payingPayer(gw.payments, { outcome: { kind: "unknown" }, pays: false });
+        const reads: string[] = ["settling", "unpaid", "unpaid"];
+        const pay = devPay(gw.payments, payer, {
+            status: async () => (reads.shift() ?? "unpaid") as PublicOrderState,
+        });
+        const b = await bridge({ gateway: gw.url, era, deps: { pay } });
+        const args = startArgs(await quoteId(b.client));
+        await b.client.callTool({ name: "bugnet_start", arguments: args });
+        const old = payer.calls[0]!.step;
+        // The hold reads unpaid, so a new order is made and paid
+        await b.client.callTool({ name: "bugnet_start", arguments: args });
+        expect(payer.calls).toHaveLength(2);
+        expect(payer.calls[1]!.step.orderId).not.toBe(old.orderId);
+        // The model calls again with the old order and claim, as the text told it to
+        await b.client.callTool({
+            name: "bugnet_start",
+            arguments: { ...args, orderId: old.orderId, claim: old.claim },
+        });
+        expect(payer.calls.filter((c) => c.step.orderId === old.orderId)).toHaveLength(1);
+    });
+
     it("relays progress while pay runs, with rising progress values", async () => {
         const gw = await gateway(requirePayments());
         const b = await bridge({
