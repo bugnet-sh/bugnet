@@ -1398,6 +1398,27 @@ describe.each(["legacy", "modern"] as const)("paying by link, %s client", (era) 
         expect(gw.payments.orders.filter((o) => o.orderId === undefined)).toHaveLength(1);
     });
 
+    it("forgets a payment_invalid refusal, so a retry after a top-up pays a new order", async () => {
+        const gw = await gateway(requirePayments());
+        const broke = payingPayer(gw.payments, {
+            outcome: { kind: "declined", reason: "payment_invalid" },
+            pays: false,
+        });
+        const funded = payingPayer(gw.payments);
+        let current = broke;
+        const pay = devPay(gw.payments, { pay: (...a) => current.pay(...a) });
+        const b = await bridge({ gateway: gw.url, era, deps: { pay } });
+        const args = startArgs(await quoteId(b.client));
+        const first = await b.client.callTool({ name: "bugnet_start", arguments: args });
+        const id = (first.structuredContent as { orderId: string }).orderId;
+        expect(pay.orders.heldFor(key)).toBeUndefined();
+        current = funded;
+        const again = await b.client.callTool({ name: "bugnet_start", arguments: args });
+        expect(again.isError).toBeFalsy();
+        expect(funded.calls).toHaveLength(1);
+        expect(funded.calls[0]!.step.orderId).not.toBe(id);
+    });
+
     it.each([
         ["a transient pay refusal", { kind: "declined", reason: "payer_busy" }],
         ["an unsure pay whose page reads unpaid", { kind: "unknown" }],

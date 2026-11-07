@@ -164,7 +164,6 @@ function withoutEnvelope(result: RemoteResult): RemoteResult {
 const lastingRefusals: ReadonlySet<string> = new Set([
     "payer_blocked",
     "payer_invalid",
-    "payment_invalid",
     "payment_malformed",
     "payment_replayed",
     "payment_order_mismatch",
