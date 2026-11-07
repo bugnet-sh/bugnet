@@ -134,7 +134,7 @@ function spentStep(reason: string, id: string | undefined, tool: OrderTool): str
         case "order_unknown":
             return (
                 "Check that the orderId was copied exactly from the payment step. If it was, " +
-                `${order.toLowerCase()} can no longer be paid. ${fresh}`
+                `${id ? `order ${id}` : "this order"} can no longer be paid. ${fresh}`
             );
         case "payment_late":
             return (
