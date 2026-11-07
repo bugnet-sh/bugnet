@@ -3,6 +3,7 @@ import { Code } from "@connectrpc/connect";
 import type { Client } from "@modelcontextprotocol/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlacementState, type ExtendPlacementRequest } from "../gen/bugnet/router/v1/router_pb.ts";
+import type { PaidOrder } from "../payments/port.ts";
 import {
     callTool,
     connectTools,
@@ -13,7 +14,10 @@ import {
     testDeps,
     testHandle,
     testNow,
+    devOrder,
+    recordingLog,
     testPayments,
+    tokenClaims,
     type RouterImpl,
     type TestPayments,
 } from "../testing/harness.ts";
@@ -28,6 +32,22 @@ async function connect(impl: RouterImpl): Promise<{ client: Client; payments: Te
     const payments = testPayments();
     const deps = testDeps({ router: fakeRouter(impl), payments });
     return { client: await connectTools(deps), payments };
+}
+
+const claim = "C".repeat(43);
+const extendTerms = {
+    kind: "extend",
+    packageId: "more-10m",
+    amountMicros: 40_000,
+    description: "d",
+    handleSha256: handleHash(testHandle),
+} as const;
+
+async function paidSetup(impl: RouterImpl) {
+    const payments = testPayments(undefined, { requirePayment: true });
+    const deps = testDeps({ router: fakeRouter(impl), payments });
+    const client = await connectTools(deps);
+    return { client, deps, payments, ...(await devOrder(payments, extendTerms)) };
 }
 
 const args = (price = "0.04") => ({
@@ -114,7 +134,10 @@ describe("bugnet_extend", () => {
         const again = await callTool(client, "bugnet_extend", { ...args(), orderId: "ord_x" });
         expect(again.isError).toBe(true);
         expect(again.text).toMatch(/\nOrder ord_x is not paid yet/);
-        expect(again.text).toMatch(/call the same tool again with orderId "ord_x"/);
+        expect(again.text).toMatch(
+            /then call bugnet_redeem with orderId and claim \(orderId "ord_x" and the claim from its first payment step\)\./,
+        );
+        expect(again.text).toMatch(/Calling bugnet_extend again without this orderId/);
     });
 
     it("lists the options for a package that does not extend this sandbox", async () => {
@@ -342,4 +365,176 @@ describe("bugnet_extend", () => {
         expect(took).toBeLessThan(4_500);
         expect(r.text).toMatch(/^extend: the sandbox service did not confirm the extension/);
     }, 10_000);
+
+    it("extends a paid order from its stored terms without checking the price", async () => {
+        let checks = 0;
+        const applied: ExtendPlacementRequest[] = [];
+        const { client, deps, payments, orderId, claim } = await paidSetup({
+            checkExtendPlacement: () => {
+                checks += 1;
+                return { placement: placement(), package: more };
+            },
+            extendPlacement: (req) => {
+                applied.push(req);
+                return { placement: extended };
+            },
+        });
+        const { log, lines } = recordingLog();
+        deps.log = log;
+        const r = await callTool(
+            client,
+            "bugnet_extend",
+            { ...args("9"), orderId, claim },
+            { toolUseId: "toolu_e" },
+        );
+        expect(r.structured).toEqual({
+            message:
+                "Extended with more-10m. New deadline 2026-11-05T12:20:00.000Z, time left 20 min.",
+            orderId,
+            packageId: "more-10m",
+            deadline: "2026-11-05T12:20:00.000Z",
+            timeLeft: "20 min",
+        });
+        expect(payments.orders).toEqual([
+            { orderId, claim, handleSha256: handleHash(testHandle), idempotencyKey: "toolu_e" },
+        ]);
+        expect(checks).toBe(0);
+        expect(tokenClaims(applied[0]?.orderToken as string).package_id).toBe("more-10m");
+        expect(lines.join("\n")).not.toContain(claim);
+    });
+
+    it("abandons a paid order whose sandbox ended and says it is refunded", async () => {
+        const { client, payments, orderId, claim } = await paidSetup({
+            extendPlacement() {
+                throw routerError(Code.FailedPrecondition, "NOT_READY");
+            },
+            getPlacement: () => ({ placement: placement(PlacementState.TERMINATED) }),
+        });
+        const r = await callTool(client, "bugnet_extend", { ...args(), orderId, claim });
+        expect(r.text).toBe(
+            "extend: the sandbox is not ready, bugnet_status shows its state. The extension was " +
+                "not applied and the payment is refunded.",
+        );
+        expect(payments.abandoned).toEqual([{ orderId, reason: "not_applied" }]);
+    });
+
+    // Skew numbers as in the stalled and unsent extension tests above
+    it("names the claim when a stalled paid extension may still apply", async () => {
+        let calls = 0;
+        const payments = testPayments(undefined, { requirePayment: true });
+        const deps = testDeps({
+            payments,
+            router: fakeRouter({
+                extendPlacement: async (_req, ctx) => {
+                    calls += 1;
+                    await new Promise((r) => ctx.signal.addEventListener("abort", r));
+                    throw routerError(Code.DeadlineExceeded);
+                },
+            }),
+        });
+        const { orderId, claim } = await devOrder(payments, extendTerms);
+        const skew = skewed(deps);
+        const order = payments.order.bind(payments);
+        payments.order = (req, signal) => {
+            skew.by += 38_500;
+            return order(req, signal);
+        };
+        const client = await connectTools(deps);
+        const started = Date.now();
+        const stalled = await callTool(client, "bugnet_extend", { ...args(), orderId, claim });
+        expect(Date.now() - started).toBeLessThan(3_000);
+        expect(calls).toBe(1);
+        expect(stalled.isError).toBe(true);
+        expect(stalled.text).toBe(
+            "extend: the sandbox service did not confirm the extension. Check the deadline with " +
+                "bugnet_status before paying again, and if it did not move, bugnet_extend with " +
+                `orderId "${orderId}" and claim "${claim}" applies the paid order.`,
+        );
+        expect(payments.abandoned).toEqual([]);
+    });
+
+    it("names the claim when no time is left to apply a paid order", async () => {
+        let calls = 0;
+        const payments = testPayments(undefined, { requirePayment: true });
+        const deps = testDeps({
+            payments,
+            router: fakeRouter({
+                extendPlacement: () => {
+                    calls += 1;
+                    return { placement: extended };
+                },
+            }),
+        });
+        const { orderId, claim } = await devOrder(payments, extendTerms);
+        const skew = skewed(deps);
+        const order = payments.order.bind(payments);
+        payments.order = (req, signal) => {
+            skew.by += 40_000;
+            return order(req, signal);
+        };
+        const client = await connectTools(deps);
+        const unsent = await callTool(client, "bugnet_extend", { ...args(), orderId, claim });
+        expect(calls).toBe(0);
+        expect(unsent.text).toBe(
+            `extend: order ${orderId} is paid, but too little time was left to apply it. ` +
+                `bugnet_extend with orderId "${orderId}" and claim "${claim}" applies it.`,
+        );
+        expect(payments.abandoned).toEqual([]);
+    });
+
+    it("refuses a paid order that starts a sandbox or is for another one", async () => {
+        let applied = 0;
+        const router = () =>
+            fakeRouter({
+                extendPlacement: () => {
+                    applied += 1;
+                    return { placement: extended };
+                },
+            });
+        const paidAs = (over: Partial<PaidOrder>) =>
+            testPayments(() => ({
+                status: "paid",
+                orderId: "ord_k",
+                orderToken: "t",
+                payer: "P",
+                kind: "extend",
+                packageId: "more-10m",
+                amountMicros: 40_000,
+                handleSha256: handleHash(testHandle),
+                ...over,
+            }));
+        const start = await connectTools(
+            testDeps({
+                router: router(),
+                payments: paidAs({ kind: "start", handleSha256: undefined }),
+            }),
+        );
+        expect(
+            (await callTool(start, "bugnet_extend", { ...args(), orderId: "ord_k", claim })).text,
+        ).toBe(
+            'extend: order ord_k starts a new sandbox, call bugnet_redeem with orderId "ord_k" ' +
+                `and claim "${claim}", plus the quoteId bugnet_start was called with.`,
+        );
+        const other = await connectTools(
+            testDeps({ router: router(), payments: paidAs({ handleSha256: "ab".repeat(32) }) }),
+        );
+        expect(
+            (await callTool(other, "bugnet_extend", { ...args(), orderId: "ord_k", claim })).text,
+        ).toBe("extend: order ord_k is not for that sandbox, check the handle.");
+        expect(applied).toBe(0);
+    });
+
+    it("checks a claim's shape and that its orderId comes with it", async () => {
+        const { client, payments } = await connect(checked);
+        const alone = await callTool(client, "bugnet_extend", { ...args(), claim });
+        expect(alone.isError).toBe(true);
+        expect(alone.text).toMatch(/claim goes with the orderId of its payment step/);
+        const short = await callTool(client, "bugnet_extend", {
+            ...args(),
+            orderId: "ord_1",
+            claim: "a".repeat(42),
+        });
+        expect(short.text).toMatch(/the 43-character claim from the payment step/);
+        expect(payments.orders).toEqual([]);
+    });
 });

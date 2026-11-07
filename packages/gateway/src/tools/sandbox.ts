@@ -1,6 +1,6 @@
 import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
-import type { CallToolResult } from "@modelcontextprotocol/server";
+import type { CallToolResult, ServerContext } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
     BootstrapState,
@@ -11,7 +11,7 @@ import {
 import { extensionsFor } from "./extend.ts";
 import { verifyQuote, QuoteError, type QuoteClaims } from "../quote.ts";
 import { GatewayError, errorReason, fromRouter, waitMargin } from "../router.ts";
-import type { OrderResult } from "../payments/port.ts";
+import type { OrderRequest, PaidOrder } from "../payments/port.ts";
 import {
     approvalMeta,
     Budget,
@@ -28,6 +28,13 @@ import {
     waitMs,
     withProgress,
 } from "./common.ts";
+import {
+    claimInput,
+    isPaidRetry,
+    paymentRequiredResult,
+    refusalError,
+    retryCall,
+} from "./orders.ts";
 import { describeSize, quoted, unavailableWords } from "./quote.ts";
 import { fetchAfterStart, sentence, sourceView, unplacedNote, type SourceView } from "./source.ts";
 
@@ -123,70 +130,43 @@ function sshLine(alias: string | undefined): string {
     );
 }
 
-const startInput = z.object({
-    quoteId: z.string().max(200).describe("quoteId from bugnet_quote or bugnet_assess"),
-    packageId: z.string().max(100),
-    confirmPriceUsd: z
-        .string()
-        .max(20)
-        .describe(
-            "The package price you told the user, such as 0.05, shown in the approval prompt",
-        ),
-    orderId: z.string().max(200).optional().describe("orderId from an earlier payment step"),
-    payment: z
-        .unknown()
-        .optional()
-        .describe("x402 PaymentPayload for this order if your wallet tool produced one"),
-});
-
-// Claude Code shows the model only the text of an error result, other clients read the fields
-export function paymentRequiredResult(
-    r: Extract<OrderResult, { status: "payment_required" }>,
-    sentOrderId?: string,
-) {
-    const guide = [
-        sentOrderId === r.orderId
-            ? `Order ${r.orderId} is not paid yet, and a payment can take a few seconds to confirm.`
-            : `Payment required for order ${r.orderId}.`,
-        "If an x402-capable wallet is connected it pays automatically.",
-        r.payUrl ? `Otherwise the user can pay at ${r.payUrl}.` : "",
-        `After paying, call the same tool again with orderId "${r.orderId}", since a call ` +
-            "without it opens a new order the user would pay again.",
-        // Live runs saw the model tell users they had 60 s to pay
-        "The x402 maxTimeoutSeconds limits a wallet's signed payment, not the user's time to pay.",
-    ]
-        .filter(Boolean)
-        .join(" ");
-    const result: CallToolResult = {
-        isError: true,
-        structuredContent: {
-            ...(r.paymentRequired as unknown as Record<string, unknown>),
-            message: guide,
-            orderId: r.orderId,
-            ...(r.payUrl ? { payUrl: r.payUrl } : {}),
-        },
-        // The x402 MCP transport reads the requirement from the first text block
-        content: [
-            { type: "text", text: JSON.stringify(r.paymentRequired) },
-            { type: "text", text: guide },
-        ],
-    };
-    return result;
-}
+const startInput = z
+    .object({
+        quoteId: z.string().max(200).describe("quoteId from bugnet_quote or bugnet_assess"),
+        packageId: z.string().max(100),
+        confirmPriceUsd: z
+            .string()
+            .max(20)
+            .describe(
+                "The package price you told the user, such as 0.05, shown in the approval prompt",
+            ),
+        orderId: z.string().max(200).optional().describe("orderId from an earlier payment step"),
+        claim: claimInput.optional().describe("claim from the payment step, sent with its orderId"),
+        payment: z
+            .unknown()
+            .optional()
+            .describe("x402 PaymentPayload for this order if your wallet tool produced one"),
+    })
+    .refine((a) => a.claim === undefined || a.orderId !== undefined, {
+        message: "claim goes with the orderId of its payment step",
+        path: ["claim"],
+    });
 
 // What CreatePlacement and a first look at the sandbox need after the payment
-const placeReserveMs = 12_000;
+export const placeReserveMs = 12_000;
 // The repo fetch's own cap, left out when less than this remains
 const fetchMs = 5_000;
 
 // After the payment, a failure that does not prove the router recorded nothing leaves it open
-function afterPayment(err: GatewayError, orderId: string): GatewayError {
+function afterPayment(err: GatewayError, orderId: string, retry: string | null): GatewayError {
     const unsure = ["timeout", "unavailable", "internal"].includes(err.kind);
     if (!unsure) return err;
     return new GatewayError(
         err.kind,
         `${err.message}. Order ${orderId} was paid and may still start a sandbox, so tell the ` +
-            "user before starting another",
+            "user before starting another" +
+            // A repeat redeem within the order token's 10 minutes returns the same token
+            (retry ? `. Calling ${retry} within 10 minutes returns its handle` : ""),
         err.retryAfterMs,
         err.reason,
     );
@@ -267,6 +247,92 @@ async function priceForStart(
     return option;
 }
 
+export interface StartPaidOptions {
+    retry: string | null;
+}
+
+// Starts the sandbox a paid order pays for, and waits for it to come up
+export async function startPaid(
+    deps: Deps,
+    ctx: ServerContext,
+    claims: QuoteClaims,
+    order: PaidOrder,
+    budget: Budget,
+    opts: StartPaidOptions,
+): Promise<CallToolResult> {
+    let created;
+    try {
+        created = await deps.router.createPlacement(
+            {
+                orderToken: order.orderToken,
+                requirements: claims.requirements,
+                estimateId: claims.estimateId ?? "",
+            },
+            { timeoutMs: Math.max(budget.left(), placeReserveMs) },
+        );
+    } catch (e) {
+        const err = fromRouter(e, "start");
+        // Only these codes mean the router recorded nothing, so Payments refunds it
+        const outright =
+            e instanceof ConnectError &&
+            (e.code === Code.PermissionDenied || e.code === Code.InvalidArgument);
+        if (outright) {
+            await deps.payments
+                .abandon(order.orderId, err.kind, budget.lastSignal(10_000))
+                .catch((x) => deps.log.error("abandon failed", { err: String(x) }));
+        }
+        throw afterPayment(err, order.orderId, opts.retry);
+    }
+    const handle = created.handle;
+    const keep = claims.github ? fetchMs + 1_000 : 0;
+    const waitBudget = Math.min(25_000, budget.left() - keep);
+    // Past the deadline or on a lost wait the handle still goes back as starting
+    const p = await withProgress(ctx, "starting the sandbox", (signal) => {
+        const cut = AbortSignal.timeout(Math.max(1, waitBudget + 3_000));
+        const both = AbortSignal.any([signal, cut]);
+        return waitReady(deps, handle, created.placement, waitBudget, both);
+    }).catch(() => {
+        deps.log.warn("wait for ready failed", { handle: handleTag(handle) });
+        return created.placement;
+    });
+    deps.log.info("placement started", {
+        handle: handleTag(handle),
+        state: p ? stateName[p.state] : "unknown",
+    });
+    const ready = p?.state === PlacementState.READY;
+    const view = placementView(p, deps.now());
+    if (ready && claims.github && budget.left() >= fetchMs) {
+        view.source = await fetchAfterStart(deps, handle, fetchMs);
+    } else if (claims.githubUnplaced) {
+        view.source = { state: "not_fetched", note: unplacedNote };
+    }
+    const meta =
+        order.paymentResponse !== undefined
+            ? { "x402/payment-response": order.paymentResponse }
+            : undefined;
+    const text = [
+        `Sandbox ${view.state}. handle: ${handle}`,
+        ready ? `Time left: ${view.timeLeft} (deadline ${view.deadline}).` : "",
+        p?.state === PlacementState.PLACING
+            ? "Still starting, call bugnet_status with the handle and waitSeconds 25."
+            : "",
+        p?.state === PlacementState.FAILED
+            ? `It failed to start${p.refundable ? ", the payment will be refunded" : ""}.`
+            : "",
+        view.source ? sentence(view.source.note) : "",
+        sshLine(view.sshAlias),
+        "Keep the handle, it is the only key to this sandbox. Commands run as root " +
+            "or as a user with passwordless sudo: use $HOME, prefix system changes with sudo.",
+        p?.state === PlacementState.FAILED
+            ? ""
+            : "When the work is done and its results are read, call bugnet_stop with " +
+              "the handle, so the sandbox does not keep running until its deadline.",
+    ]
+        .filter(Boolean)
+        .join("\n");
+    return ok(text, { handle, orderId: order.orderId, ...view }, meta);
+}
+
 export const registerSandboxTools: Register = (server, deps) => {
     server.registerTool(
         "bugnet_start",
@@ -288,128 +354,102 @@ export const registerSandboxTools: Register = (server, deps) => {
         },
         async (args, ctx) => {
             try {
+                const payment = ctx.mcpReq._meta?.["x402/payment"] ?? args.payment;
+                const paidRetry = isPaidRetry(args, payment);
+                const key = toolUseId(ctx);
                 let claims: QuoteClaims;
                 try {
-                    claims = verifyQuote(deps.config.secrets.quoteKey, args.quoteId, deps.now());
+                    claims = verifyQuote(deps.config.secrets.quoteKey, args.quoteId, deps.now(), {
+                        allowExpired: paidRetry,
+                    });
                 } catch (e) {
                     if (!(e instanceof QuoteError)) throw e;
                     const keep = args.orderId
-                        ? `. Keep orderId "${args.orderId}" on the next bugnet_start, so the ` +
-                          "order is not paid twice"
+                        ? `. Keep orderId "${args.orderId}" ` +
+                          (args.claim ? `and claim "${args.claim}" ` : "") +
+                          "on the next bugnet_start, so the order is not paid twice"
                         : "";
                     throw new GatewayError("invalid", e.message + keep);
                 }
                 const budget = new Budget(deps);
-                const pkg = quoted(
-                    await priceForStart(deps, args.packageId, claims, () =>
-                        budget.ms(15_000, placeReserveMs),
-                    ),
-                );
-                const priced = Number.parseFloat(args.confirmPriceUsd.replace(/^\$/, ""));
-                if (!Number.isFinite(priced) || Math.abs(priced * 1e6 - pkg.priceMicros) > 0.5) {
-                    throw new GatewayError(
-                        "invalid",
-                        `${args.packageId} costs ${usd(pkg.priceMicros)}, tell the user that price ` +
-                            "and pass it as confirmPriceUsd",
+                let request: OrderRequest;
+                if (paidRetry) {
+                    // The order holds its own terms, so the price is not asked again
+                    request = {
+                        orderId: args.orderId,
+                        claim: args.claim,
+                        ...(key ? { idempotencyKey: key } : {}),
+                    };
+                } else {
+                    const pkg = quoted(
+                        await priceForStart(deps, args.packageId, claims, () =>
+                            budget.ms(15_000, placeReserveMs),
+                        ),
                     );
-                }
-                if (budget.left() < placeReserveMs + 5_000) {
-                    throw new GatewayError(
-                        "timeout",
-                        "start: Bugnet answered slowly, so nothing was charged. Calling " +
-                            "bugnet_start again starts it",
-                    );
-                }
-                const payment = ctx.mcpReq._meta?.["x402/payment"] ?? args.payment;
-                const order = await deps.payments.order(
-                    {
+                    const priced = Number.parseFloat(args.confirmPriceUsd.replace(/^\$/, ""));
+                    if (
+                        !Number.isFinite(priced) ||
+                        Math.abs(priced * 1e6 - pkg.priceMicros) > 0.5
+                    ) {
+                        throw new GatewayError(
+                            "invalid",
+                            `${args.packageId} costs ${usd(pkg.priceMicros)}, tell the user that ` +
+                                "price and pass it as confirmPriceUsd",
+                        );
+                    }
+                    if (budget.left() < placeReserveMs + 5_000) {
+                        throw new GatewayError(
+                            "timeout",
+                            "start: Bugnet answered slowly, so nothing was charged. Calling " +
+                                "bugnet_start again starts it",
+                        );
+                    }
+                    // A claim never goes with a payment, which Payments settles before the claim
+                    request = {
                         kind: "start",
                         packageId: pkg.id,
                         amountMicros: pkg.priceMicros,
                         description: `Bugnet sandbox ${describeSize(pkg)}, ${pkg.minutes} min`,
                         ...(args.orderId ? { orderId: args.orderId } : {}),
                         ...(payment !== undefined ? { payment } : {}),
-                        ...(toolUseId(ctx) ? { idempotencyKey: toolUseId(ctx) } : {}),
-                    },
+                        ...(key ? { idempotencyKey: key } : {}),
+                    };
+                }
+                const order = await deps.payments.order(
+                    request,
                     budget.signal(30_000, placeReserveMs),
                 );
                 if (order.status === "payment_required") {
-                    return paymentRequiredResult(order, args.orderId);
+                    return paymentRequiredResult(order, {
+                        tool: "bugnet_start",
+                        ...(args.orderId ? { sentOrderId: args.orderId } : {}),
+                        ...(args.claim ? { sentClaim: args.claim } : {}),
+                        quoteId: args.quoteId,
+                    });
                 }
                 if (order.status === "refused") {
-                    throw new GatewayError("denied", `payment refused: ${order.reason}`);
+                    throw refusalError(order, "start", "bugnet_start", {
+                        ...(args.orderId ? { sentOrderId: args.orderId } : {}),
+                        paymentSent: payment !== undefined,
+                    });
                 }
-                let created;
-                try {
-                    created = await deps.router.createPlacement(
-                        {
-                            orderToken: order.orderToken,
-                            requirements: claims.requirements,
-                            estimateId: claims.estimateId ?? "",
-                        },
-                        { timeoutMs: Math.max(budget.left(), placeReserveMs) },
+                if (order.kind !== "start") {
+                    const next = retryCall(
+                        "bugnet_extend",
+                        order.orderId,
+                        paidRetry ? { claim: args.claim, handle: true } : { payment: true },
                     );
-                } catch (e) {
-                    const err = fromRouter(e, "start");
-                    // Only these codes mean the router recorded nothing, so Payments refunds it
-                    const outright =
-                        e instanceof ConnectError &&
-                        (e.code === Code.PermissionDenied || e.code === Code.InvalidArgument);
-                    if (outright) {
-                        await deps.payments
-                            .abandon(order.orderId, err.kind, budget.lastSignal(10_000))
-                            .catch((x) => deps.log.error("abandon failed", { err: String(x) }));
-                    }
-                    throw afterPayment(err, order.orderId);
+                    throw new GatewayError(
+                        "invalid",
+                        `start: order ${order.orderId} adds time to a sandbox, call ${next}`,
+                    );
                 }
-                const handle = created.handle;
-                const keep = claims.github ? fetchMs + 1_000 : 0;
-                const waitBudget = Math.min(25_000, budget.left() - keep);
-                // Past the deadline or on a lost wait the handle still goes back as starting
-                const p = await withProgress(ctx, "starting the sandbox", (signal) => {
-                    const cut = AbortSignal.timeout(Math.max(1, waitBudget + 3_000));
-                    const both = AbortSignal.any([signal, cut]);
-                    return waitReady(deps, handle, created.placement, waitBudget, both);
-                }).catch(() => {
-                    deps.log.warn("wait for ready failed", { handle: handleTag(handle) });
-                    return created.placement;
-                });
-                deps.log.info("placement started", {
-                    handle: handleTag(handle),
-                    state: p ? stateName[p.state] : "unknown",
-                });
-                const ready = p?.state === PlacementState.READY;
-                const view = placementView(p, deps.now());
-                if (ready && claims.github && budget.left() >= fetchMs) {
-                    view.source = await fetchAfterStart(deps, handle, fetchMs);
-                } else if (claims.githubUnplaced) {
-                    view.source = { state: "not_fetched", note: unplacedNote };
-                }
-                const meta =
-                    order.paymentResponse !== undefined
-                        ? { "x402/payment-response": order.paymentResponse }
-                        : undefined;
-                const text = [
-                    `Sandbox ${view.state}. handle: ${handle}`,
-                    ready ? `Time left: ${view.timeLeft} (deadline ${view.deadline}).` : "",
-                    p?.state === PlacementState.PLACING
-                        ? "Still starting, call bugnet_status with the handle and waitSeconds 25."
-                        : "",
-                    p?.state === PlacementState.FAILED
-                        ? `It failed to start${p.refundable ? ", the payment will be refunded" : ""}.`
-                        : "",
-                    view.source ? sentence(view.source.note) : "",
-                    sshLine(view.sshAlias),
-                    "Keep the handle, it is the only key to this sandbox. Commands run as root " +
-                        "or as a user with passwordless sudo: use $HOME, prefix system changes with sudo.",
-                    p?.state === PlacementState.FAILED
-                        ? ""
-                        : "When the work is done and its results are read, call bugnet_stop with " +
-                          "the handle, so the sandbox does not keep running until its deadline.",
-                ]
-                    .filter(Boolean)
-                    .join("\n");
-                return ok(text, { handle, orderId: order.orderId, ...view }, meta);
+                const retry = paidRetry
+                    ? retryCall("bugnet_start", order.orderId, { claim: args.claim })
+                    : payment !== undefined
+                      ? retryCall("bugnet_start", order.orderId, { payment: true })
+                      : null;
+                return await startPaid(deps, ctx, claims, order, budget, { retry });
             } catch (e) {
                 return failure(e, "start");
             }

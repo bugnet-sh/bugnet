@@ -27,7 +27,7 @@ import { silentLog, type Log } from "../log.ts";
 import { DevPayments } from "../payments/dev.ts";
 export { DevPayments, type DevPaymentsOptions } from "../payments/dev.ts";
 import type { OrderClaims } from "../payments/ordertoken.ts";
-import type { OrderRequest, OrderResult, Payments } from "../payments/port.ts";
+import type { OrderRequest, OrderResult, OrderTerms, Payments } from "../payments/port.ts";
 import { errorInfoType, retryInfoType, type RouterClient } from "../router.ts";
 import { buildMcpServer } from "../server.ts";
 import type { Deps, Register } from "../tools/common.ts";
@@ -180,6 +180,23 @@ export function testPayments(
             abandoned.push({ orderId, reason });
         },
     };
+}
+
+// A dev order made on the require-mode ledger, paid unless paid is false
+export async function devOrder(
+    p: TestPayments,
+    terms: OrderTerms,
+    opts: { paid?: boolean } = {},
+): Promise<{ orderId: string; claim: string }> {
+    if (!p.dev.requiresPayment) {
+        throw new Error("devOrder needs testPayments(undefined, { requirePayment: true })");
+    }
+    const r = await p.dev.order(terms);
+    if (r.status !== "payment_required" || !r.claim) {
+        throw new Error("devOrder expected a payment step with a claim");
+    }
+    if (opts.paid !== false) p.dev.pay(r.orderId);
+    return { orderId: r.orderId, claim: r.claim };
 }
 
 export function recordingLog(): { log: Log; lines: string[] } {

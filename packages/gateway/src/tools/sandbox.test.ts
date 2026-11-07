@@ -23,7 +23,10 @@ import {
     testDeps,
     testHandle,
     testNow,
+    devOrder,
+    recordingLog,
     testPayments,
+    tokenClaims,
     type RouterImpl,
     type TestPayments,
 } from "../testing/harness.ts";
@@ -82,6 +85,14 @@ function recordTimeouts(): WeakMap<AbortSignal, number> {
 afterEach(() => {
     vi.restoreAllMocks();
 });
+
+const claim = "C".repeat(43);
+const startTerms = {
+    kind: "start",
+    packageId: "small-10m",
+    amountMicros: 50_000,
+    description: "d",
+} as const;
 
 const startArgs = (id: string, price = "0.05") => ({
     quoteId: id,
@@ -220,7 +231,9 @@ describe("bugnet_start", () => {
         expect(r.structured).toEqual(
             expect.objectContaining({ x402Version: 2, accepts: [{ amount: "50000" }] }),
         );
-        expect(r.text).toMatch(/call the same tool again with orderId "ord_1"/);
+        expect(r.text).toMatch(
+            /Calling bugnet_start again without this orderId opens a new order the user would pay again\./,
+        );
     });
 
     it("puts the pay link, the order and the guide where Claude Code's model sees them", async () => {
@@ -228,29 +241,30 @@ describe("bugnet_start", () => {
         const payments = testPayments(() => ({
             status: "payment_required",
             orderId: "ord_2",
+            claim,
             paymentRequired: required,
-            payUrl: "https://pay.bugnet.sh/ord_2",
+            payUrl: "https://pay.bugnet.sh/o/ord_2",
         }));
         const { client } = await setup(startRouter({ waits: [] }), payments);
-        const r = await callTool<Record<string, unknown>>(
-            client,
-            "bugnet_start",
-            startArgs(await quoteId(client)),
-        );
+        const id = await quoteId(client);
+        const r = await callTool<Record<string, unknown>>(client, "bugnet_start", startArgs(id));
         const guide =
-            "Payment required for order ord_2. If an x402-capable wallet is connected it pays " +
-            "automatically. Otherwise the user can pay at https://pay.bugnet.sh/ord_2. After " +
-            'paying, call the same tool again with orderId "ord_2", since a call without it ' +
-            "opens a new order the user would pay again. The x402 maxTimeoutSeconds limits a " +
-            "wallet's signed payment, not the user's time to pay.";
+            "Payment required for order ord_2. Next: pay at https://pay.bugnet.sh/o/ord_2 with a " +
+            "Solana wallet holding USDC, then call bugnet_redeem with orderId and claim " +
+            `(orderId "ord_2", claim "${claim}", quoteId "${id}"). Show the user the link, since ` +
+            "they pay in their own browser. Calling bugnet_start again without this orderId opens a " +
+            "new order the user would pay again. The x402 maxTimeoutSeconds limits a wallet's signed " +
+            "payment, not the user's time to pay.";
         expect(r.structured).toEqual({
             ...required,
             message: guide,
             orderId: "ord_2",
-            payUrl: "https://pay.bugnet.sh/ord_2",
+            payUrl: "https://pay.bugnet.sh/o/ord_2",
+            claim,
+            quoteId: id,
         });
         expect(r.text).toBe(`${JSON.stringify(required)}\n${guide}`);
-        expect(r.text).not.toMatch(/bridge/);
+        expect(r.text).not.toMatch(/bridge|x402-capable|pays automatically/);
     });
 
     it("says a retried order is not paid yet and keeps its x402 fields", async () => {
@@ -353,6 +367,243 @@ describe("bugnet_start", () => {
         );
         expect(r.text).toMatch(/failed to start, the payment will be refunded/);
         expect(r.text).not.toMatch(/bugnet_stop/);
+    });
+
+    it("starts a paid order from its stored terms after the quote expired", async () => {
+        const seen = { waits: [] } as {
+            create?: CreatePlacementRequest;
+            waits: GetPlacementRequest[];
+        };
+        let priced = 0;
+        const payments = testPayments(undefined, { requirePayment: true });
+        const { client, deps, clock } = await setup(
+            {
+                ...startRouter(seen),
+                estimate: () => {
+                    priced += 1;
+                    return { options };
+                },
+                pricePackage: () => {
+                    priced += 1;
+                    return { option: options[0] };
+                },
+            },
+            payments,
+        );
+        const { log, lines } = recordingLog();
+        deps.log = log;
+        const { orderId, claim } = await devOrder(payments, startTerms);
+        const id = signed(deps, { expiresAt: testNow + 60_000 });
+        clock.now = testNow + 11 * 60_000;
+        const r = await callTool(
+            client,
+            "bugnet_start",
+            { quoteId: id, packageId: "small-30m", confirmPriceUsd: "99", orderId, claim },
+            { toolUseId: "toolu_r" },
+        );
+        expect(r.isError).toBe(false);
+        expect(r.structured).toEqual(expect.objectContaining({ handle: testHandle, orderId }));
+        expect(payments.orders).toEqual([{ orderId, claim, idempotencyKey: "toolu_r" }]);
+        expect(priced).toBe(0);
+        expect(tokenClaims(seen.create?.orderToken as string)).toEqual(
+            expect.objectContaining({
+                order_id: orderId,
+                kind: "start",
+                package_id: "small-10m",
+                amount_micros: 50_000,
+            }),
+        );
+        expect(lines.join("\n")).not.toContain(claim);
+    });
+
+    it("abandons a paid order the router refuses outright", async () => {
+        const payments = testPayments(undefined, { requirePayment: true });
+        const { client, deps } = await setup(
+            {
+                ...startRouter({ waits: [] }),
+                createPlacement() {
+                    throw routerError(Code.PermissionDenied, "WALLET_BLOCKED");
+                },
+            },
+            payments,
+        );
+        const { orderId, claim } = await devOrder(payments, startTerms);
+        const r = await callTool(client, "bugnet_start", {
+            ...startArgs(signed(deps)),
+            orderId,
+            claim,
+        });
+        expect(r.text).toMatch(/^start: the paying wallet is blocked/);
+        expect(payments.abandoned).toEqual([{ orderId, reason: "denied" }]);
+    });
+
+    it("names the claim when a paid order may still start a sandbox", async () => {
+        const payments = testPayments(undefined, { requirePayment: true });
+        const { client, deps } = await setup(
+            {
+                ...startRouter({ waits: [] }),
+                createPlacement() {
+                    throw routerError(Code.Unavailable);
+                },
+            },
+            payments,
+        );
+        const { orderId, claim } = await devOrder(payments, startTerms);
+        const r = await callTool(client, "bugnet_start", {
+            ...startArgs(signed(deps)),
+            orderId,
+            claim,
+        });
+        expect(r.text).toBe(
+            `start: the sandbox service is unavailable. Order ${orderId} was paid and may still ` +
+                "start a sandbox, so tell the user before starting another. Calling bugnet_start " +
+                `with orderId "${orderId}" and claim "${claim}" within 10 minutes returns its handle.`,
+        );
+        expect(payments.abandoned).toEqual([]);
+    });
+
+    it("asks for the claim when a paid order comes back without it", async () => {
+        const payments = testPayments(undefined, { requirePayment: true });
+        const { client } = await setup(startRouter({ waits: [] }), payments);
+        const { orderId } = await devOrder(payments, startTerms);
+        const r = await callTool(client, "bugnet_start", {
+            ...startArgs(await quoteId(client)),
+            orderId,
+        });
+        const text =
+            `start: order ${orderId} is already paid. Call bugnet_start again with orderId ` +
+            `"${orderId}" and the claim from its payment step, and do not pay it again. If the ` +
+            "claim is lost, the payment is refunded automatically.";
+        expect(r.isError).toBe(true);
+        expect(r.text).toBe(text);
+        expect(r.structured).toEqual({ message: text, orderId, refusal: "paid_claim_required" });
+    });
+
+    it("never sends a claim beside a payment", async () => {
+        const payments = testPayments(() => ({
+            status: "paid",
+            orderId: "ord_p",
+            orderToken: "t",
+            payer: "P",
+            kind: "start",
+            packageId: "small-10m",
+            amountMicros: 50_000,
+        }));
+        const { client } = await setup(startRouter({ waits: [] }), payments);
+        const r = await callTool(client, "bugnet_start", {
+            ...startArgs(await quoteId(client)),
+            orderId: "ord_p",
+            claim,
+            payment: { signed: true },
+        });
+        expect(r.isError).toBe(false);
+        expect(payments.orders).toEqual([
+            expect.objectContaining({
+                kind: "start",
+                packageId: "small-10m",
+                amountMicros: 50_000,
+                orderId: "ord_p",
+                payment: { signed: true },
+            }),
+        ]);
+        expect(payments.orders[0]).not.toHaveProperty("claim");
+    });
+
+    it("checks a claim's shape and that its orderId comes with it", async () => {
+        const { client, payments } = await setup(startRouter({ waits: [] }));
+        const id = await quoteId(client);
+        const alone = await callTool(client, "bugnet_start", { ...startArgs(id), claim });
+        expect(alone.isError).toBe(true);
+        expect(alone.text).toMatch(/claim goes with the orderId of its payment step/);
+        const short = await callTool(client, "bugnet_start", {
+            ...startArgs(id),
+            orderId: "ord_1",
+            claim: "a".repeat(42),
+        });
+        expect(short.text).toMatch(/the 43-character claim from the payment step/);
+        expect(payments.orders).toEqual([]);
+    });
+
+    it("says a paid retry is not paid yet and names the claim it sent", async () => {
+        const payments = testPayments(undefined, { requirePayment: true });
+        const { client, deps } = await setup(startRouter({ waits: [] }), payments);
+        const { orderId, claim } = await devOrder(payments, startTerms, { paid: false });
+        const id = signed(deps);
+        const r = await callTool(client, "bugnet_start", { ...startArgs(id), orderId, claim });
+        expect(r.isError).toBe(true);
+        expect(r.text).toContain(
+            `Order ${orderId} is not paid yet, and a payment can take a few seconds to confirm. ` +
+                `Next: pay at http://127.0.0.1:8787/o/${orderId} with a Solana wallet holding USDC, ` +
+                `then call bugnet_redeem with orderId and claim (orderId "${orderId}", claim ` +
+                `"${claim}", quoteId "${id}").`,
+        );
+        expect(r.structured).toEqual(expect.objectContaining({ orderId, claim, quoteId: id }));
+    });
+
+    it("asks to call again while a payment is still confirming", async () => {
+        const payments = testPayments(() => ({
+            status: "refused",
+            orderId: "ord_s",
+            reason: "settling",
+        }));
+        const { client, deps } = await setup(startRouter({ waits: [] }), payments);
+        const r = await callTool(client, "bugnet_start", {
+            ...startArgs(signed(deps)),
+            orderId: "ord_s",
+            claim,
+        });
+        expect(r.text).toBe(
+            "start: the payment for order ord_s is still confirming. Call again with the same " +
+                "orderId and claim, and do not pay again. Retry after 3 s.",
+        );
+    });
+
+    it("sends a paid extend order on to bugnet_extend", async () => {
+        let created = 0;
+        const payments = testPayments(() => ({
+            status: "paid",
+            orderId: "ord_e",
+            orderToken: "t",
+            payer: "P",
+            kind: "extend",
+            packageId: "more-10m",
+            amountMicros: 40_000,
+            handleSha256: "ab".repeat(32),
+        }));
+        const { client, deps } = await setup(
+            {
+                ...startRouter({ waits: [] }),
+                createPlacement: () => {
+                    created += 1;
+                    return { handle: testHandle };
+                },
+            },
+            payments,
+        );
+        const r = await callTool(client, "bugnet_start", {
+            ...startArgs(signed(deps)),
+            orderId: "ord_e",
+            claim,
+        });
+        expect(r.text).toBe(
+            "start: order ord_e adds time to a sandbox, call bugnet_extend with the handle, " +
+                `orderId "ord_e" and claim "${claim}".`,
+        );
+        expect(created).toBe(0);
+    });
+
+    it("keeps orderId and claim in a bad quote's answer on a paid retry", async () => {
+        const { client, payments } = await setup(startRouter({ waits: [] }));
+        const r = await callTool(client, "bugnet_start", {
+            ...startArgs("q3.bad"),
+            orderId: "ord_k",
+            claim,
+        });
+        expect(r.text).toBe(
+            'malformed quote id, copy it in full or call bugnet_quote again. Keep orderId "ord_k" ' +
+                `and claim "${claim}" on the next bugnet_start, so the order is not paid twice.`,
+        );
+        expect(payments.orders).toEqual([]);
     });
 });
 
