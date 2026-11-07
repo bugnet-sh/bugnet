@@ -316,7 +316,8 @@ export class DevX402Ledger {
             ...(a.state !== "open"
                 ? {
                       refund: a.refund ?? {
-                          state: "waiting" as const,
+                          state:
+                              a.state === "closing" ? ("waiting" as const) : ("confirmed" as const),
                           amountMicros: 0,
                           keptMicros: 0,
                           txs: [],

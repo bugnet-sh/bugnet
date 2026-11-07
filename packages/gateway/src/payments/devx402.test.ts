@@ -667,17 +667,17 @@ describe("DevPayments x402 ledger", () => {
         expect(tokenClaims(r.orderToken)).not.toHaveProperty("allowance_micros");
     });
 
-    it.each(["closing", "closed"] as const)(
-        "always shows a refund block on a %s account",
-        async (state) => {
-            await dev.order(allowance());
-            dev.x402.patch(h, { state });
-            expect((await dev.x402Account(h, signal())).x402?.refund).toEqual({
-                state: "waiting",
-                amountMicros: 0,
-                keptMicros: 0,
-                txs: [],
-            });
-        },
-    );
+    it.each([
+        ["closing", "waiting"],
+        ["closed", "confirmed"],
+    ] as const)("shows a %s account's default refund block as %s", async (state, refundState) => {
+        await dev.order(allowance());
+        dev.x402.patch(h, { state });
+        expect((await dev.x402Account(h, signal())).x402?.refund).toEqual({
+            state: refundState,
+            amountMicros: 0,
+            keptMicros: 0,
+            txs: [],
+        });
+    });
 });

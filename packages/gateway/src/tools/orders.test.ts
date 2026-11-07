@@ -69,14 +69,25 @@ describe("claimInput and paidRetry", () => {
     });
 
     it("takes orderId with a claim or a payment as a paid retry", () => {
-        expect(paidRetry({ orderId: "o", claim }, undefined)).toEqual({ orderId: "o", claim });
-        expect(paidRetry({ orderId: "o", claim }, { p: 1 })).toEqual({
+        expect(paidRetry({ orderId: "o", claim }, undefined, true)).toEqual({
+            orderId: "o",
+            claim,
+        });
+        expect(paidRetry({ orderId: "o", claim }, { p: 1 }, true)).toEqual({
             orderId: "o",
             payment: { p: 1 },
         });
-        expect(paidRetry({ orderId: "o" }, { p: 1 })).toEqual({ orderId: "o", payment: { p: 1 } });
-        expect(paidRetry({ claim }, { p: 1 })).toBeNull();
-        expect(paidRetry({ orderId: "o" }, undefined)).toBeNull();
+        expect(paidRetry({ orderId: "o" }, { p: 1 }, true)).toEqual({
+            orderId: "o",
+            payment: { p: 1 },
+        });
+        expect(paidRetry({ claim }, { p: 1 }, true)).toBeNull();
+        expect(paidRetry({ orderId: "o", claim }, { p: 1 }, false)).toBeNull();
+        expect(paidRetry({ orderId: "o", claim }, undefined, false)).toEqual({
+            orderId: "o",
+            claim,
+        });
+        expect(paidRetry({ orderId: "o" }, undefined, true)).toBeNull();
     });
 
     it("names bugnet_x402_budget for a paid allowance order", () => {
