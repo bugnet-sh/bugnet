@@ -222,7 +222,8 @@ function settle(
         return result;
     }
     const refusal = (r.structuredContent as { refusal?: unknown } | undefined)?.refusal;
-    if (typeof refusal === "string" && spentRefusals.has(refusal)) {
+    // A wrong claim says nothing about the order, which may be paid and still redeemable
+    if (typeof refusal === "string" && refusal !== "claim_mismatch" && spentRefusals.has(refusal)) {
         orders.drop(step.orderId);
         return withAfterPayment(r, step, true);
     }
@@ -485,7 +486,11 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         function afterPay(outcome: PayOutcome): Promise<RemoteResult> | RemoteResult {
             if (outcome.kind === "paid") return redeem();
             if (outcome.kind === "unknown" || spent(outcome)) return reread();
-            if (outcome.kind === "declined") return result;
+            if (outcome.kind === "declined") {
+                // The user may still pay the link, so a fresh start gets this order back
+                orders.holdLink(paid.orderId);
+                return result;
+            }
             return linkPath(paid, result, ctx, orders);
         }
 
@@ -499,7 +504,7 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             if (state === "paid") return redeem();
             if (state === "unpaid") {
                 // The order stays tried, so pay is never started for it again
-                orders.forget(paid.orderId);
+                orders.holdLink(paid.orderId);
                 return result;
             }
             if (state === "settling") return waitAndRedeem(paid, false);
