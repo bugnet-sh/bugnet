@@ -32,10 +32,12 @@ import {
 import {
     buildView,
     notAllowanceOrder,
+    notSandboxAllowance,
     otherSandboxOrder,
     paidRetryUnreachable,
     paymentUnconfirmed,
     paymentsRefusal,
+    withRefusal,
     x402Fail,
     x402Lines,
     type RefusalContext,
@@ -240,9 +242,9 @@ async function paidRetryOrder(c: BudgetCall, retry: PaidRetry): Promise<Applied 
     if (order.status === "refused" && order.reason === "router_unavailable") {
         throw paidRetryUnreachable("x402", budgetTool, retry.orderId, retryWith());
     }
-    // The handle's hash is the only term a paid retry sends
+    // The handle's hash is the only term a paid retry sends, which a start order never holds
     if (order.status === "refused" && order.reason === "terms_mismatch") {
-        throw otherSandboxOrder(order.orderId ?? retry.orderId);
+        throw notSandboxAllowance(order.orderId ?? retry.orderId);
     }
     if (order.status === "refused") {
         throw paymentsRefusal(order, {
@@ -513,11 +515,15 @@ async function runBudget(
         if (order === null) throw x402RouterError(e, "x402", step.hosts, step.terms.maxServices);
         // The order is paid, so the answer says how it ends rather than asking for a new one
         if (hasOwnReason(e, "NOT_READY")) {
-            throw x402Fail("paidRefused", "x402", {
-                reason: "sandbox_ended",
-                refundPending: true,
-                amountMicros: order.amountMicros,
-            });
+            throw withRefusal(
+                x402Fail("paidRefused", "x402", {
+                    reason: "sandbox_ended",
+                    refundPending: true,
+                    amountMicros: order.amountMicros,
+                }),
+                order.orderId,
+                "sandbox_ended",
+            );
         }
         throw x402Fail("paidNotEnabled", "x402", { amountMicros: order.allowanceMicros });
     }

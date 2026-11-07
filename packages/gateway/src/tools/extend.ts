@@ -4,9 +4,10 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { PackageOption, Placement } from "../gen/bugnet/router/v1/router_pb.ts";
-import type { OrderRequest, PaidOrder } from "../payments/port.ts";
+import type { OrderRequest, OrderResult, PaidOrder } from "../payments/port.ts";
 import { toolCallSignal } from "../request.ts";
 import { GatewayError, errorReason, fromRouter } from "../router.ts";
+import { orderCallLost } from "../x402/render.ts";
 import {
     approvalMeta,
     Budget,
@@ -301,23 +302,36 @@ export const registerExtendTool: Register = (server, deps) => {
                         ...(key ? { idempotencyKey: key } : {}),
                     };
                 }
-                let order = await deps.payments.order(
-                    request,
-                    budget.signal(30_000, applyReserveMs),
-                );
                 let byClaim = retried?.claim !== undefined;
+                const ask = async (req: OrderRequest): Promise<OrderResult> => {
+                    try {
+                        return await deps.payments.order(
+                            req,
+                            budget.signal(30_000, applyReserveMs),
+                        );
+                    } catch (e) {
+                        throw (
+                            orderCallLost("extend", "bugnet_extend", {
+                                orderId: args.orderId,
+                                claim: byClaim
+                                    ? { claim: args.claim as string, handle: true }
+                                    : null,
+                                retried: retried !== null,
+                                payment,
+                            }) ?? e
+                        );
+                    }
+                };
+                let order = await ask(request);
                 if (claimAsked(order, args, payment)) {
                     // Asking with the claim alone moves no money
-                    order = await deps.payments.order(
-                        {
-                            orderId: args.orderId,
-                            claim: args.claim,
-                            handleSha256: handleHash(args.handle),
-                            ...(key ? { idempotencyKey: key } : {}),
-                        },
-                        budget.signal(30_000, applyReserveMs),
-                    );
                     byClaim = true;
+                    order = await ask({
+                        orderId: args.orderId,
+                        claim: args.claim,
+                        handleSha256: handleHash(args.handle),
+                        ...(key ? { idempotencyKey: key } : {}),
+                    });
                 }
                 if (order.status === "payment_required") {
                     return paymentRequiredResult(order, {

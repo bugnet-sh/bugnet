@@ -1479,6 +1479,12 @@ describe("bugnet_start with x402", () => {
             expect(r.text).toBe(
                 "start: the payment would pass Bugnet's x402 limits, so it is refunded in full to the paying wallet within 10 minutes and no sandbox was started.",
             );
+            // The bridge reads the refusal word to let go of the order
+            expect(r.structured).toEqual({
+                message: r.text,
+                orderId: "ord_paid",
+                refusal: "allowance_ceiling",
+            });
             expect(s.seen.create).toBeUndefined();
         }
         // The stored order decides, so a retry without the x402 field reads the same
@@ -1491,7 +1497,11 @@ describe("bugnet_start with x402", () => {
         expect(retried.text).toBe(
             "start: the payment arrived after order ord_paid expired, so it was refunded and no sandbox was started. A new order needs the user's yes.",
         );
-        expect(retried.structured).toEqual(expect.objectContaining({ orderId: "ord_paid" }));
+        expect(retried.structured).toEqual({
+            message: retried.text,
+            orderId: "ord_paid",
+            refusal: "order_expired",
+        });
         const ended = await refused({ reason: "sandbox_ended", refundPending: true });
         const e = await callTool(
             ended.client,
@@ -1501,6 +1511,11 @@ describe("bugnet_start with x402", () => {
         expect(e.text).toBe(
             "start: the sandbox ended before the payment was applied, so it is refunded in full to the paying wallet within 10 minutes.",
         );
+        expect(e.structured).toEqual({
+            message: e.text,
+            orderId: "ord_paid",
+            refusal: "sandbox_ended",
+        });
     });
 
     it("keeps nothing-charged words for a paid retry refused at settle", async () => {
@@ -1526,6 +1541,11 @@ describe("bugnet_start with x402", () => {
                 x402Args(withSecrets(s.deps), { orderId: "ord_paid", claim }),
             );
             expect(r.text).toBe(text);
+            expect(r.structured).toEqual({
+                message: r.text,
+                orderId: "ord_paid",
+                refusal: refusal.reason,
+            });
         }
     });
 

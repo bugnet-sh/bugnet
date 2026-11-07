@@ -1,12 +1,13 @@
 import type { X402Refusal, X402ServiceInfo } from "../gen/bugnet/router/v1/router_pb.ts";
-import type {
-    RefusedOrder,
-    X402Account,
-    X402AccountService,
-    X402ConfigureRefused,
-    X402Listed,
-    X402RefundState,
-    X402Terms,
+import {
+    paymentMemo,
+    type RefusedOrder,
+    type X402Account,
+    type X402AccountService,
+    type X402ConfigureRefused,
+    type X402Listed,
+    type X402RefundState,
+    type X402Terms,
 } from "../payments/port.ts";
 import { GatewayError, reasonCode, type GatewayErrorKind } from "../router.ts";
 import { usd } from "../tools/common.ts";
@@ -647,6 +648,14 @@ function plannedHost(c: RefusalContext): string {
     return (fresh ?? c.planned[0])?.parts.host ?? "the service";
 }
 
+// The bridge reads the refusal word to let go of a spent order, as Plan A's refusalError gives it
+export function withRefusal(e: GatewayError, orderId: string | null, reason: string): GatewayError {
+    return new GatewayError(e.kind, e.message, e.retryAfterMs, e.reason, {
+        ...(orderId ? { orderId } : {}),
+        refusal: refusalCode.test(reason) ? reason : "unknown",
+    });
+}
+
 export function paymentsRefusal(
     r: RefusedOrder | X402ConfigureRefused,
     c: RefusalContext,
@@ -654,7 +663,11 @@ export function paymentsRefusal(
     const order = r as RefusedOrder;
     const reason: string = r.reason;
     const fail = (key: X402TextKey, v: X402TextValues = {}) =>
-        x402Fail(key, c.what, { terms: c.terms, ...v });
+        withRefusal(
+            x402Fail(key, c.what, { terms: c.terms, ...v }),
+            order.orderId ?? c.orderId,
+            reason,
+        );
     if (order.refundPending !== undefined && paidCheckReasons.has(reason)) {
         return fail("paidRefused", {
             reason,
@@ -741,8 +754,33 @@ export function paymentsRefusal(
     }
 }
 
+// A stored answer refused at the paid check or at settle, null for any other refusal
+export function paidOrderRefusal(
+    r: RefusedOrder,
+    what: X402What,
+    orderId: string,
+): GatewayError | null {
+    const id = r.orderId ?? orderId;
+    // Spec 5.3 names no amount, since the refused answer carries none
+    if (r.refundPending !== undefined) {
+        const e = x402Fail("paidRefused", what, {
+            reason: r.reason,
+            refundPending: r.refundPending,
+            orderId: id,
+        });
+        return withRefusal(e, id, r.reason);
+    }
+    if (r.charged === false) {
+        const key = r.reason === "x402_paused" ? "paused" : "switchedOff";
+        return withRefusal(x402Fail(key, what), id, r.reason);
+    }
+    return null;
+}
+
+export type PaidWhat = "x402" | "redeem" | "start" | "extend";
+
 export function paidRetryUnreachable(
-    what: "x402" | "redeem" | "start",
+    what: PaidWhat,
     tool: OrderTool,
     orderId: string,
     w: RetryWith,
@@ -758,7 +796,7 @@ export function paidRetryUnreachable(
 
 // A payment may have moved, so the answer names its order and never says nothing was charged
 export function paymentUnconfirmed(
-    what: "x402" | "start",
+    what: PaidWhat,
     tool: OrderTool,
     orderId: string | null,
 ): GatewayError {
@@ -768,6 +806,27 @@ export function paymentUnconfirmed(
             "the same arguments and payment in a minute, and do not pay again",
         "unavailable",
     );
+}
+
+export interface SentOrder {
+    orderId: string | undefined;
+    // How a retry by claim is called again, null when the call sent no claim
+    claim: RetryWith | null;
+    // A paid retry by payment, whose orderId the call named
+    retried: boolean;
+    payment: unknown;
+}
+
+// An order call that threw after a claim or a payment went out, null when no money can have moved
+export function orderCallLost(what: PaidWhat, tool: OrderTool, s: SentOrder): GatewayError | null {
+    if (s.claim !== null && s.orderId !== undefined) {
+        return paidRetryUnreachable(what, tool, s.orderId, s.claim);
+    }
+    if (s.retried && s.orderId !== undefined) {
+        return paidRetryUnreachable(what, tool, s.orderId, { payment: true });
+    }
+    if (s.payment === undefined) return null;
+    return paymentUnconfirmed(what, tool, paymentMemo(s.payment) ?? s.orderId ?? null);
 }
 
 // The payment also covered the package and the fee, so the line names the allowance alone
@@ -804,6 +863,17 @@ export function notAllowanceOrder(orderId: string): GatewayError {
     return x402Error(
         `x402: order ${orderId} starts a sandbox or adds time to one, not x402 allowance. Call ` +
             "bugnet_redeem with its orderId and claim",
+        "invalid",
+        null,
+        { orderId },
+    );
+}
+
+// A paid retry's handle hash matches no order of this kind, which a start or another sandbox gives
+export function notSandboxAllowance(orderId: string): GatewayError {
+    return x402Error(
+        `x402: order ${orderId} is not an x402 allowance for that sandbox. Check the handle, or ` +
+            "call bugnet_redeem with its orderId and claim if it starts a sandbox",
         "invalid",
         null,
         { orderId },

@@ -45,7 +45,8 @@ import {
 import {
     allowanceEndedText,
     buildView,
-    paidRetryUnreachable,
+    orderCallLost,
+    paidOrderRefusal,
     paymentUnconfirmed,
     paymentsRefusal,
     servicesApplyingText,
@@ -462,34 +463,14 @@ function orderLost(
     byClaim: boolean,
     payment: unknown,
 ): unknown {
-    if (byClaim) {
-        const w = { claim: args.claim as string };
-        return paidRetryUnreachable("start", startTool, args.orderId as string, w);
-    }
-    if (retried) {
-        return paidRetryUnreachable("start", startTool, retried.orderId, { payment: true });
-    }
-    if (payment !== undefined) {
-        // With [x402] off an orderId beside a payment makes a first call for that order
-        const id = paymentMemo(payment) ?? args.orderId ?? null;
-        return paymentUnconfirmed("start", startTool, id);
-    }
-    return args.x402 ? x402Fail("unreachable", "start") : e;
-}
-
-// Spec 5.3 names no amount for a paid retry, whose confirmPriceUsd is never checked
-function paidStartRefusal(r: RefusedOrder, orderId: string): GatewayError | null {
-    if (r.refundPending !== undefined) {
-        return x402Fail("paidRefused", "start", {
-            reason: r.reason,
-            refundPending: r.refundPending,
-            orderId: r.orderId ?? orderId,
-        });
-    }
-    if (r.charged === false) {
-        return x402Fail(r.reason === "x402_paused" ? "paused" : "switchedOff", "start");
-    }
-    return null;
+    // With [x402] off an orderId beside a payment makes a first call for that order
+    const lost = orderCallLost("start", startTool, {
+        orderId: args.orderId,
+        claim: byClaim ? { claim: args.claim as string } : null,
+        retried: retried !== null,
+        payment,
+    });
+    return lost ?? (args.x402 ? x402Fail("unreachable", "start") : e);
 }
 
 interface StartEnable {
@@ -814,7 +795,7 @@ export const registerSandboxTools: Register = (server, deps) => {
                 }
                 if (order.status === "refused") {
                     if (plan) throw startRefusal(order, plan, args, payment);
-                    const paid = retried ? paidStartRefusal(order, retried.orderId) : null;
+                    const paid = retried ? paidOrderRefusal(order, "start", retried.orderId) : null;
                     if (paid) throw paid;
                     throw refusalError(order, "start", "bugnet_start", {
                         ...(args.orderId ? { sentOrderId: args.orderId } : {}),

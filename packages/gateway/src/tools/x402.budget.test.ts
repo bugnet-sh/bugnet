@@ -17,6 +17,7 @@ import { withClientAddress } from "../request.ts";
 import {
     callTool,
     connectTools,
+    devOrder,
     fakeRouter,
     otherPayTo,
     recordingLog,
@@ -700,17 +701,51 @@ describe("bugnet_x402_budget", () => {
         }
     });
 
-    it("reads terms_mismatch on a paid retry as an order for another sandbox", async () => {
+    it("reads terms_mismatch on a paid retry as an order of another kind or sandbox", async () => {
         const mismatch = () =>
             testPayments(() => ({
                 status: "refused",
                 orderId: "ord_paid",
                 reason: "terms_mismatch",
             }));
+        const notOurs = (id: string) =>
+            `x402: order ${id} is not an x402 allowance for that sandbox. Check the handle, or call bugnet_redeem with its orderId and claim if it starts a sandbox.`;
         const retry = await setup({ payments: mismatch() });
         const r = await callTool(retry.client, budget, args({ orderId: "ord_paid", claim }));
-        expect(r.text).toBe("x402: order ord_paid is not for that sandbox, check the handle.");
-        expect(r.structured).toEqual(expect.objectContaining({ orderId: "ord_paid" }));
+        expect(r.text).toBe(notOurs("ord_paid"));
+        expect(r.structured).toEqual({ message: r.text, orderId: "ord_paid" });
+        // A start order holds no handleSha256, so Payments answers a budget retry terms_mismatch
+        for (const sent of ["claim", "payment"] as const) {
+            const started = await setup({
+                payments: testPayments(undefined, { requirePayment: true }),
+            });
+            const order = await devOrder(started.payments, {
+                kind: "start",
+                packageId: "small-10m",
+                amountMicros: 50_000,
+                description: "d",
+            });
+            const paidStart = await callTool(
+                started.client,
+                budget,
+                args({
+                    orderId: order.orderId,
+                    ...(sent === "claim"
+                        ? { claim: order.claim }
+                        : { payment: { accepted: { extra: { memo: order.orderId } } } }),
+                }),
+            );
+            expect(started.payments.orders.at(-1)).toEqual(
+                expect.objectContaining({ orderId: order.orderId, handleSha256: h }),
+            );
+            expect(paidStart.text).toBe(notOurs(order.orderId));
+            expect(paidStart.structured).toEqual({
+                message: paidStart.text,
+                orderId: order.orderId,
+            });
+            expect(paidStart.text).not.toContain("Nothing was charged");
+            expect(started.seen.enables).toEqual([]);
+        }
         const first = await setup({ payments: mismatch() });
         const f = await callTool(first.client, budget, args({ orderId: "ord_paid" }));
         expect(f.text).toBe(x402Text.termsMismatch("x402", { orderId: "ord_paid" }) + ".");
@@ -1110,6 +1145,55 @@ describe("bugnet_x402_budget", () => {
         expect(retry.text).toBe(
             "x402: the sandbox ended before the payment of $1.003 was applied, so it is refunded in full to the paying wallet within 10 minutes.",
         );
+    });
+
+    it("names sandbox_ended for the bridge when the sandbox ended after the payment", async () => {
+        const failing = async (err: Error) => {
+            const s = await setup({
+                router: {
+                    enableX402: () => {
+                        throw err;
+                    },
+                },
+            });
+            return callTool<{ orderId?: unknown; refusal?: unknown }>(s.client, budget, args());
+        };
+        const ended = await failing(routerError(Code.FailedPrecondition, "NOT_READY"));
+        expect(ended.structured).toEqual({
+            message: ended.text,
+            orderId: expect.any(String),
+            refusal: "sandbox_ended",
+        });
+        // The order is applied, so a call by claim enables it at no charge and the bridge keeps it
+        const down = await failing(routerError(Code.Unavailable));
+        expect(down.text).toContain("but the services were not enabled yet");
+        expect(down.structured).toEqual({});
+    });
+
+    it("says the payment with no amount when a retry by claim is refused at the paid check", async () => {
+        const { client, payments } = await setup({
+            payments: testPayments(undefined, { requirePayment: true }),
+        });
+        const first = await callTool<{ orderId: string; claim: string }>(client, budget, args());
+        const { orderId, claim: given } = first.structured;
+        payments.dev.pay(orderId);
+        payments.dev.x402.refuseNextOrder({
+            orderId,
+            reason: "allowance_ceiling",
+            refundPending: true,
+        });
+        const r = await callTool(
+            client,
+            budget,
+            args({ orderId, claim: given, amountUsd: "2.00", confirmPriceUsd: "2.003" }),
+        );
+        expect(r.text).toBe(
+            "x402: the payment would pass Bugnet's x402 limits, so it is refunded in full to the paying wallet within 10 minutes and nothing was enabled.",
+        );
+        expect(r.structured).toEqual(
+            expect.objectContaining({ orderId, refusal: "allowance_ceiling" }),
+        );
+        expect(payments.abandoned).toEqual([]);
     });
 
     it("words an EnableX402 failure after a free change as the router's refusal", async () => {

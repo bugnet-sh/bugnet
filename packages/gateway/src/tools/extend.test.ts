@@ -3,7 +3,8 @@ import { Code } from "@connectrpc/connect";
 import type { Client } from "@modelcontextprotocol/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlacementState, type ExtendPlacementRequest } from "../gen/bugnet/router/v1/router_pb.ts";
-import type { PaidAllowanceOrder, PaidOrder } from "../payments/port.ts";
+import type { OrderRequest, OrderResult, PaidAllowanceOrder, PaidOrder } from "../payments/port.ts";
+import { GatewayError } from "../router.ts";
 import {
     callTool,
     connectTools,
@@ -702,5 +703,141 @@ describe("bugnet_extend", () => {
         });
         expect(short.text).toMatch(/the 43-character claim from the payment step/);
         expect(payments.orders).toEqual([]);
+    });
+});
+
+describe("bugnet_extend when Payments cannot answer after money may have moved", () => {
+    const memoId = `ord_${"a".repeat(26)}`;
+    // The 7.15 binding names the order in the payment's memo
+    const memoPayment = { x402Version: 2, accepted: { extra: { memo: memoId } } };
+    const paidUnreachable = (id: string, next: string) =>
+        `extend: order ${id} is paid, but Bugnet could not reach its payment service to apply it. Call bugnet_extend ${next} in a minute.`;
+    const fromStep = (id: string) => `with orderId "${id}" and the claim from its payment step`;
+    const byClaimText = (id: string) =>
+        paidUnreachable(id, `with the handle, orderId "${id}" and claim "${claim}"`);
+    const unconfirmed =
+        "extend: the payment was sent, but Bugnet could not confirm it. Call bugnet_extend again with the same arguments and payment in a minute, and do not pay again.";
+
+    async function down(
+        o: {
+            off?: boolean;
+            answer?: (req: OrderRequest) => OrderResult | Promise<OrderResult>;
+        } = {},
+    ) {
+        const payments = testPayments(o.answer ?? (() => Promise.reject(new Error("down"))));
+        const deps = testDeps({
+            ...(o.off ? {} : { config: testConfig("[x402]\nenabled = true\n") }),
+            router: fakeRouter({ ...checked, extendPlacement: () => ({ placement: extended }) }),
+            payments,
+        });
+        return { client: await connectTools(deps), payments };
+    }
+
+    it("names the order a claim, a payment or its memo names, and never says nothing was charged", async () => {
+        const failures: unknown[] = [
+            new Error("down"),
+            new DOMException("timed out", "TimeoutError"),
+            new GatewayError(
+                "unavailable",
+                "the payment service did not answer, try again in a minute",
+            ),
+        ];
+        for (const err of failures) {
+            const answer = () => Promise.reject(err);
+            const rows: [
+                Awaited<ReturnType<typeof down>>,
+                Record<string, unknown>,
+                unknown,
+                string,
+            ][] = [
+                [
+                    await down({ answer }),
+                    { orderId: "ord_paid", claim },
+                    undefined,
+                    byClaimText("ord_paid"),
+                ],
+                [
+                    await down({ answer }),
+                    { orderId: "ord_paid", payment: { x402Version: 2 } },
+                    undefined,
+                    paidUnreachable("ord_paid", fromStep("ord_paid")),
+                ],
+                [
+                    await down({ answer }),
+                    {},
+                    memoPayment,
+                    paidUnreachable(memoId, fromStep(memoId)),
+                ],
+                // With [x402] off an orderId beside a payment makes a first call for that order
+                [
+                    await down({ answer, off: true }),
+                    { orderId: "ord_paid", payment: { x402Version: 2 } },
+                    undefined,
+                    paidUnreachable("ord_paid", fromStep("ord_paid")),
+                ],
+            ];
+            for (const [s, extra, meta, text] of rows) {
+                const r = await callTool(
+                    s.client,
+                    "bugnet_extend",
+                    { ...args(), ...extra },
+                    meta ? { meta: { "x402/payment": meta } } : {},
+                );
+                expect(r.isError).toBe(true);
+                expect(r.text).toBe(text);
+                expect(r.structured).toEqual({ message: r.text, orderId: expect.any(String) });
+                expect(r.text).toContain(`order ${(r.structured as { orderId: string }).orderId}`);
+                expect(r.text).not.toContain("othing was charged");
+            }
+            const bare = await down({ answer });
+            const b = await callTool(bare.client, "bugnet_extend", args(), {
+                meta: { "x402/payment": { x402Version: 2 } },
+            });
+            expect(b.text).toBe(unconfirmed);
+            expect(b.structured).toEqual({});
+        }
+        // No payment and no claim moved no money, so Plan A's answer stays
+        const plain = await down({
+            answer: () =>
+                Promise.reject(
+                    new GatewayError(
+                        "unavailable",
+                        "the payment service did not answer, try again in a minute",
+                    ),
+                ),
+        });
+        const n = await callTool(plain.client, "bugnet_extend", args());
+        expect(n.text).toBe("the payment service did not answer, try again in a minute.");
+    });
+
+    it("names the order when the claim-alone ask after a payment cannot reach Payments", async () => {
+        for (const off of [false, true]) {
+            let asks = 0;
+            const s = await down({
+                off,
+                answer: () => {
+                    asks += 1;
+                    if (asks > 1) return Promise.reject(new Error("down"));
+                    return {
+                        status: "refused",
+                        orderId: "ord_paid",
+                        reason: "paid_claim_required",
+                    };
+                },
+            });
+            const r = await callTool(s.client, "bugnet_extend", {
+                ...args(),
+                orderId: "ord_paid",
+                claim,
+                payment: { x402Version: 2 },
+            });
+            expect(s.payments.orders[1]).toEqual({
+                orderId: "ord_paid",
+                claim,
+                handleSha256: handleHash(testHandle),
+            });
+            expect(r.text).toBe(byClaimText("ord_paid"));
+            expect(r.structured).toEqual({ message: r.text, orderId: "ord_paid" });
+        }
     });
 });
