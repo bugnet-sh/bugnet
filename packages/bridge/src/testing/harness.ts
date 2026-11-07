@@ -1,6 +1,9 @@
 // Drives the real gateway and a fake secrets route that opens boxes with the development key
 import { createServer, type IncomingMessage, type Server as HttpServer } from "node:http";
+import { chmod, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { timestampFromMs } from "@bufbuild/protobuf/wkt";
 import { startHttp } from "@bugnet/gateway/server";
 import {
@@ -326,4 +329,16 @@ export async function connectBridge(setup: BridgeSetup): Promise<ConnectedBridge
             if (remote instanceof RemoteGateway) await remote.close();
         },
     };
+}
+
+/* Pay */
+
+const fakePay = fileURLToPath(new URL("./fake-pay.ts", import.meta.url));
+
+// Writes an executable named pay that runs the fake pay server, and returns its path
+export async function fakePayCommand(dir: string): Promise<string> {
+    const path = join(dir, "pay");
+    await writeFile(path, `#!/bin/sh\nexec "${process.execPath}" "${fakePay}" "$@"\n`);
+    await chmod(path, 0o755);
+    return path;
 }

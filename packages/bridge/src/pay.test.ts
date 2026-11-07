@@ -1,7 +1,11 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { CallToolResult } from "@modelcontextprotocol/server";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { paymentRequired } from "./payment.ts";
 import {
+    PayCli,
     maxPaymentMicros,
     parsePayBody,
     payArgs,
@@ -12,7 +16,9 @@ import {
     priceMicros,
     progressEveryMs,
     usdText,
+    type PayCliOptions,
 } from "./pay.ts";
+import { fakePayCommand, recordingLog } from "./testing/harness.ts";
 
 const claim = "Ab3_".repeat(10) + "xY-"; // 43 characters
 const orderId = "ord_abcdefghijklmnopqrstuvwxyz";
@@ -148,5 +154,107 @@ describe("pay helpers", () => {
         ).toEqual({ refused: "order_expired" });
         expect(parsePayBody("Touch ID was cancelled")).toBeNull();
         expect(parsePayBody("[1,2]")).toBeNull();
+    });
+});
+
+describe("PayCli", () => {
+    let dir = "";
+    let n = 0;
+    beforeAll(async () => {
+        dir = await mkdtemp(join(tmpdir(), "bugnet-pay-"));
+    });
+    afterAll(() => rm(dir, { recursive: true, force: true }));
+
+    const step = paymentStep("bugnet_start", stepResult())!;
+
+    const run = async (env: Record<string, string> = {}, opts: Partial<PayCliOptions> = {}) => {
+        const { log, lines } = recordingLog();
+        const record = join(dir, `record-${++n}.json`);
+        const cli = new PayCli({
+            command: await fakePayCommand(dir),
+            origin: "https://pay.bugnet.sh",
+            env: {
+                ...process.env,
+                BUGNET_FAKE_PAY_RECORD: record,
+                PAY_SECRET: "s",
+                NO_DNA: "1",
+                ...env,
+            },
+            log,
+            ...opts,
+        });
+        let notes = 0;
+        const outcome = await cli.pay(step, 50_000, () => {
+            notes += 1;
+        });
+        const starts = await readFile(`${record}.starts`, "utf8").then(
+            (t) => t.split("\n").filter(Boolean).length,
+            () => 0,
+        );
+        return {
+            outcome,
+            lines,
+            notes,
+            starts,
+            record: await readFile(record, "utf8").then(JSON.parse, () => null),
+        };
+    };
+
+    it("starts pay with the flags, no PAY_ variable and no client capability, and reads a payment", async () => {
+        const { outcome, lines, record } = await run();
+        expect(outcome).toEqual({ kind: "paid" });
+        expect(record.argv).toEqual(payArgs("https://pay.bugnet.sh", 50_000));
+        expect(record.payEnvKeys).toEqual([]);
+        expect(record.capabilities).toEqual({});
+        expect(lines.map((l) => JSON.parse(l).msg)).toEqual(["pay started", "pay finished"]);
+        expect(lines.join("\n")).not.toContain(step.claim);
+    });
+
+    it("uses a tool named pay.curl", async () => {
+        expect((await run({ BUGNET_FAKE_PAY_TOOL: "pay.curl" })).outcome).toEqual({ kind: "paid" });
+    });
+
+    it("answers unavailable when pay is missing, too old for the flags, or has no curl taking url", async () => {
+        const missing = await run({}, { command: join(dir, "no-such-pay") });
+        expect([missing.outcome.kind, missing.starts]).toEqual(["unavailable", 0]);
+        // Review Focus 3, an old pay is started once and never again without the flags
+        const old = await run({ BUGNET_FAKE_PAY_OLD: "1" });
+        expect([old.outcome.kind, old.starts]).toEqual(["unavailable", 1]);
+        expect((await run({ BUGNET_FAKE_PAY_TOOL: "fetch" })).outcome.kind).toBe("unavailable");
+        expect((await run({ BUGNET_FAKE_PAY_ARG: "address" })).outcome.kind).toBe("unavailable");
+    });
+
+    it("sends progress notes while pay runs", async () => {
+        const r = await run({ BUGNET_FAKE_PAY_DELAY_MS: "250" }, { progressMs: 50 });
+        expect(r.outcome).toEqual({ kind: "paid" });
+        expect(r.notes).toBeGreaterThanOrEqual(3);
+    });
+
+    it("answers declined for a refused body and unknown for anything else", async () => {
+        const refused = JSON.stringify({ refused: "order_expired", orderId: step.orderId });
+        expect((await run({ BUGNET_FAKE_PAY_ANSWER: refused })).outcome).toEqual({
+            kind: "declined",
+            reason: "order_expired",
+        });
+        expect((await run({ BUGNET_FAKE_PAY_ANSWER: "Touch ID was cancelled" })).outcome).toEqual({
+            kind: "unknown",
+        });
+        const other = JSON.stringify({ paid: true, orderId: "ord_other" });
+        expect((await run({ BUGNET_FAKE_PAY_ANSWER: other })).outcome).toEqual({ kind: "unknown" });
+        // Port 8, the pay link's other answers to a request carrying a payment
+        const busy = JSON.stringify({ refused: "too_many_requests" });
+        expect((await run({ BUGNET_FAKE_PAY_ANSWER: busy })).outcome).toEqual({
+            kind: "declined",
+            reason: "too_many_requests",
+        });
+        const settling = JSON.stringify({ state: "settling", orderId: step.orderId });
+        expect((await run({ BUGNET_FAKE_PAY_ANSWER: settling })).outcome).toEqual({
+            kind: "unknown",
+        });
+    });
+
+    it("answers unknown when pay outlives its timeout, since it may have paid", async () => {
+        const r = await run({ BUGNET_FAKE_PAY_DELAY_MS: "5000" }, { timeoutMs: 300 });
+        expect(r.outcome).toEqual({ kind: "unknown" });
     });
 });

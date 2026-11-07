@@ -1,5 +1,9 @@
 // Pays an order with the pay CLI, started with flags that refuse any other origin, network or amount
+import { Client } from "@modelcontextprotocol/client";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import type { CallToolResult } from "@modelcontextprotocol/server";
+import pkg from "../package.json" with { type: "json" };
+import type { Log } from "./log.ts";
 import { paymentRequired, type X402PaymentRequired } from "./payment.ts";
 
 export const payTimeoutMs = 300_000;
@@ -133,4 +137,95 @@ export type PayOutcome =
 
 export interface OrderPayer {
     pay(step: PaymentStep, maxMicros: number, onProgress: () => void): Promise<PayOutcome>;
+}
+
+export interface PayCliOptions {
+    command: string;
+    origin: string;
+    env: NodeJS.ProcessEnv;
+    log: Log;
+    timeoutMs?: number;
+    progressMs?: number;
+}
+
+// One pay process per payment, so --max-payment is that order's confirmed price
+export class PayCli implements OrderPayer {
+    private readonly opts: PayCliOptions;
+
+    constructor(opts: PayCliOptions) {
+        this.opts = opts;
+    }
+
+    async pay(step: PaymentStep, maxMicros: number, onProgress: () => void): Promise<PayOutcome> {
+        const { log } = this.opts;
+        log.info("pay started", { orderId: step.orderId });
+        const transport = new StdioClientTransport({
+            command: this.opts.command,
+            args: payArgs(this.opts.origin, maxMicros),
+            env: payEnv(this.opts.env),
+            stderr: "pipe",
+        });
+        // Pay's own words are never logged, they can name the payment
+        (transport.stderr as NodeJS.ReadableStream | null)?.resume();
+        // No capabilities and no handlers, so pay sees no elicitation and fails closed
+        const client = new Client(
+            { name: "bugnet-bridge", version: pkg.version },
+            { capabilities: {} },
+        );
+        let outcome: PayOutcome = { kind: "unknown" };
+        let ticker: NodeJS.Timeout | undefined;
+        try {
+            const tool = await this.start(client, transport);
+            if (typeof tool !== "string") {
+                outcome = tool;
+                return outcome;
+            }
+            ticker = setInterval(onProgress, this.opts.progressMs ?? progressEveryMs);
+            try {
+                const res = await client.callTool(
+                    { name: tool, arguments: { url: step.payUrl } },
+                    { timeout: this.opts.timeoutMs ?? payTimeoutMs },
+                );
+                const text = (res.content as { type: string; text?: string }[])
+                    .map((c) => (c.type === "text" ? (c.text ?? "") : ""))
+                    .join("\n");
+                outcome = readAnswer(step, parsePayBody(text));
+            } catch {
+                outcome = { kind: "unknown" };
+            }
+            return outcome;
+        } finally {
+            clearInterval(ticker);
+            await client.close().catch(() => {});
+            log.info("pay finished", { orderId: step.orderId, outcome: outcome.kind });
+        }
+    }
+
+    // The name of pay's curl tool, or why pay cannot be used
+    private async start(
+        client: Client,
+        transport: StdioClientTransport,
+    ): Promise<string | PayOutcome> {
+        try {
+            await client.connect(transport, { timeout: payStartTimeoutMs });
+            const { tools } = await client.listTools(undefined, { timeout: payStartTimeoutMs });
+            const tool =
+                tools.find((t) => t.name === "curl") ?? tools.find((t) => t.name === "pay.curl");
+            if (!tool) return { kind: "unavailable", reason: "no_curl" };
+            const props = tool.inputSchema.properties as Record<string, unknown> | undefined;
+            if (!props || !("url" in props)) return { kind: "unavailable", reason: "no_curl" };
+            return tool.name;
+        } catch {
+            return { kind: "unavailable", reason: "start" };
+        }
+    }
+}
+
+// Port 8, a 200 says the order is paid and every non-2xx names a refusal
+function readAnswer(step: PaymentStep, body: Record<string, unknown> | null): PayOutcome {
+    if (body?.paid === true && body.orderId === step.orderId) return { kind: "paid" };
+    if (typeof body?.refused === "string") {
+        return { kind: "declined", reason: body.refused.slice(0, 64) };
+    }
+    return { kind: "unknown" };
 }
