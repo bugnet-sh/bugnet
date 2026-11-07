@@ -11,20 +11,21 @@ out, and what a pull request needs. What Bugnet is and how people install it is 
 
 ## Layout
 
-| Path                              | What it holds                                                                            |
-| --------------------------------- | ---------------------------------------------------------------------------------------- |
-| `packages/gateway`                | The MCP server: tools, router client, quotes, the Payments port, `bugnet_assess`         |
-| `packages/intent`                 | Intent detection rules shared by the plugin's hooks and `bugnet_assess`, no dependencies |
-| `packages/bridge`                 | `npx @bugnet/mcp`, a local stdio proxy to the gateway that adds `bugnet_secret_from_env` |
-| `packages/seal`                   | Sealing a secret to the egress proxy's pinned box keys, shared by the bridge and page    |
-| `packages/secret-page`            | The secret entry page, a static bundle for the secrets route, see its README             |
-| `plugin`                          | The Claude Code plugin: MCP server entry, `run-in-sandbox` skill, hint hooks             |
-| `.claude-plugin/marketplace.json` | Lets this repository install as a plugin marketplace                                     |
-| `integrations`                    | Rules for clients without hooks (Cursor, Codex, `AGENTS.md`)                             |
-| `eval/intent`                     | Labelled prompts and commands, dev and held-out test splits, and the offline judge       |
-| `eval/agent`                      | The live judge: real Claude Code sessions with and without Bugnet                        |
-| `config`                          | `example.toml` with every setting, `dev.toml` for a local run                            |
-| `deploy`                          | The systemd unit the server runs the gateway with                                        |
+| Path                              | What it holds                                                                                          |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `packages/gateway`                | The MCP server: tools, router client, quotes, the Payments port, `bugnet_assess`                       |
+| `packages/intent`                 | Intent detection rules shared by the plugin's hooks and `bugnet_assess`, no dependencies               |
+| `packages/bridge`                 | `npx @bugnet/mcp`, a local stdio proxy to the gateway that adds `bugnet_secret_from_env`               |
+| `packages/seal`                   | Sealing a secret to the egress proxy's pinned box keys, shared by the bridge and page                  |
+| `packages/secret-page`            | The secret entry page, a static bundle for the secrets route, see its README                           |
+| `plugin`                          | The Claude Code plugin over HTTP, paying by link: MCP server entry, `run-in-sandbox` skill, hint hooks |
+| `plugin-wallet`                   | The same plugin running the bridge (`npx @bugnet/mcp`), so it pays from the `pay` wallet               |
+| `.claude-plugin/marketplace.json` | Lets this repository install as a plugin marketplace                                                   |
+| `integrations`                    | Rules for clients without hooks (Cursor, Codex, `AGENTS.md`)                                           |
+| `eval/intent`                     | Labelled prompts and commands, dev and held-out test splits, and the offline judge                     |
+| `eval/agent`                      | The live judge: real Claude Code sessions with and without Bugnet                                      |
+| `config`                          | `example.toml` with every setting, `dev.toml` for a local run                                          |
+| `deploy`                          | The systemd unit the server runs the gateway with                                                      |
 
 The gateway is a stateless TypeScript MCP server. It checks quotes, asks the Payments service for
 an order, calls the router (Bugnet's backend, which places and drives sandboxes) over Connect, and
@@ -144,26 +145,33 @@ yet, and says a retry gets the same answer.
 
 ## The plugin
 
-`plugin/` is a Claude Code plugin named `bugnet` whose MCP server is `sandbox`, so tools appear as
-`mcp__plugin_bugnet_sandbox__bugnet_*`. Its hooks run `plugin/hooks/bugnet-hook.mjs`, bundled from
-`packages/intent` with `pnpm run build:plugin` and committed so the plugin works straight from git.
-They need Node and stay silent without it. `BUGNET_HINTS=off` turns hints off and `quiet` keeps only
-hints after a failed local command. Install from a clone of this repository:
+`plugin/` is a Claude Code plugin named `bugnet` whose MCP server is `sandbox`, connected over HTTP
+and paying by link, so tools appear as `mcp__plugin_bugnet_sandbox__bugnet_*`. `plugin-wallet/` is
+the plugin `bugnet-wallet`, whose `sandbox` server is the bridge, so tools appear as
+`mcp__plugin_bugnet-wallet_sandbox__bugnet_*` and payments go through the `pay` wallet. Both carry
+the same skill and hooks. The hooks run `hooks/bugnet-hook.mjs`, bundled from `packages/intent`
+and committed so the plugins work straight from git. `pnpm run build:plugin` writes the bundle
+into both, and `plugin.test.ts` checks that the two copies match. The hooks need Node and stay
+silent without it. `BUGNET_HINTS=off` turns hints off and `quiet` keeps only hints after a failed
+local command. Install from a clone of this repository:
 
 ```sh
 claude plugin marketplace add ./bugnet-gateway
 claude plugin install bugnet@bugnet
+claude plugin install bugnet-wallet@bugnet
 ```
 
-`claude plugin validate ./bugnet-gateway` checks the marketplace and the plugin first.
+`claude plugin validate ./bugnet-gateway` checks the marketplace and the plugin first. Install one
+plugin, not both.
 
-The server URL defaults to `http://127.0.0.1:8787/mcp` until a public gateway exists;
-`BUGNET_MCP_URL` overrides it.
+The server URL defaults to `https://mcp.bugnet.sh/mcp`; `BUGNET_MCP_URL` overrides it, as in the
+local run above.
 
 ## The bridge
 
 `npx @bugnet/mcp` is a local stdio MCP server that passes every gateway tool through unchanged,
-x402 payments included, and adds `bugnet_secret_from_env`. That tool reads a secret from an
+except that it pays or opens the pay link for a payment step of `bugnet_start` or `bugnet_extend`,
+and adds `bugnet_secret_from_env`. That tool reads a secret from an
 environment variable, a `.env` file or a macOS keychain item, asks the user to confirm the name,
 source and hosts, and seals it to the egress proxy, so the value never enters the chat. A client
 that cannot ask gets only the preset hosts of a known secret, for a sandbox this bridge started.
@@ -187,6 +195,11 @@ fails closed without it. It pays an order at most once, keeps a paid order it co
 minutes (`src/orders.ts`) and uses it before opening a new order for the same package.
 `pay_command = ""` turns pay off. `BUGNET_LIVE_PAY=1 pnpm test packages/bridge/src/pay.live.test.ts`
 runs the real `pay`.
+
+Without `pay`, or after pay could not start, it asks a client that declares URL elicitation to open
+the pay link and polls `/o/<orderId>/status` every 2.5 s for up to 10 minutes (`src/linkpay.ts`);
+other clients get the payment step unchanged. `pnpm --filter @bugnet/mcp mcpb` writes the Claude
+Desktop extension to `packages/bridge/dist/bugnet.mcpb`.
 
 ## The secret page
 

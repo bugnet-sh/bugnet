@@ -87,3 +87,60 @@ describe("the plugins", () => {
         expect(m.server.mcp_config.args[0]).toBe("${__dirname}/server/main.js");
     });
 });
+
+describe("the install lines", () => {
+    const docs = { readme: text("README.md"), bridge: text("packages/bridge/README.md") };
+
+    it("pins every npx line and JSON entry to this bridge release", () => {
+        for (const [name, doc] of Object.entries(docs)) {
+            const npx = [...doc.matchAll(/npx -y @bugnet\/mcp(@[^\s"'`]*)?/g)];
+            expect(npx.length, name).toBeGreaterThan(0);
+            for (const m of npx) expect(m[1], `${name}: ${m[0]}`).toBe(`@${version}`);
+            for (const m of doc.matchAll(/"@bugnet\/mcp(@[^"]*)?"/g)) {
+                expect(m[1], `${name}: ${m[0]}`).toBe(`@${version}`);
+            }
+        }
+    });
+
+    it("gives the Codex, Claude Desktop and Claude Code lines", () => {
+        for (const line of [
+            `codex mcp add bugnet -- npx -y @bugnet/mcp@${version}`,
+            "tool_timeout_sec = 180",
+            "startup_timeout_sec = 30",
+            ".mcpb",
+            "claude plugin install bugnet-wallet@bugnet",
+            "never `pay claude`",
+        ]) {
+            expect(docs.readme, line).toContain(line);
+        }
+        expect(docs.bridge).toContain(`codex mcp add bugnet -- npx -y @bugnet/mcp@${version}`);
+        expect(text("CONTRIBUTING.md")).toContain("| `plugin-wallet`");
+    });
+
+    it("puts a bridge entry beside the URL for Cursor and VS Code", () => {
+        const section = (h: string) =>
+            docs.readme.split(`\n### ${h}\n`)[1]?.split("\n### ")[0] ?? "";
+        const args = `"args": ["-y", "@bugnet/mcp@${version}"]`;
+        expect(section("Cursor")).toContain('"url": "https://mcp.bugnet.sh/mcp"');
+        expect(section("Cursor")).toContain(args);
+        expect(section("VS Code")).toContain('"type": "http"');
+        expect(section("VS Code")).toContain('"type": "stdio"');
+        expect(section("VS Code")).toContain(args);
+    });
+
+    it("says how paying works without promising a wallet that pays by itself", () => {
+        const paying = docs.readme.split("\n## Paying\n")[1]?.split("\n## ")[0] ?? "";
+        for (const fact of [
+            "`bugnet_redeem`",
+            "15 minutes",
+            "30 minutes",
+            "Touch ID",
+            "pay.bugnet.sh",
+            "one approval click plus Touch ID",
+        ]) {
+            expect(paying, fact).toContain(fact);
+        }
+        expect(docs.readme).not.toMatch(/payment signer is still being built/);
+        expect(docs.bridge).not.toMatch(/payment signer is still being built/);
+    });
+});

@@ -7,11 +7,11 @@ run.
 <!-- PENDING: @bugnet/mcp is not published on npm yet, and the public server at mcp.bugnet.sh is not deployed yet -->
 
 ```sh
-npx -y @bugnet/mcp
+npx -y @bugnet/mcp@0.1.0
 ```
 
 The bridge runs on your computer. Your MCP client talks to it over stdio, and it passes every call
-on to Bugnet's server at `https://mcp.bugnet.sh/mcp` unchanged. It adds what only a program on
+on to Bugnet's server at `https://mcp.bugnet.sh/mcp` unchanged, except that it pays or opens the pay link for a payment step. It adds what only a program on
 your machine can do.
 
 ## Do you need it?
@@ -22,9 +22,7 @@ Most people do not. Every client that speaks Streamable HTTP can use
 
 Use the bridge when you want one of these:
 
-- **To pay from a Solana wallet on your computer.** The bridge signs each x402 payment locally,
-  within spend limits you set, so your wallet keys never leave your machine.
-  <!-- PENDING: the payment signer is still being built, so today a paid call's payment step goes back to your agent -->
+- **Paying from the `pay` wallet on your computer.** When a paid call needs a payment, the bridge has [`pay`](https://pay.sh) pay it after you approve with Touch ID, then finishes the order. It pays only links on `pay.bugnet.sh`, on Solana mainnet, up to the price you approved.
 - **To add secrets from your machine.** The bridge adds the tool `bugnet_secret_from_env`, which
   reads a token from an environment variable, a `.env` file or the macOS keychain, and seals it
   before it leaves your computer.
@@ -39,13 +37,25 @@ It needs Node 20 or newer.
 **Claude Code**
 
 ```sh
-claude mcp add --transport stdio bugnet -- npx -y @bugnet/mcp
+claude mcp add --transport stdio bugnet -- npx -y @bugnet/mcp@0.1.0
 ```
+
+or `claude plugin install bugnet-wallet@bugnet` from the `bugnet-sh/bugnet` marketplace, which also adds the skill and hint hooks. Start Claude Code as plain `claude`, never `pay claude`, which loads only pay's own server and hides Bugnet.
 
 **Codex CLI**
 
 ```sh
-codex mcp add bugnet -- npx -y @bugnet/mcp
+codex mcp add bugnet -- npx -y @bugnet/mcp@0.1.0
+```
+
+A paid call waits while you approve the payment and the first start downloads the bridge, so give both more time in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.bugnet]
+command = "npx"
+args = ["-y", "@bugnet/mcp@0.1.0"]
+startup_timeout_sec = 30
+tool_timeout_sec = 180
 ```
 
 **Cursor** (`.cursor/mcp.json`) **and Devin Desktop, formerly Windsurf**
@@ -56,7 +66,7 @@ codex mcp add bugnet -- npx -y @bugnet/mcp
     "mcpServers": {
         "bugnet": {
             "command": "npx",
-            "args": ["-y", "@bugnet/mcp"]
+            "args": ["-y", "@bugnet/mcp@0.1.0"]
         }
     }
 }
@@ -70,11 +80,13 @@ codex mcp add bugnet -- npx -y @bugnet/mcp
         "bugnet": {
             "type": "stdio",
             "command": "npx",
-            "args": ["-y", "@bugnet/mcp"]
+            "args": ["-y", "@bugnet/mcp@0.1.0"]
         }
     }
 }
 ```
+
+**Claude Desktop**: download `bugnet.mcpb` from the latest release and open it.
 
 claude.ai cannot run local programs, so it uses the URL and adds secrets through the secret page.
 
@@ -105,6 +117,24 @@ pay_origin = "https://pay.bugnet.sh"        # the only pay link origin it pays, 
 
 The bridge refuses plain `http` to any other machine, so a sandbox handle never crosses the
 network unencrypted. It logs to stderr, and its logs never hold a secret's value.
+
+## Paying
+
+When `bugnet_start` or `bugnet_extend` answers with a payment step, the bridge pays it:
+
+1. It checks that the pay link is `pay_origin` followed by `/o/` and the order, that the payment
+   names that order, and that the amount is at most the `confirmPriceUsd` you approved.
+2. It starts `pay mcp --allow-origin https://pay.bugnet.sh --allow-network mainnet
+--max-payment <that price>`, with every `PAY_` variable removed and without letting pay ask
+   through your client, so pay asks for Touch ID or pays nothing.
+3. Once pay has paid, it calls the tool again with the order and its claim, and you get the
+   sandbox.
+
+It pays an order at most once. If your client stops waiting, the bridge keeps the paid order for
+30 minutes and uses it on the next call for the same size instead of paying again. Without
+`pay`, or with `pay_command = ""`, it opens the pay link in your client when the client can open
+links, waits up to 10 minutes for you to pay in the browser, and goes on. Other clients get the
+pay link to show you.
 
 ## Secrets from your machine
 

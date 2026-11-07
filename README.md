@@ -86,18 +86,20 @@ sign-in, header or API key. Pick your client.
 
 ### Claude Code: the plugin (recommended)
 
-The plugin adds the MCP server, a skill that tells Claude when a sandbox fits, and hint hooks.
+The plugin adds the MCP server, a skill that tells Claude when a sandbox fits, and hint hooks. It
+comes in two forms. Install one, not both, or every tool shows up twice.
 
 ```sh
 claude plugin marketplace add bugnet-sh/bugnet
-claude plugin install bugnet@bugnet
+claude plugin install bugnet@bugnet          # pays by link, in your browser
+claude plugin install bugnet-wallet@bugnet   # pays from the pay wallet on this computer
 ```
+
+`bugnet` connects to `https://mcp.bugnet.sh/mcp` and needs nothing else. `bugnet-wallet` runs the [bridge](#the-bridge-npx-bugnetmcp) with `npx`, so it needs Node 20 or newer, and pays with [`pay`](https://pay.sh) set up on this computer. Start Claude Code as plain `claude`, never `pay claude`, which loads only pay's own server and hides Bugnet.
 
 Inside a session, `/plugin marketplace add bugnet-sh/bugnet` and then `/plugin install bugnet@bugnet`
 do the same. Start a new session afterwards. The tools show up as
-`mcp__plugin_bugnet_sandbox__bugnet_*`.
-
-<!-- PENDING: plugin/.mcp.json still defaults to http://127.0.0.1:8787/mcp until the public server launches -->
+`mcp__plugin_bugnet_sandbox__bugnet_*`, or `mcp__plugin_bugnet-wallet_sandbox__bugnet_*` with the wallet plugin.
 
 The hooks run a small local script with Node and stay silent if Node is not installed. They add a
 short hint when a prompt or a command looks like a fit, for example after a local run fails for
@@ -129,7 +131,13 @@ then each member connects it. The Free plan allows one custom connector.
 claude.ai runs in your browser, so it cannot use the [bridge](#the-bridge-npx-bugnetmcp). Add
 secrets with the secret page instead.
 
-<!-- PENDING: how claude.ai pays has no settled answer yet, since it has no local wallet and paying in the browser is not the plan -->
+It pays by link: the agent shows you the order's pay link, you pay in your browser, and the agent finishes the order with `bugnet_redeem`.
+
+### Claude Desktop
+
+<!-- PENDING: no release carries bugnet.mcpb yet -->
+
+Download `bugnet.mcpb` from the [latest release](https://github.com/bugnet-sh/bugnet/releases/latest) and open it with Claude Desktop, which asks you to confirm the install. It runs the [bridge](#the-bridge-npx-bugnetmcp), so it pays from the `pay` wallet on this computer when you have one, and by link otherwise.
 
 ### Cursor
 
@@ -141,6 +149,16 @@ Add this to `.cursor/mcp.json` in your project, or to `~/.cursor/mcp.json` for e
         "bugnet": {
             "url": "https://mcp.bugnet.sh/mcp"
         }
+    }
+}
+```
+
+To pay from the [`pay`](https://pay.sh) wallet on this computer, use the bridge entry instead of the URL one:
+
+```json
+{
+    "mcpServers": {
+        "bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.0"] }
     }
 }
 ```
@@ -171,7 +189,35 @@ to your user profile from a terminal:
 code --add-mcp '{"name":"bugnet","type":"http","url":"https://mcp.bugnet.sh/mcp"}'
 ```
 
+To pay from the [`pay`](https://pay.sh) wallet on this computer, use the bridge entry instead of the URL one:
+
+```json
+{
+    "servers": {
+        "bugnet": { "type": "stdio", "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.0"] }
+    }
+}
+```
+
 ### Codex CLI
+
+To pay from the [`pay`](https://pay.sh) wallet on this computer, add the bridge:
+
+```sh
+codex mcp add bugnet -- npx -y @bugnet/mcp@0.1.0
+```
+
+Then give it more time in `~/.codex/config.toml`, since a paid call waits while you approve the payment and the first start downloads the bridge:
+
+```toml
+[mcp_servers.bugnet]
+command = "npx"
+args = ["-y", "@bugnet/mcp@0.1.0"]
+startup_timeout_sec = 30
+tool_timeout_sec = 180
+```
+
+To pay by link in your browser instead, add the URL:
 
 ```sh
 codex mcp add bugnet --url https://mcp.bugnet.sh/mcp
@@ -184,8 +230,7 @@ Or add it to `~/.codex/config.toml` yourself:
 url = "https://mcp.bugnet.sh/mcp"
 ```
 
-`codex mcp list` shows it, and so does `/mcp` inside Codex. Every Bugnet tool answers within 45
-seconds, inside Codex's default 60 second limit.
+`codex mcp list` shows it, and so does `/mcp` inside Codex. Through the URL every Bugnet tool answers within 45 seconds, inside Codex's default 60 second limit.
 
 ### Devin Desktop (formerly Windsurf)
 
@@ -206,12 +251,12 @@ entry in the file that Cascade's **Open MCP config file** opens.
 
 ### Any MCP client
 
-| Setting   | Value                               |
-| --------- | ----------------------------------- |
-| URL       | `https://mcp.bugnet.sh/mcp`         |
-| Transport | Streamable HTTP                     |
-| Sign-in   | None, no headers and no API key     |
-| Stdio     | `npx -y @bugnet/mcp`, needs Node 20 |
+| Setting   | Value                                     |
+| --------- | ----------------------------------------- |
+| URL       | `https://mcp.bugnet.sh/mcp`               |
+| Transport | Streamable HTTP                           |
+| Sign-in   | None, no headers and no API key           |
+| Stdio     | `npx -y @bugnet/mcp@0.1.0`, needs Node 20 |
 
 Most clients take one of these two shapes. The second runs the [bridge](#the-bridge-npx-bugnetmcp).
 <!-- PENDING: @bugnet/mcp is not published on npm yet -->
@@ -227,7 +272,7 @@ Most clients take one of these two shapes. The second runs the [bridge](#the-bri
 ```json
 {
     "mcpServers": {
-        "bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp"] }
+        "bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.0"] }
     }
 }
 ```
@@ -240,11 +285,9 @@ If your agent reads `AGENTS.md`, paste
 <!-- PENDING: @bugnet/mcp is not published on npm yet -->
 
 The bridge is a small program that runs on your computer. Your client talks to it over stdio, and
-it passes every call on to Bugnet's server unchanged. You only need it for these:
+it passes every call on to Bugnet's server unchanged, except that it pays or opens the pay link for a payment step. You only need it for these:
 
-- **Paying from a Solana wallet on your computer.** The bridge signs each payment locally, so your
-  wallet keys never leave your machine.
-  <!-- PENDING: the bridge's payment signer is still being built -->
+- **Paying from the `pay` wallet on your computer.** When a paid call needs a payment, the bridge has [`pay`](https://pay.sh) pay it after you approve with Touch ID, then finishes the order. It pays only links on `pay.bugnet.sh`, on Solana mainnet, up to the price you approved.
 - **Adding secrets from your machine.** It adds one tool, `bugnet_secret_from_env`, which reads a
   token from an environment variable, a `.env` file or the macOS keychain. Then it asks you to
   confirm, and seals the token before it leaves your computer.
@@ -253,13 +296,13 @@ it passes every call on to Bugnet's server unchanged. You only need it for these
 Use the bridge instead of the URL, not both, or every tool shows up twice. It needs Node 20 or
 newer.
 
-| Client      | Setup                                                                            |
-| ----------- | -------------------------------------------------------------------------------- |
-| Claude Code | `claude mcp add --transport stdio bugnet -- npx -y @bugnet/mcp`                  |
-| Codex CLI   | `codex mcp add bugnet -- npx -y @bugnet/mcp`                                     |
-| Cursor      | `"bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp"] }`                  |
-| Devin       | `"bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp"] }`                  |
-| VS Code     | `"bugnet": { "type": "stdio", "command": "npx", "args": ["-y", "@bugnet/mcp"] }` |
+| Client      | Setup                                                                                  |
+| ----------- | -------------------------------------------------------------------------------------- |
+| Claude Code | `claude mcp add --transport stdio bugnet -- npx -y @bugnet/mcp@0.1.0`                  |
+| Codex CLI   | `codex mcp add bugnet -- npx -y @bugnet/mcp@0.1.0`                                     |
+| Cursor      | `"bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.0"] }`                  |
+| Devin       | `"bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.0"] }`                  |
+| VS Code     | `"bugnet": { "type": "stdio", "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.0"] }` |
 
 The bridge reads `~/.config/bugnet/mcp.toml` if it exists, or the file `--config` names.
 `--gateway URL` points it at another server. The settings file holds no secrets. Every setting
@@ -307,19 +350,29 @@ from your machine after you confirm it.
 <!-- PENDING: payments run only in a local test mode today, the payment service is still being built -->
 
 Bugnet uses [x402](https://www.x402.org), an open standard for paying over HTTP. There is no
-account to create and no API key to keep.
+account to create and no API key to keep. You pay per run in USDC on Solana.
 
-1. Your agent calls `bugnet_start` with the price it told you.
-2. Bugnet answers with a payment request: the amount in USDC and where it goes.
-3. A Solana wallet you gave your agent signs that payment. The agent calls the tool again with
-   the payment attached.
-4. Bugnet checks the payment and starts the sandbox.
+1. Your agent calls `bugnet_start` with the price it told you, and you approve the call.
+2. Bugnet answers with a payment step: an order, its pay link on `pay.bugnet.sh`, and a claim
+   that lets your agent use the order once it is paid.
+3. You pay the order, by link or from the `pay` wallet, as below.
+4. Your agent calls the free `bugnet_redeem` with the order and its claim, and Bugnet starts the
+   sandbox. `bugnet_redeem` asks for no approval, because your wallet signature was the payment
+   approval.
 
-**Giving your agent a wallet.** The [bridge](#the-bridge-npx-bugnetmcp) signs payments with a
-wallet on your computer, within spend limits you set. Your keys stay on your machine. An agent
-that already has an x402 wallet tool can pay too, since Bugnet takes the standard x402 payment
-field. Without a wallet, a paid call stops at the payment step and nothing is charged.
-<!-- PENDING: the bridge's payment signer and its settings are still being built -->
+**Paying by link.** The agent shows you the pay link. Open it and pay with a browser wallet, or
+scan its Solana Pay QR code with your phone, then tell your agent you paid. This works in every
+client, claude.ai included.
+
+**Paying from the `pay` wallet.** With the `bugnet-wallet` plugin, the bridge or the Claude
+Desktop extension, the bridge pays the order with [`pay`](https://pay.sh) on your computer, and
+you approve each payment with Touch ID. It pays only links on `pay.bugnet.sh`, only on Solana
+mainnet, and never more than the price you approved.
+The result: one approval click plus Touch ID. Without `pay`, the bridge opens the pay link in
+your client when the client can open links, and waits up to 10 minutes for you to pay.
+
+**Unpaid and unused orders.** An unpaid order expires after 15 minutes, and nothing is charged. A
+paid order that starts no sandbox within 30 minutes is refunded.
 
 **Prices.** A sandbox comes in fixed sizes: CPU, memory, disk and minutes. Each has a fixed price
 in USDC. `bugnet_assess` and `bugnet_quote` show the prices for free before anything is paid, and
@@ -450,8 +503,8 @@ Found a security problem? See [SECURITY.md](SECURITY.md).
 
 ## FAQ
 
-**Do I need an account or an API key?** No. Your agent pays per run from a Solana wallet with
-x402.
+**Do I need an account or an API key?** No. You pay per run in USDC on Solana, at the order's
+pay link or from the `pay` wallet on your computer.
 
 **Does Bugnet use AI or read my code?** No AI runs on Bugnet's side. Bugnet sees only what your
 agent sends to the sandbox, as the [list above](#what-bugnet-can-and-cannot-see) shows.
