@@ -40,6 +40,20 @@ const settingsSchema = z
         connect_timeout: duration.prefault("5s"),
         call_timeout: duration.prefault("5m"),
         secrets_timeout: duration.prefault("30s"),
+        pay_command: z.string().max(4096).default("pay"),
+        pay_origin: secureUrl
+            .refine((s) => {
+                const u = new URL(s);
+                return (
+                    u.pathname === "/" &&
+                    u.search === "" &&
+                    u.hash === "" &&
+                    u.username === "" &&
+                    u.password === ""
+                );
+            }, "an origin such as https://pay.bugnet.sh, with no path")
+            .transform((s) => new URL(s).origin)
+            .prefault("https://pay.bugnet.sh"),
     })
     .strict();
 

@@ -23,12 +23,36 @@ describe("bridge settings", () => {
             connect_timeout: 5_000,
             call_timeout: 300_000,
             secrets_timeout: 30_000,
+            pay_command: "pay",
+            pay_origin: "https://pay.bugnet.sh",
         });
     });
 
     it("matches config/example.toml", async () => {
         const text = await readFile(new URL("../config/example.toml", import.meta.url), "utf8");
         expect(parseSettings(text)).toEqual(parseSettings(""));
+    });
+
+    it("takes the pay command and an origin to pay, nothing more than an origin", () => {
+        expect(parseSettings('pay_command = ""').pay_command).toBe("");
+        expect(parseSettings('pay_origin = "https://pay.bugnet.sh/"').pay_origin).toBe(
+            "https://pay.bugnet.sh",
+        );
+        expect(parseSettings('pay_origin = "http://127.0.0.1:8787"').pay_origin).toBe(
+            "http://127.0.0.1:8787",
+        );
+        for (const bad of [
+            "https://pay.bugnet.sh/o",
+            "https://pay.bugnet.sh/?a=1",
+            "https://pay.bugnet.sh/#x",
+        ]) {
+            expect(() => parseSettings(`pay_origin = "${bad}"`), bad).toThrow(
+                /pay_origin: an origin/,
+            );
+        }
+        expect(() => parseSettings('pay_origin = "http://pay.bugnet.sh"')).toThrow(
+            /http on loopback/,
+        );
     });
 
     it("names an unknown key and a bad duration", () => {

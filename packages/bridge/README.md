@@ -99,6 +99,8 @@ secrets_url = "https://secrets.bugnet.sh"   # where sealed secrets go, https or 
 connect_timeout = "5s"                      # longest wait to reach the server at start
 call_timeout = "5m"                         # longest wait for one tool call, reset by progress
 secrets_timeout = "30s"                     # longest wait to store one secret
+pay_command = "pay"                         # the pay CLI that pays from this machine, "" for none
+pay_origin = "https://pay.bugnet.sh"        # the only pay link origin it pays, https or http on this machine
 ```
 
 The bridge refuses plain `http` to any other machine, so a sandbox handle never crosses the
