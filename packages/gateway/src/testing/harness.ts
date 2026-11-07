@@ -1,4 +1,5 @@
 // Tests reach the tools through connectTools, the MCP path a real client takes
+import { createHash } from "node:crypto";
 import { create } from "@bufbuild/protobuf";
 import { timestampFromMs } from "@bufbuild/protobuf/wkt";
 import { BinaryWriter, WireType } from "@bufbuild/protobuf/wire";
@@ -31,10 +32,13 @@ import type { OrderRequest, OrderResult, OrderTerms, Payments } from "../payment
 import { errorInfoType, retryInfoType, type RouterClient } from "../router.ts";
 import { buildMcpServer } from "../server.ts";
 import type { Deps, Register } from "../tools/common.ts";
+import { base58Encode } from "../x402/lines.ts";
 
 export const testNow = Date.parse("2026-11-05T12:00:00Z");
 export const testHandle = "sbx_abcdefghijklmnopqrstuvwxyz";
 export const testOrderSeed = Buffer.alloc(32, 9);
+export const testPayTo = base58Encode(createHash("sha256").update("bugnet test payee").digest());
+export const otherPayTo = base58Encode(createHash("sha256").update("bugnet other payee").digest());
 
 /* Router */
 
