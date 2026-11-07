@@ -5,7 +5,14 @@ import {
     type CheckX402Request,
     type EnableX402Request,
 } from "../gen/bugnet/router/v1/router_pb.ts";
-import type { PaidAllowanceOrder, X402Account, X402AccountService } from "../payments/port.ts";
+import {
+    paymentMemo,
+    type PaidAllowanceOrder,
+    type PaidOrder,
+    type X402Account,
+    type X402AccountService,
+} from "../payments/port.ts";
+import { GatewayError } from "../router.ts";
 import { withClientAddress } from "../request.ts";
 import {
     callTool,
@@ -109,6 +116,11 @@ const args = (p: Record<string, unknown> = {}) => ({
     ...p,
 });
 const h = handleHash(testHandle);
+const memoId = `ord_${"a".repeat(26)}`;
+// The 7.15 binding names the order in the payment's memo
+const memoPayment = { x402Version: 2, accepted: { extra: { memo: memoId } } };
+const unconfirmedText =
+    "x402: the payment was sent, but Bugnet could not confirm it. Call bugnet_x402_budget again with the same arguments and payment in a minute, and do not pay again.";
 const claim = "c".repeat(43);
 const budget = "bugnet_x402_budget";
 
@@ -546,19 +558,162 @@ describe("bugnet_x402_budget", () => {
         expect((await callTool(account.client, budget, args())).text).toBe(r.text);
     });
 
-    it("says nothing was charged only when an order that failed carried no payment", async () => {
-        const down = () =>
-            setup({ payments: testPayments(() => Promise.reject(new Error("down"))) });
-        const plain = await down();
+    it("never says nothing was charged when an order that carried a payment fails", async () => {
+        const plain = await setup({
+            payments: testPayments(() => Promise.reject(new Error("down"))),
+        });
         expect((await callTool(plain.client, budget, args())).text).toBe(
             "x402: Bugnet could not reach its payment service, so nothing was charged. Try again in a minute.",
         );
         expect(plain.seen.enables).toEqual([]);
-        const paid = await down();
-        const r = await callTool(paid.client, budget, args({ payment: { x402Version: 2 } }));
-        expect(r.isError).toBe(true);
-        expect(r.text).not.toContain("nothing was charged");
-        expect(paid.seen.enables).toEqual([]);
+        const failures: unknown[] = [
+            new Error("down"),
+            new DOMException("timed out", "TimeoutError"),
+            new GatewayError(
+                "unavailable",
+                "the payment service did not answer, try again in a minute",
+            ),
+        ];
+        for (const err of failures) {
+            const named = await setup({ payments: testPayments(() => Promise.reject(err)) });
+            const r = await callTool(named.client, budget, args({ payment: memoPayment }));
+            expect(r.text).toBe(
+                `x402: order ${memoId} is paid, but Bugnet could not reach its payment service to apply it. Call bugnet_x402_budget with orderId "${memoId}" and the claim from its payment step in a minute.`,
+            );
+            expect(r.structured).toEqual(expect.objectContaining({ orderId: memoId }));
+            expect(named.seen.enables).toEqual([]);
+            const bare = await setup({ payments: testPayments(() => Promise.reject(err)) });
+            const b = await callTool(bare.client, budget, args({ payment: { x402Version: 2 } }));
+            expect(b.text).toBe(unconfirmedText);
+            expect(b.structured).not.toHaveProperty("orderId");
+        }
+    });
+
+    it("reads the order from the payment's memo only when it has an order id's shape", () => {
+        expect(paymentMemo(memoPayment)).toBe(memoId);
+        for (const p of [
+            undefined,
+            null,
+            "ord_" + "a".repeat(26),
+            { accepted: "x" },
+            { accepted: { extra: null } },
+            { accepted: { extra: { memo: 7 } } },
+            { accepted: { extra: { memo: "ord_short" } } },
+            { accepted: { extra: { memo: `${memoId}\nmore` } } },
+            { accepted: { extra: { memo: memoId.toUpperCase() } } },
+        ]) {
+            expect(paymentMemo(p)).toBeNull();
+        }
+    });
+
+    it("names the order when a call carrying a payment cannot reach Payments", async () => {
+        const termsDown = await setup({
+            payments: testPayments(undefined, {
+                x402: { terms: () => Promise.reject(new Error("down")) },
+            }),
+        });
+        expect(
+            (await callTool(termsDown.client, budget, args({ payment: { x402Version: 2 } }))).text,
+        ).toBe(unconfirmedText);
+        const accountDown = await setup({
+            payments: testPayments(undefined, {
+                x402: { account: () => Promise.reject(new Error("down")) },
+            }),
+        });
+        const r = await callTool(accountDown.client, budget, args({ payment: memoPayment }));
+        expect(r.text).toContain(`x402: order ${memoId} is paid`);
+        expect(accountDown.payments.orders).toEqual([]);
+    });
+
+    it("answers router_unavailable after a payment as a paid order to call again", async () => {
+        const refusedWith = (orderId?: string) =>
+            testPayments(() => ({
+                status: "refused",
+                ...(orderId ? { orderId } : {}),
+                reason: "router_unavailable",
+            }));
+        const paidText = (id: string, next: string) =>
+            `x402: order ${id} is paid, but Bugnet could not reach its payment service to apply it. Call bugnet_x402_budget ${next} in a minute.`;
+        const byClaim = await setup({ payments: refusedWith("ord_paid") });
+        const c = await callTool(byClaim.client, budget, args({ orderId: "ord_paid", claim }));
+        expect(c.text).toBe(
+            paidText("ord_paid", `with the handle, orderId "ord_paid" and claim "${claim}"`),
+        );
+        expect(c.structured).toEqual(expect.objectContaining({ orderId: "ord_paid" }));
+        const byPayment = await setup({ payments: refusedWith("ord_paid") });
+        const p = await callTool(
+            byPayment.client,
+            budget,
+            args({ orderId: "ord_paid", payment: { x402Version: 2 } }),
+        );
+        const fromStep = (id: string) => `with orderId "${id}" and the claim from its payment step`;
+        expect(p.text).toBe(paidText("ord_paid", fromStep("ord_paid")));
+        const first = await setup({ payments: refusedWith("ord_m") });
+        const f = await callTool(first.client, budget, args({ payment: { x402Version: 2 } }));
+        expect(f.text).toBe(paidText("ord_m", fromStep("ord_m")));
+        const memo = await setup({ payments: refusedWith() });
+        const m = await callTool(memo.client, budget, args({ payment: memoPayment }));
+        expect(m.text).toBe(paidText(memoId, fromStep(memoId)));
+        const bare = await setup({ payments: refusedWith() });
+        expect(
+            (await callTool(bare.client, budget, args({ payment: { x402Version: 2 } }))).text,
+        ).toBe(unconfirmedText);
+        const unpaid = await setup({ payments: refusedWith() });
+        expect((await callTool(unpaid.client, budget, args())).text).toBe(
+            "x402: Bugnet could not reach its payment service, so nothing was charged. Try again in a minute.",
+        );
+    });
+
+    it("enables nothing for a paid answer of another sandbox or another kind", async () => {
+        const otherHandle = paidOrder(accountOf([service("chat", "enabled")]), {
+            orderId: "ord_o",
+            handleSha256: "f".repeat(64),
+        });
+        const start = {
+            status: "paid",
+            orderId: "ord_s",
+            orderToken: "t",
+            payer: "dev",
+            kind: "start",
+            packageId: "small-10m",
+            amountMicros: 50_000,
+        } satisfies PaidOrder;
+        const cases: [PaidOrder | PaidAllowanceOrder, string][] = [
+            [otherHandle, "x402: order ord_o is not for that sandbox, check the handle."],
+            [
+                start,
+                "x402: order ord_s starts a sandbox or adds time to one, not x402 allowance. Call bugnet_redeem with its orderId and claim.",
+            ],
+        ];
+        for (const [answer, text] of cases) {
+            for (const sent of [
+                { orderId: answer.orderId, claim },
+                { payment: { x402Version: 2 } },
+                {},
+            ]) {
+                const s = await setup({ payments: testPayments(() => answer) });
+                const r = await callTool(s.client, budget, args(sent));
+                expect(r.text).toBe(text);
+                expect(r.structured).toEqual(expect.objectContaining({ orderId: answer.orderId }));
+                expect(s.seen.enables).toEqual([]);
+            }
+        }
+    });
+
+    it("reads terms_mismatch on a paid retry as an order for another sandbox", async () => {
+        const mismatch = () =>
+            testPayments(() => ({
+                status: "refused",
+                orderId: "ord_paid",
+                reason: "terms_mismatch",
+            }));
+        const retry = await setup({ payments: mismatch() });
+        const r = await callTool(retry.client, budget, args({ orderId: "ord_paid", claim }));
+        expect(r.text).toBe("x402: order ord_paid is not for that sandbox, check the handle.");
+        expect(r.structured).toEqual(expect.objectContaining({ orderId: "ord_paid" }));
+        const first = await setup({ payments: mismatch() });
+        const f = await callTool(first.client, budget, args({ orderId: "ord_paid" }));
+        expect(f.text).toBe(x402Text.termsMismatch("x402", { orderId: "ord_paid" }) + ".");
     });
 
     it("refuses an unlisted service without the flag and enables it with the flag", async () => {
@@ -1101,6 +1256,24 @@ describe("bugnet_x402_budget", () => {
         ]);
         const winner = ids[results.indexOf(ok[0] as (typeof results)[number])];
         expect(ok[0]?.structured).toEqual(expect.objectContaining({ orderId: winner }));
+    });
+
+    it("never rate-limits a paid retry", async () => {
+        const view = accountOf([service("chat", "enabled")]);
+        const { client, payments } = await setup({
+            toml: "[limits]\nquote_burst = 1",
+            payments: testPayments(() => paidOrder(view)),
+        });
+        const call = (a: Record<string, unknown>) =>
+            withClientAddress("198.51.100.4", () => callTool(client, budget, args(a)));
+        expect((await call({})).isError).toBe(false);
+        expect((await call({ orderId: "ord_paid", claim })).isError).toBe(false);
+        const payment = await call({ orderId: "ord_paid", payment: { x402Version: 2 } });
+        expect(payment.isError).toBe(false);
+        expect((await call({})).text).toBe(
+            "x402: too many quotes and checks from this address for now. Retry after 5 s.",
+        );
+        expect(payments.orders).toHaveLength(3);
     });
 
     it("limits calls in the quote bucket", async () => {

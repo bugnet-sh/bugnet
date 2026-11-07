@@ -244,8 +244,14 @@ export function x402Error(
     text: string,
     kind: GatewayErrorKind = "invalid",
     retryAfterMs: number | null = null,
+    fields: Record<string, unknown> | null = null,
 ): GatewayError {
-    return new GatewayError(kind, text, retryAfterMs);
+    return new GatewayError(kind, text, retryAfterMs, null, fields);
+}
+
+// Clients that read only structuredContent get the order a text names, as Plan A's refusals give it
+function orderFields(text: string, orderId: string | undefined): { orderId: string } | null {
+    return orderId !== undefined && text.includes(`order ${orderId}`) ? { orderId } : null;
 }
 
 export type X402TextKey =
@@ -483,7 +489,8 @@ export const x402Kinds: Readonly<Record<X402TextKey, GatewayErrorKind>> = {
 };
 
 export function x402Fail(key: X402TextKey, what: X402What, v: X402TextValues = {}): GatewayError {
-    return x402Error(x402Text[key](what, v), x402Kinds[key]);
+    const text = x402Text[key](what, v);
+    return x402Error(text, x402Kinds[key], null, orderFields(text, v.orderId));
 }
 
 export interface RefusalContext {
@@ -623,6 +630,8 @@ export function paidRetryUnreachable(
         `${what}: order ${orderId} is paid, but Bugnet could not reach its payment service to ` +
             `apply it. Call ${retryCall(tool, orderId, w)} in a minute`,
         "unavailable",
+        null,
+        { orderId },
     );
 }
 
@@ -630,5 +639,18 @@ export function notAllowanceOrder(orderId: string): GatewayError {
     return x402Error(
         `x402: order ${orderId} starts a sandbox or adds time to one, not x402 allowance. Call ` +
             "bugnet_redeem with its orderId and claim",
+        "invalid",
+        null,
+        { orderId },
+    );
+}
+
+// A paid allowance answer for another handle, which this call never enables
+export function otherSandboxOrder(orderId: string): GatewayError {
+    return x402Error(
+        `x402: order ${orderId} is not for that sandbox, check the handle`,
+        "invalid",
+        null,
+        { orderId },
     );
 }

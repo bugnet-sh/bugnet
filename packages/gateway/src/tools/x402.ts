@@ -4,9 +4,11 @@ import { z } from "zod";
 import type { X402ServiceInfo } from "../gen/bugnet/router/v1/router_pb.ts";
 import {
     allowancePackageId,
+    paymentMemo,
     type OrderRequest,
     type OrderResult,
     type PaidAllowanceOrder,
+    type PaidOrder,
     type X402Account,
     type X402AccountAnswer,
     type X402ConfigureResult,
@@ -30,6 +32,7 @@ import {
 import {
     buildView,
     notAllowanceOrder,
+    otherSandboxOrder,
     paidRetryUnreachable,
     paymentsRefusal,
     x402Error,
@@ -172,6 +175,25 @@ export function configureRequestId(ctx: ServerContext): string {
 
 const budgetTool = "bugnet_x402_budget";
 
+// A payment may have moved, so the answer names its order and never says nothing was charged
+function paymentUnconfirmed(orderId: string | null): GatewayError {
+    if (orderId !== null) {
+        return paidRetryUnreachable("x402", budgetTool, orderId, { payment: true });
+    }
+    return x402Error(
+        "x402: the payment was sent, but Bugnet could not confirm it. Call bugnet_x402_budget " +
+            "again with the same arguments and payment in a minute, and do not pay again",
+        "unavailable",
+    );
+}
+
+// A paid answer of another kind or for another handle never enables anything on this one
+function paidAllowance(order: PaidOrder | PaidAllowanceOrder, h: string): PaidAllowanceOrder {
+    if (order.kind !== "allowance") throw notAllowanceOrder(order.orderId);
+    if (order.handleSha256 !== h) throw otherSandboxOrder(order.orderId);
+    return order;
+}
+
 // What EnableX402 and the answer need once Payments took the call
 interface Applied {
     terms: X402Terms;
@@ -227,6 +249,13 @@ async function paidRetryOrder(c: BudgetCall, retry: PaidRetry): Promise<Applied 
             withHandle: true,
         });
     }
+    if (order.status === "refused" && order.reason === "router_unavailable") {
+        throw paidRetryUnreachable("x402", budgetTool, retry.orderId, retryWith());
+    }
+    // The handle's hash is the only term a paid retry sends
+    if (order.status === "refused" && order.reason === "terms_mismatch") {
+        throw otherSandboxOrder(order.orderId ?? retry.orderId);
+    }
     if (order.status === "refused") {
         throw paymentsRefusal(order, {
             what: "x402",
@@ -244,17 +273,14 @@ async function paidRetryOrder(c: BudgetCall, retry: PaidRetry): Promise<Applied 
             disable: c.disable,
         });
     }
-    if (order.kind !== "allowance") throw notAllowanceOrder(order.orderId);
-    if (order.handleSha256 !== h) {
-        throw x402Error(`x402: order ${order.orderId} is not for that sandbox, check the handle`);
-    }
-    const view = viewChanges(order.x402);
+    const paid = paidAllowance(order, h);
+    const view = viewChanges(paid.x402);
     return {
         terms,
-        account: order.x402,
+        account: paid.x402,
         feeDue: false,
-        firstUse: order.firstUse,
-        order,
+        firstUse: paid.firstUse,
+        order: paid,
         add: view.add,
         disable: view.disable,
         hosts: [],
@@ -264,14 +290,18 @@ async function paidRetryOrder(c: BudgetCall, retry: PaidRetry): Promise<Applied 
 // Checks every amount and limit, probes and asks the router before Payments charges anything
 async function newOrder(c: BudgetCall): Promise<Applied | CallToolResult> {
     const { deps, args, ctx, budget, h, key, payment, amount, confirm, spend, disable } = c;
+    const unreachable = () =>
+        payment !== undefined
+            ? paymentUnconfirmed(paymentMemo(payment))
+            : x402Fail("unreachable", "x402");
     const terms = await readTerms(deps, budget.signal(3_000));
-    if (terms === null) throw x402Fail("unreachable", "x402");
+    if (terms === null) throw unreachable();
     if (!terms.enabled) throw x402Fail("switchedOff", "x402");
     let answer: X402AccountAnswer;
     try {
         answer = await deps.payments.x402Account(h, budget.signal(3_000));
     } catch {
-        throw x402Fail("unreachable", "x402");
+        throw unreachable();
     }
     const account = answer.x402;
     const planned = planLines(deps, {
@@ -391,10 +421,8 @@ async function newOrder(c: BudgetCall): Promise<Applied | CallToolResult> {
                 },
                 budget.signal(30_000, enableWaitMs),
             );
-        } catch (e) {
-            // Without a payment no money moved, whatever stopped the answer
-            if (payment === undefined) throw x402Fail("unreachable", "x402");
-            throw e;
+        } catch {
+            throw unreachable();
         }
         if (order.status === "payment_required") {
             return paymentRequiredResult(order, {
@@ -403,15 +431,20 @@ async function newOrder(c: BudgetCall): Promise<Applied | CallToolResult> {
                 withHandle: true,
             });
         }
+        if (order.status === "refused" && order.reason === "router_unavailable") {
+            throw payment !== undefined
+                ? paymentUnconfirmed(order.orderId ?? paymentMemo(payment))
+                : x402Fail("unreachable", "x402");
+        }
         if (order.status === "refused") throw paymentsRefusal(order, refusal);
-        if (order.kind !== "allowance") throw notAllowanceOrder(order.orderId);
+        const paid = paidAllowance(order, h);
         return {
             terms,
-            account: order.x402,
+            account: paid.x402,
             feeDue: false,
-            firstUse: order.firstUse,
-            order,
-            add: viewChanges(order.x402).add,
+            firstUse: paid.firstUse,
+            order: paid,
+            add: viewChanges(paid.x402).add,
             disable: [...disable],
             hosts,
         };
@@ -445,8 +478,10 @@ async function runBudget(
     args: BudgetArgs,
     ctx: ServerContext,
 ): Promise<CallToolResult> {
-    limitQuotes(deps, "x402");
     const payment = ctx.mcpReq._meta?.["x402/payment"] ?? args.payment;
+    const retry = paidRetry(args, payment, deps.config.x402.enabled);
+    // A paid retry finishes an order the user paid, so the quote bucket never holds it back
+    if (retry === null) limitQuotes(deps, "x402");
     const c: BudgetCall = {
         deps,
         args,
@@ -464,7 +499,6 @@ async function runBudget(
                 : (toMicros(args.spendPerMinuteUsd) as number),
         disable: args.disable ?? [],
     };
-    const retry = paidRetry(args, payment, deps.config.x402.enabled);
     const step = retry !== null ? await paidRetryOrder(c, retry) : await newOrder(c);
     if ("content" in step) return step;
     const lines = args.services ?? [];

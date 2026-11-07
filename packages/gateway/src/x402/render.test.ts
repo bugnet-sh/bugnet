@@ -32,9 +32,11 @@ import {
     buildView,
     firstUseLine,
     notAllowanceOrder,
+    otherSandboxOrder,
     paidRetryUnreachable,
     paymentsRefusal,
     totalsUnavailable,
+    x402Error,
     x402Fail,
     x402Kinds,
     x402Lines,
@@ -758,6 +760,53 @@ describe("x402Text", () => {
         );
         expect(e.kind).toBe("invalid");
     });
+
+    it("sends an order for another sandbox back to the handle", () => {
+        const e = otherSandboxOrder("ord_x");
+        expect([e.message, e.kind, e.fields]).toEqual([
+            "x402: order ord_x is not for that sandbox, check the handle",
+            "invalid",
+            { orderId: "ord_x" },
+        ]);
+    });
+
+    it("says its order when an expired order's answer names none", () => {
+        expect(
+            x402Text.paidRefused("x402", {
+                reason: "order_expired",
+                refundPending: true,
+                amountMicros: 1_003_000,
+            }),
+        ).toBe(
+            "x402: the payment of $1.003 arrived after its order expired, so it is refunded in full to the paying wallet within 10 minutes and nothing was enabled. A new order needs the user's yes",
+        );
+        const e = x402Fail("paidRefused", "x402", {
+            reason: "order_expired",
+            refundPending: false,
+            amountMicros: 1_003_000,
+        });
+        expect(e.message).toContain("arrived after its order expired, so it was refunded");
+        expect(e.fields).toBeNull();
+    });
+
+    it("carries the orderId on every error whose text names an order", () => {
+        const id = { orderId: "ord_x" };
+        expect(x402Fail("termsMismatch", "x402", id).fields).toEqual(id);
+        const expired = { reason: "order_expired", refundPending: true, amountMicros: 1, ...id };
+        expect(x402Fail("paidRefused", "x402", expired).fields).toEqual(id);
+        const ended = { reason: "sandbox_ended", refundPending: true, amountMicros: 1, ...id };
+        expect(x402Fail("paidRefused", "x402", ended).fields).toBeNull();
+        expect(x402Fail("ended", "x402").fields).toBeNull();
+        const w = { claim: "c".repeat(43), handle: true };
+        expect(paidRetryUnreachable("x402", "bugnet_x402_budget", "ord_x", w).fields).toEqual(id);
+        expect(notAllowanceOrder("ord_x").fields).toEqual(id);
+        expect(x402Error("x402: x", "denied", 3_000, { orderId: "ord_y" })).toMatchObject({
+            kind: "denied",
+            retryAfterMs: 3_000,
+            fields: { orderId: "ord_y" },
+        });
+        expect(x402Error("x402: x").fields).toBeNull();
+    });
 });
 
 describe("paymentsRefusal", () => {
@@ -993,6 +1042,17 @@ describe("paymentsRefusal", () => {
         expect(e.message).toBe(
             "x402: the payment would pass Bugnet's x402 limits, so it is refunded in full to the paying wallet within 10 minutes and nothing was enabled",
         );
+    });
+
+    it("names the order a refusal names in its fields", () => {
+        const e = paymentsRefusal(refused("terms_mismatch", { orderId: "ord_b" }), ctx());
+        expect(e.fields).toEqual({ orderId: "ord_b" });
+        const expired = paymentsRefusal(
+            refused("order_expired", { refundPending: true }),
+            ctx({ orderId: null }),
+        );
+        expect(expired.message).toContain("arrived after its order expired");
+        expect(expired.fields).toBeNull();
     });
 
     it("names the first new service that needs a payment, then any planned one", () => {
