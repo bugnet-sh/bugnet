@@ -118,6 +118,18 @@ async function secretFailure(
             what,
         );
     }
+    if (e.reason === "HOST_IN_USE" && what === "secret link") {
+        return failure(
+            new GatewayError(
+                "precondition",
+                "secret_link: x402 pays for this host in this sandbox. Stop paying it with " +
+                    "bugnet_x402_budget (disable, amountUsd 0), then make the link again",
+                null,
+                e.reason,
+            ),
+            what,
+        );
+    }
     const missing =
         name === undefined ? undefined : `no secret named ${name}, bugnet_secrets lists them`;
     return sandboxFailure(deps, handle, e, what, missing);

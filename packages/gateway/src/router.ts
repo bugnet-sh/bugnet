@@ -124,6 +124,38 @@ export function errorReason(err: ConnectError): string | null {
     return reason && reason.length > 0 ? new TextDecoder().decode(reason) : null;
 }
 
+// google.rpc.ErrorInfo metadata map entries (field 3, key 1, value 2), {} when absent or malformed
+export function errorMetadata(err: ConnectError): Record<string, string> {
+    const raw = detailOf(err, errorInfoType);
+    const out: Record<string, string> = {};
+    if (!raw) return out;
+    try {
+        const dec = new TextDecoder("utf-8", { fatal: true });
+        const r = new BinaryReader(raw);
+        while (r.pos < r.len) {
+            const [no, type] = r.tag();
+            if (no !== 3 || type !== WireType.LengthDelimited) {
+                r.skip(type, no);
+                continue;
+            }
+            const e = new BinaryReader(r.bytes());
+            let key = "";
+            let value = "";
+            while (e.pos < e.len) {
+                const [eno, etype] = e.tag();
+                if (eno === 1 && etype === WireType.LengthDelimited) key = dec.decode(e.bytes());
+                else if (eno === 2 && etype === WireType.LengthDelimited) {
+                    value = dec.decode(e.bytes());
+                } else e.skip(etype, eno);
+            }
+            out[key] = value;
+        }
+    } catch {
+        return {};
+    }
+    return out;
+}
+
 // The google.rpc.ErrorInfo reason of a router failure, or the one a GatewayError kept from it
 export function reasonOf(err: unknown): string | null {
     if (err instanceof GatewayError) return err.reason;
@@ -141,6 +173,9 @@ interface Rule {
 
 const unknownHandle =
     "no sandbox has this handle. Check it was copied in full, or quote and start a new one";
+
+export const x402OffText =
+    "Bugnet's pay-per-call APIs are switched off right now. Nothing was charged";
 
 // The router has not built the feature, which no retry, wait or extension changes
 export const notOpenText =
@@ -314,6 +349,7 @@ const rules: Record<string, Rule> = {
         kind: "invalid",
         text: "that would pass the longest time a sandbox can run",
     },
+    X402_DISABLED: { code: Code.FailedPrecondition, kind: "precondition", text: x402OffText },
     FEATURE_UNAVAILABLE: {
         code: Code.FailedPrecondition,
         kind: "unsupported",
@@ -357,6 +393,13 @@ const rules: Record<string, Rule> = {
         code: Code.FailedPrecondition,
         kind: "precondition",
         text: "secrets for that host are not allowed",
+    },
+    HOST_IN_USE: {
+        code: Code.FailedPrecondition,
+        kind: "precondition",
+        text:
+            "x402 pays for this host in this sandbox. Stop paying it with bugnet_x402_budget " +
+            "(disable, amountUsd 0), then make the link again",
     },
     NO_SOURCE: {
         code: Code.FailedPrecondition,

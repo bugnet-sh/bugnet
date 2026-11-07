@@ -21,12 +21,18 @@ import {
     PlacementSchema,
     PlacementState,
     ResourcesSchema,
+    X402RefusalSchema,
+    X402ServiceInfoSchema,
+    type X402ServiceState,
     SandboxRouterService,
     type PackageOption,
     type Placement,
     type Resources,
+    type X402Refusal,
+    type X402ServiceInfo,
 } from "../gen/bugnet/router/v1/router_pb.ts";
 import { silentLog, type Log } from "../log.ts";
+import type { ServiceSpecInit } from "../x402/router.ts";
 import { DevPayments, devTerms } from "../payments/dev.ts";
 export { DevPayments, type DevPaymentsOptions } from "../payments/dev.ts";
 import type { OrderClaims } from "../payments/ordertoken.ts";
@@ -73,14 +79,25 @@ export function fakeRouter(impl: RouterImpl = {}): RouterClient {
     return createClient(SandboxRouterService, transport);
 }
 
-export function errorInfoDetail(reason: string): { type: string; value: Uint8Array } {
-    const value = new BinaryWriter()
+export function errorInfoDetail(
+    reason: string,
+    metadata: Record<string, string> = {},
+): { type: string; value: Uint8Array } {
+    const w = new BinaryWriter()
         .tag(1, WireType.LengthDelimited)
         .string(reason)
         .tag(2, WireType.LengthDelimited)
-        .string("bugnet.router")
-        .finish();
-    return { type: errorInfoType, value };
+        .string("bugnet.router");
+    for (const [key, value] of Object.entries(metadata)) {
+        w.tag(3, WireType.LengthDelimited)
+            .fork()
+            .tag(1, WireType.LengthDelimited)
+            .string(key)
+            .tag(2, WireType.LengthDelimited)
+            .string(value)
+            .join();
+    }
+    return { type: errorInfoType, value: w.finish() };
 }
 
 // Zero fields are left out, as the Go router's marshaller does
@@ -96,6 +113,8 @@ export function retryInfoDetail(delayMs: number): { type: string; value: Uint8Ar
 export interface RouterErrorOptions {
     retryAfterMs?: number;
     message?: string;
+    // ErrorInfo metadata, such as { service_id, host }
+    metadata?: Record<string, string>;
 }
 
 // A refusal as the router sends it, with an ErrorInfo reason and an optional RetryInfo delay
@@ -105,7 +124,7 @@ export function routerError(
     opts: RouterErrorOptions = {},
 ): ConnectError {
     const err = new ConnectError(opts.message ?? "refused", code);
-    if (reason) err.details.push(errorInfoDetail(reason));
+    if (reason) err.details.push(errorInfoDetail(reason, opts.metadata));
     if (opts.retryAfterMs !== undefined) err.details.push(retryInfoDetail(opts.retryAfterMs));
     return err;
 }
@@ -125,6 +144,32 @@ export function placement(
         deadline: timestampFromMs(testNow + 10 * 60_000),
         ...init,
     });
+}
+
+export function x402Info(
+    serviceId: string,
+    state: X402ServiceState,
+    init: {
+        spec?: ServiceSpecInit;
+        failureReason?: string;
+        requests?: number;
+        paid?: number;
+        uncertain?: number;
+    } = {},
+): X402ServiceInfo {
+    return create(X402ServiceInfoSchema, {
+        serviceId,
+        state,
+        failureReason: "",
+        requests: 0,
+        paid: 0,
+        uncertain: 0,
+        ...init,
+    });
+}
+
+export function x402Refusal(reason: string, count: number, lastAtMs: number): X402Refusal {
+    return create(X402RefusalSchema, { reason, count, lastAt: timestampFromMs(lastAtMs) });
 }
 
 export function resources(vcpu: number, memoryMib: number, diskGib = 10, gpuCount = 0): Resources {

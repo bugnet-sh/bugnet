@@ -56,6 +56,9 @@ const reasons: Record<string, string> = {
     name_reserved: "that secret name is reserved, another name works",
     host_refused: "a secret cannot be sent to one of those hosts",
     host_not_allowed: "secrets for one of those hosts are not allowed",
+    host_in_use:
+        "x402 pays for one of those hosts in this sandbox. Stop paying it with " +
+        "bugnet_x402_budget (disable, amountUsd 0), then send the secret again",
     header_refused: "a secret cannot go in one of those headers",
     sealed_too_large: "the secret is too large",
     key_unknown: "the sealing key is no longer current",

@@ -108,6 +108,11 @@ describe("secrets route client", () => {
         [401, "put_grant_invalid", /put grant expired/],
         [409, "feature_unavailable", /secrets are not open on this sandbox yet/],
         [409, "not_ready", /not ready or has ended/],
+        [
+            409,
+            "host_in_use",
+            /^x402 pays for one of those hosts in this sandbox\. Stop paying it with bugnet_x402_budget \(disable, amountUsd 0\), then send the secret again$/,
+        ],
         [400, "host_refused", /cannot be sent to one of those hosts/],
         [400, "key_unknown", /sealing key is no longer current/],
         [404, "", /does not know this sandbox/],

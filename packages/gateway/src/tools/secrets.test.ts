@@ -187,6 +187,24 @@ describe("bugnet_secret_link", () => {
         expect(called).toBe(false);
     });
 
+    it("says x402 pays for a host the link names, and how to free it", async () => {
+        const { client } = await connect({
+            createSecretLink: () => {
+                throw routerError(Code.FailedPrecondition, "HOST_IN_USE");
+            },
+        });
+        const r = await callTool(client, "bugnet_secret_link", {
+            handle: testHandle,
+            name: "OPENAI_API_KEY",
+            hosts: ["agent402.tools"],
+        });
+        expect(r.isError).toBe(true);
+        expect(r.text).toBe(
+            "secret_link: x402 pays for this host in this sandbox. Stop paying it with " +
+                "bugnet_x402_budget (disable, amountUsd 0), then make the link again.",
+        );
+    });
+
     it("refuses a link or pairing code outside the contract's shapes", async () => {
         const answers = [
             { url: "http://x/l/t", pairingCode: "K3F9X2" },

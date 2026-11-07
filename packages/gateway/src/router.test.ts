@@ -1,6 +1,16 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { describe, expect, it } from "vitest";
-import { errorInfoType, fromRouter, GatewayError, reasonOf, retryDelayMs } from "./router.ts";
+import {
+    errorInfoType,
+    errorMetadata,
+    errorReason,
+    fromRouter,
+    GatewayError,
+    notOpenText,
+    reasonOf,
+    retryDelayMs,
+    x402OffText,
+} from "./router.ts";
 import { fakeRouter, routerError, testHandle } from "./testing/harness.ts";
 
 const providers = /koyeb|boat|e2b|boxd|instabox|daytona/i;
@@ -102,6 +112,18 @@ describe("router error details", () => {
         expect(retryDelayMs(bad)).toBeNull();
     });
 
+    it("decodes ErrorInfo metadata map entries beside the reason", () => {
+        const meta = { service_id: "xs_b3mm6u5x36em5pdt", host: "tts.example.com" };
+        const err = routerError(Code.InvalidArgument, "HOST_REFUSED", { metadata: meta });
+        expect(errorMetadata(err)).toEqual(meta);
+        expect(errorReason(err)).toBe("HOST_REFUSED");
+        expect(errorMetadata(routerError(Code.FailedPrecondition, "NOT_READY"))).toEqual({});
+        expect(errorMetadata(new ConnectError("x", Code.InvalidArgument))).toEqual({});
+        const cut = new ConnectError("x", Code.InvalidArgument);
+        cut.details.push({ type: errorInfoType, value: new Uint8Array([0x1a, 0x05, 0x0a]) });
+        expect(errorMetadata(cut)).toEqual({});
+    });
+
     it("round-trips the harness's details through a Connect transport", async () => {
         const router = fakeRouter({
             exec() {
@@ -169,6 +191,21 @@ describe("fromRouter", () => {
         );
         const f = fromRouter(routerError(Code.FailedPrecondition, "FEATURE_UNAVAILABLE"), "ssh");
         expect(f.message).toMatch(/^ssh: not open on this sandbox yet/);
+    });
+
+    it("says x402 is switched off on X402_DISABLED, and how to free a host on HOST_IN_USE", () => {
+        const off = fromRouter(routerError(Code.FailedPrecondition, "X402_DISABLED"), "x402");
+        expect(off.message).toBe(
+            "x402: Bugnet's pay-per-call APIs are switched off right now. Nothing was charged",
+        );
+        expect(off.message).not.toContain(notOpenText);
+        expect(off.message).toBe(`x402: ${x402OffText}`);
+        expect(
+            fromRouter(routerError(Code.FailedPrecondition, "HOST_IN_USE"), "secrets").message,
+        ).toBe(
+            "secrets: x402 pays for this host in this sandbox. Stop paying it with " +
+                "bugnet_x402_budget (disable, amountUsd 0), then make the link again",
+        );
     });
 
     it("says a revoked preview is closed for good", () => {
