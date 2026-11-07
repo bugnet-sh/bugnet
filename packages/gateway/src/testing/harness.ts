@@ -23,8 +23,9 @@ import {
     type Placement,
     type Resources,
 } from "../gen/bugnet/router/v1/router_pb.ts";
-import { silentLog } from "../log.ts";
+import { silentLog, type Log } from "../log.ts";
 import { DevPayments } from "../payments/dev.ts";
+export { DevPayments, type DevPaymentsOptions } from "../payments/dev.ts";
 import type { OrderClaims } from "../payments/ordertoken.ts";
 import type { OrderRequest, OrderResult, Payments } from "../payments/port.ts";
 import { errorInfoType, retryInfoType, type RouterClient } from "../router.ts";
@@ -145,22 +146,32 @@ export function testConfig(toml = ""): Config {
     };
 }
 
+export interface TestPaymentsOptions {
+    requirePayment?: boolean;
+}
+
 export interface TestPayments extends Payments {
     readonly orders: OrderRequest[];
     readonly abandoned: { orderId: string; reason: string }[];
+    readonly dev: DevPayments;
 }
 
 // Dev payments that settle at once, recording every order and abandon, unless answer decides
 export function testPayments(
     answer?: (req: OrderRequest) => OrderResult | Promise<OrderResult>,
+    opts: TestPaymentsOptions = {},
 ): TestPayments {
-    const dev = new DevPayments(testOrderSeed, 10 * 60_000, () => testNow);
+    const dev = new DevPayments(testOrderSeed, 10 * 60_000, () => testNow, {
+        requirePayment: opts.requirePayment,
+        payBaseUrl: "http://127.0.0.1:8787",
+    });
     const orders: OrderRequest[] = [];
     const abandoned: { orderId: string; reason: string }[] = [];
     return {
         mode: "dev",
         orders,
         abandoned,
+        dev,
         async order(req) {
             orders.push(req);
             return answer ? answer(req) : dev.order(req);
@@ -169,6 +180,14 @@ export function testPayments(
             abandoned.push({ orderId, reason });
         },
     };
+}
+
+export function recordingLog(): { log: Log; lines: string[] } {
+    const lines: string[] = [];
+    const at = (level: string) => (msg: string, fields?: Record<string, unknown>) => {
+        lines.push(JSON.stringify({ level, msg, ...fields }));
+    };
+    return { log: { info: at("info"), warn: at("warn"), error: at("error") }, lines };
 }
 
 const noAssessor: Assessor = {
