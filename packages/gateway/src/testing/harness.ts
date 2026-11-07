@@ -14,6 +14,7 @@ import {
 import { Client } from "@modelcontextprotocol/client";
 import { InMemoryTransport } from "@modelcontextprotocol/server";
 import type { Assessor } from "../assess/assessor.ts";
+import { createSafeFetcher, type Fetcher, type RawFetch } from "../assess/fetch.ts";
 import { parseSettings, type Config } from "../config.ts";
 import {
     PackageOptionSchema,
@@ -336,4 +337,71 @@ export async function callTool<S = Record<string, unknown>>(
 export function tokenClaims(token: string): OrderClaims {
     const segment = token.split(".")[1] ?? "";
     return JSON.parse(Buffer.from(segment, "base64url").toString("utf8")) as OrderClaims;
+}
+
+/* x402 fetcher */
+
+export type FakeAnswer =
+    { status: number; headers?: Record<string, string>; body?: unknown; delayMs?: number } | "hang";
+
+export interface FakeX402Fetch {
+    readonly fetch: Fetcher;
+    readonly calls: {
+        url: string;
+        method: string;
+        headers: Record<string, string>;
+        body: string | undefined;
+    }[];
+    maxInFlight(): number;
+}
+
+// Answers by exact URL, an unknown URL is a 404, and a hang or delay ends early on abort
+export function fakeX402Fetch(routes: Record<string, FakeAnswer>): FakeX402Fetch {
+    const calls: FakeX402Fetch["calls"] = [];
+    let inFlight = 0;
+    let most = 0;
+    const wait = (ms: number | null, signal: AbortSignal) =>
+        new Promise<void>((resolve, reject) => {
+            if (signal.aborted) return reject(signal.reason);
+            const timer = ms === null ? null : setTimeout(done, ms);
+            function done() {
+                signal.removeEventListener("abort", stop);
+                resolve();
+            }
+            function stop() {
+                if (timer !== null) clearTimeout(timer);
+                reject(signal.reason);
+            }
+            signal.addEventListener("abort", stop, { once: true });
+        });
+    const rawFetch: RawFetch = async (url, init) => {
+        calls.push({
+            url,
+            method: init.method,
+            headers: init.headers,
+            body: init.body,
+        });
+        inFlight++;
+        most = Math.max(most, inFlight);
+        try {
+            const answer = routes[url];
+            if (answer === "hang") return await wait(null, init.signal).then(() => new Response());
+            if (answer === undefined) return new Response("not found", { status: 404 });
+            if (answer.delayMs) await wait(answer.delayMs, init.signal);
+            const body =
+                answer.body === undefined
+                    ? null
+                    : typeof answer.body === "string"
+                      ? answer.body
+                      : JSON.stringify(answer.body);
+            return new Response(body, { status: answer.status, headers: answer.headers });
+        } finally {
+            inFlight--;
+        }
+    };
+    return {
+        fetch: createSafeFetcher({ timeoutMs: 30_000, rawFetch }),
+        calls,
+        maxInFlight: () => most,
+    };
 }
