@@ -83,6 +83,13 @@ BUGNET_MCP_URL=http://127.0.0.1:8787/mcp claude --plugin-dir ./plugin
 `claude mcp list` shows whether it connected. With the plugin, run
 `BUGNET_MCP_URL=http://127.0.0.1:8787/mcp claude --plugin-dir ./plugin mcp list`.
 
+5. To pay through the bridge, add `dev_require_payment = true` under `[payments]` in
+   `config/dev.toml`, so dev orders answer with a pay link on the gateway's `public_url`, and put
+   `pay_origin = "http://127.0.0.1:8787"` in `~/.config/bugnet/mcp.toml`. The bridge pays only
+   links on `pay_origin`, so without that line it refuses every link as off its origin. Then run
+   `BUGNET_MCP_URL=http://127.0.0.1:8787/mcp claude --plugin-dir ./plugin-wallet`, or the bridge
+   built from this tree (see [The bridge](#the-bridge)) with `--gateway http://127.0.0.1:8787/mcp`.
+
 ## Tests
 
 ```sh

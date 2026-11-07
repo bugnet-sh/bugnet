@@ -95,7 +95,7 @@ claude plugin install bugnet@bugnet          # pays by link, in your browser
 claude plugin install bugnet-wallet@bugnet   # pays from the pay wallet on this computer
 ```
 
-`bugnet` connects to `https://mcp.bugnet.sh/mcp` and needs nothing else. `bugnet-wallet` runs the [bridge](#the-bridge-npx-bugnetmcp) with `npx`, so it needs Node 20 or newer, and pays with [`pay`](https://pay.sh) set up on this computer. Start Claude Code as plain `claude`, never `pay claude`, which loads only pay's own server and hides Bugnet.
+`bugnet` connects to `https://mcp.bugnet.sh/mcp` and needs nothing else. `bugnet-wallet` runs the [bridge](#the-bridge-npx-bugnetmcp) with `npx`, so it needs Node 20.3 or newer, and pays with [`pay`](https://pay.sh) set up on this computer. Start Claude Code as plain `claude`, never `pay claude`, which loads only pay's own server and hides Bugnet.
 
 Inside a session, `/plugin marketplace add bugnet-sh/bugnet` and then `/plugin install bugnet@bugnet`
 do the same. Start a new session afterwards. The tools show up as
@@ -214,7 +214,7 @@ Then give it more time in `~/.codex/config.toml`, since a paid call waits while 
 command = "npx"
 args = ["-y", "@bugnet/mcp@0.1.0"]
 startup_timeout_sec = 30
-tool_timeout_sec = 180
+tool_timeout_sec = 330
 ```
 
 To pay by link in your browser instead, add the URL:
@@ -251,12 +251,12 @@ entry in the file that Cascade's **Open MCP config file** opens.
 
 ### Any MCP client
 
-| Setting   | Value                                     |
-| --------- | ----------------------------------------- |
-| URL       | `https://mcp.bugnet.sh/mcp`               |
-| Transport | Streamable HTTP                           |
-| Sign-in   | None, no headers and no API key           |
-| Stdio     | `npx -y @bugnet/mcp@0.1.0`, needs Node 20 |
+| Setting   | Value                                       |
+| --------- | ------------------------------------------- |
+| URL       | `https://mcp.bugnet.sh/mcp`                 |
+| Transport | Streamable HTTP                             |
+| Sign-in   | None, no headers and no API key             |
+| Stdio     | `npx -y @bugnet/mcp@0.1.0`, needs Node 20.3 |
 
 Most clients take one of these two shapes. The second runs the [bridge](#the-bridge-npx-bugnetmcp).
 <!-- PENDING: @bugnet/mcp is not published on npm yet -->
@@ -293,7 +293,7 @@ it passes every call on to Bugnet's server unchanged, except that it pays or ope
   confirm, and seals the token before it leaves your computer.
 - **Clients that only run local servers.**
 
-Use the bridge instead of the URL, not both, or every tool shows up twice. It needs Node 20 or
+Use the bridge instead of the URL, not both, or every tool shows up twice. It needs Node 20.3 or
 newer.
 
 | Client      | Setup                                                                                  |

@@ -32,7 +32,7 @@ Use the bridge instead of the URL, not both, or every tool shows up twice.
 
 ## Install
 
-It needs Node 20 or newer.
+It needs Node 20.3 or newer.
 
 **Claude Code**
 
@@ -55,7 +55,7 @@ A paid call waits while you approve the payment and the first start downloads th
 command = "npx"
 args = ["-y", "@bugnet/mcp@0.1.0"]
 startup_timeout_sec = 30
-tool_timeout_sec = 180
+tool_timeout_sec = 330
 ```
 
 **Cursor** (`.cursor/mcp.json`) **and Devin Desktop, formerly Windsurf**
@@ -117,6 +117,11 @@ pay_origin = "https://pay.bugnet.sh"        # the only pay link origin it pays, 
 
 The bridge refuses plain `http` to any other machine, so a sandbox handle never crosses the
 network unencrypted. It logs to stderr, and its logs never hold a secret's value.
+
+Against a gateway on this machine, set `pay_origin` to that gateway's own origin, since a dev
+gateway's pay links are on it. With `gateway_url = "http://127.0.0.1:8787/mcp"` (or `--gateway`
+with that URL), add `pay_origin = "http://127.0.0.1:8787"`. Without it the bridge refuses every pay
+link as off its origin and hands the payment step back unpaid.
 
 ## Paying
 

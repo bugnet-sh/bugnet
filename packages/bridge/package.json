@@ -7,11 +7,11 @@
         "bugnet-mcp": "dist/main.js"
     },
     "files": [
-        "dist",
+        "dist/main.js",
         "config/example.toml"
     ],
     "engines": {
-        "node": ">=20"
+        "node": ">=20.3"
     },
     "scripts": {
         "typecheck": "tsc -p .",

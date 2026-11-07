@@ -15,6 +15,25 @@ afterAll(async () => {
     if (dir) await rm(dir, { recursive: true, force: true });
 });
 
+describe("the bridge package", () => {
+    const json = (path: string) =>
+        readFile(join(import.meta.dirname, "..", path), "utf8").then(JSON.parse);
+
+    it("ships the bundle and the example settings, never the Claude Desktop extension", async () => {
+        const pkg = await json("package.json");
+        expect(pkg.files).toEqual(["dist/main.js", "config/example.toml"]);
+        expect(pkg.bin).toEqual({ "bugnet-mcp": "dist/main.js" });
+    });
+
+    // AbortSignal.any came in Node 20.3
+    it("asks for Node 20.3 on npm and in the extension's manifest", async () => {
+        expect((await json("package.json")).engines).toEqual({ node: ">=20.3" });
+        expect((await json("mcpb/manifest.json")).compatibility.runtimes).toEqual({
+            node: ">=20.3.0",
+        });
+    });
+});
+
 describe("the bridge bundle", () => {
     it("refuses the development key pinned under any id", () => {
         for (const keyId of ["k1", developmentKey.keyId]) {
