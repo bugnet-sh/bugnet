@@ -214,7 +214,7 @@ Then give it more time in `~/.codex/config.toml`, since a paid call waits while 
 command = "npx"
 args = ["-y", "@bugnet/mcp@0.1.0"]
 startup_timeout_sec = 30
-tool_timeout_sec = 330
+tool_timeout_sec = 400
 ```
 
 To pay by link in your browser instead, add the URL:

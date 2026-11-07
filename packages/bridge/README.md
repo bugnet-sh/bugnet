@@ -55,7 +55,7 @@ A paid call waits while you approve the payment and the first start downloads th
 command = "npx"
 args = ["-y", "@bugnet/mcp@0.1.0"]
 startup_timeout_sec = 30
-tool_timeout_sec = 330
+tool_timeout_sec = 400
 ```
 
 **Cursor** (`.cursor/mcp.json`) **and Devin Desktop, formerly Windsurf**

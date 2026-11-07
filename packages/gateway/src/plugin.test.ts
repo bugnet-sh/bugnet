@@ -106,7 +106,7 @@ describe("the install lines", () => {
         for (const line of [
             `codex mcp add bugnet -- npx -y @bugnet/mcp@${version}`,
             // Longer than the bridge's 300 s wait for pay, so Codex never cuts a payment off
-            "tool_timeout_sec = 330",
+            "tool_timeout_sec = 400",
             "startup_timeout_sec = 30",
             ".mcpb",
             "claude plugin install bugnet-wallet@bugnet",
@@ -116,7 +116,7 @@ describe("the install lines", () => {
         }
         expect(docs.bridge).toContain(`codex mcp add bugnet -- npx -y @bugnet/mcp@${version}`);
         for (const doc of [docs.readme, docs.bridge]) {
-            expect(doc.match(/tool_timeout_sec = \d+/g)).toEqual(["tool_timeout_sec = 330"]);
+            expect(doc.match(/tool_timeout_sec = \d+/g)).toEqual(["tool_timeout_sec = 400"]);
         }
         expect(text("CONTRIBUTING.md")).toContain("| `plugin-wallet`");
     });
