@@ -95,7 +95,7 @@ jobs:
             - name: Check the committed plugin bundle
               run: |
                   pnpm build:plugin
-                  if ! git diff --quiet -- plugin/hooks/bugnet-hook.mjs; then
+                  if ! git diff --quiet -- plugin/hooks/bugnet-hook.mjs plugin-wallet/hooks/bugnet-hook.mjs; then
                       echo "::error::Stale hook bundle, so run pnpm build:plugin and commit it"
                       exit 1
                   fi

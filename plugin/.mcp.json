@@ -1,8 +1,5 @@
 {
     "mcpServers": {
-        "sandbox": {
-            "type": "http",
-            "url": "${BUGNET_MCP_URL:-http://127.0.0.1:8787/mcp}"
-        }
+        "sandbox": { "type": "http", "url": "${BUGNET_MCP_URL:-https://mcp.bugnet.sh/mcp}" }
     }
 }

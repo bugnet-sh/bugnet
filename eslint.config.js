@@ -8,6 +8,7 @@ export default tseslint.config(
             "**/dist/**",
             "**/src/gen/**",
             "plugin/hooks/bugnet-hook.mjs",
+            "plugin-wallet/hooks/bugnet-hook.mjs",
         ],
     },
     js.configs.recommended,

@@ -13,7 +13,7 @@
         "lint": "eslint . && prettier --check .",
         "format": "prettier --write .",
         "eval:intent": "tsx eval/intent/run.ts",
-        "build:plugin": "esbuild packages/intent/src/hook-main.ts --bundle --platform=node --format=esm --target=node20 --legal-comments=none --outfile=plugin/hooks/bugnet-hook.mjs"
+        "build:plugin": "esbuild packages/intent/src/hook-main.ts --bundle --platform=node --format=esm --target=node20 --legal-comments=none --outfile=plugin/hooks/bugnet-hook.mjs && cp plugin/hooks/bugnet-hook.mjs plugin-wallet/hooks/bugnet-hook.mjs"
     },
     "devDependencies": {
         "@eslint/js": "10.0.1",

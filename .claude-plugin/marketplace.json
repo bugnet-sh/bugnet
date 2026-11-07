@@ -7,6 +7,11 @@
             "name": "bugnet",
             "source": "./plugin",
             "description": "Run untrusted or heavy software in disposable cloud Linux sandboxes"
+        },
+        {
+            "name": "bugnet-wallet",
+            "source": "./plugin-wallet",
+            "description": "Bugnet through the local bridge, which pays from the pay wallet on this machine"
         }
     ]
 }

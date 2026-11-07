@@ -3,6 +3,7 @@ dist
 pnpm-lock.yaml
 eval/intent/*.jsonl
 plugin/hooks/bugnet-hook.mjs
+plugin-wallet/hooks/bugnet-hook.mjs
 pnpm-workspace.yaml
 **/src/gen
 eval/agent/results
