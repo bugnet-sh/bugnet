@@ -1783,7 +1783,7 @@ describe.each(["legacy", "modern"] as const)("redeeming a link order, %s client"
             expect((r.structuredContent as { handle: string }).handle).toBe(testHandle);
             // Only the redeem of the paid order reaches the gateway
             expect(gw.payments.orders.slice(1)).toEqual([{ orderId, claim }]);
-            expect(seen).toContain(`waiting for order ${orderId} to be paid`);
+            expect(seen).toContain("waiting for the payment");
             expect(pay.orders.step(orderId)).toBeUndefined();
             expect(started).toEqual(new Set([testHandle]));
         },

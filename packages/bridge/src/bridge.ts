@@ -343,7 +343,7 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
                 paid.orderId,
                 { status: pay.status, ...(pay.sleep ? { sleep: pay.sleep } : {}), now: deps.now },
                 ctx.mcpReq.signal,
-                () => progress.note(`waiting for order ${paid.orderId} to be paid`),
+                () => progress.note("waiting for the payment"),
             ).then(
                 (o) => {
                     // A timeout or review may still be paid, a refunded one goes on its next read
