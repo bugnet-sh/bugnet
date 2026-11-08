@@ -70,6 +70,7 @@ const settings: SignerSettings = {
     feePayer: [feePayer],
     keyPaysAllowances: false,
     allowancePayTo: [allowanceWallet],
+    keyOrigin: origin,
 };
 
 interface Sent {
@@ -193,6 +194,27 @@ describe("key payer", () => {
             reason: "payment_malformed",
         });
         expect(await ledger.spentToday()).toBe(0);
+    });
+
+    it("frees the reservation after submit only for a refusal Payments makes before broadcast", async () => {
+        const answers: [() => Response, boolean][] = [
+            [() => Response.json({}, { status: 400 }), true],
+            [() => Response.json({ refused: "payment_replayed" }, { status: 409 }), true],
+            [() => Response.json({ error: "rate_limited" }, { status: 429 }), true],
+            [() => Response.json({ refused: "order_paid" }, { status: 404 }), true],
+            [() => new Response("nope", { status: 418 }), true],
+            [() => Response.json({ refused: "payment_invalid" }, { status: 400 }), false],
+            [() => Response.json({ refused: "payment_order_mismatch" }, { status: 400 }), false],
+            [() => Response.json({ refused: "too_many_attempts" }, { status: 429 }), false],
+            [() => Response.json({ refused: "payer_blocked" }, { status: 403 }), false],
+        ];
+        for (const [i, [answer, kept]] of answers.entries()) {
+            ledger = new SpendLedger({ path: join(dir, `spend-${i}.json`) });
+            const { sent, fetcher } = fakePayments(offer(), answer);
+            await payer(fetcher).pay(step, 50_000);
+            expect(sent, String(i)).toHaveLength(2);
+            expect(await ledger.spentToday(), String(i)).toBe(kept ? 50_000 : 0);
+        }
     });
 
     type Case = [string, (o: Offer) => unknown, string, SignerSettings?, PaymentStep?];

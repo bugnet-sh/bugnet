@@ -179,6 +179,7 @@ describe("wallet file", () => {
                 feePayer: ["73iCm2eWpXsEqTpYkNHe4VoiR4Eq7nyCLv9wYZzEnFM9"],
                 keyPaysAllowances: false,
                 allowancePayTo: [],
+                keyOrigin: "https://pay.bugnet.sh",
             },
             signer: () => loadWallet(home, cwd),
             ledger: new SpendLedger({ path: join(dir, "spend.json") }),

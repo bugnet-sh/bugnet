@@ -190,7 +190,14 @@ Before signing, the bridge fetches the order's payment request itself and checks
 `pay_to` wallet (or an `allowance_pay_to` one when allowed) with a `fee_payer` wallet as fee payer, and within the price you approved, the
 per-payment cap and what is left of the daily cap (kept in `~/.config/bugnet/spend.json`). It
 builds the transfer itself and never signs bytes it was sent. A payment that fails a check is not
-signed: you get the pay link or the payment step back. `bugnet_secret_from_env` refuses any value
+signed: you get the pay link or the payment step back. Once a signed payment has been sent, it stays
+counted against the daily cap unless Payments refuses it before broadcasting (`payment_invalid`,
+`payment_malformed`, `payment_order_mismatch`, `too_many_attempts` or a `payer_` refusal); any other
+answer, a timeout included, counts as spent.
+
+With `pay_signer = "key"`, every payment uses the `pay_origin` in `~/.config/bugnet/mcp.toml`
+(default `https://pay.bugnet.sh`); a `pay_origin` from `--config` is ignored and logged. For a local
+stack, put `pay_origin` in that file. `bugnet_secret_from_env` refuses any value
 that looks like a wallet key under any name (a 64-byte keypair as base58, base64, a JSON array or
 `0x` hex, a wallet export with `secretKey` or `privateKey`, a PEM or PKCS#8 key, a seed phrase),
 and the names `SOLANA_PRIVATE_KEY`, `PRIVATE_KEY`, `*_KEYPAIR`, `WALLET_KEY`, `*_WALLET_KEY`,

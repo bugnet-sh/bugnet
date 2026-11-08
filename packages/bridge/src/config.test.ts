@@ -6,6 +6,7 @@ import {
     ConfigError,
     defaultConfigPath,
     loadCommand,
+    paymentOrigin,
     loadSignerSettings,
     parseSettings,
 } from "./config.ts";
@@ -166,9 +167,39 @@ describe("signer settings", () => {
             feePayer: [],
             keyPaysAllowances: true,
             allowancePayTo: [],
+            keyOrigin: "https://pay.bugnet.sh",
         });
         const cmd = loadCommand(["--config", fixed()], { HOME: join(dir, "home") });
         expect(cmd.kind === "serve" && cmd.signer.paySigner).toBe("key");
+    });
+
+    it("pays with the key only at the fixed file's pay_origin, whatever --config says", async () => {
+        const home = join(dir, "home");
+        const other = join(dir, "other.toml");
+        await writeFile(other, 'pay_origin = "https://evil.example"\n');
+        await write('pay_signer = "key"\n');
+        let cmd = loadCommand(["--config", other], { HOME: home });
+        if (cmd.kind !== "serve") throw new Error(cmd.kind);
+        expect(cmd.settings.pay_origin).toBe("https://evil.example");
+        expect(cmd.signer.keyOrigin).toBe("https://pay.bugnet.sh");
+        expect(paymentOrigin(cmd)).toEqual({
+            origin: "https://pay.bugnet.sh",
+            ignored: "https://evil.example",
+        });
+        await write('pay_signer = "key"\npay_origin = "http://127.0.0.1:8787"\n');
+        cmd = loadCommand(["--config", other, "--gateway", "https://gw.example/mcp"], {
+            HOME: home,
+        });
+        if (cmd.kind !== "serve") throw new Error(cmd.kind);
+        expect(paymentOrigin(cmd).origin).toBe("http://127.0.0.1:8787");
+        cmd = loadCommand(["--config", fixed()], { HOME: home });
+        if (cmd.kind !== "serve") throw new Error(cmd.kind);
+        expect(paymentOrigin(cmd)).toEqual({ origin: "http://127.0.0.1:8787", ignored: null });
+        // Without the key, --config's pay_origin is used as before
+        await write('pay_origin = "http://127.0.0.1:8787"\n');
+        cmd = loadCommand(["--config", other], { HOME: home });
+        if (cmd.kind !== "serve") throw new Error(cmd.kind);
+        expect(paymentOrigin(cmd)).toEqual({ origin: "https://evil.example", ignored: null });
     });
 
     it("refuses a group-writable file, a raised ceiling and signer keys in --config", async () => {

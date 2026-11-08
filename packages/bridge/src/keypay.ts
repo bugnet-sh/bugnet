@@ -29,7 +29,6 @@ import {
 import type { SignerSettings } from "./config.ts";
 import { KeyError } from "./keyfile.ts";
 import type { Log } from "./log.ts";
-import { spentRefusals } from "./orders.ts";
 import {
     type OrderPayer,
     type PaymentStep,
@@ -205,6 +204,24 @@ async function reasonOf(res: Response): Promise<string> {
     return field("refused") ?? field("error") ?? `http_${res.status}`;
 }
 
+// Payments' refusals that come before it broadcasts anything; every other answer to a sent
+// transaction, a timeout or a 4xx included, may have moved money
+const preBroadcast = new Set([
+    "payment_invalid",
+    "payment_malformed",
+    "payment_order_mismatch",
+    "too_many_attempts",
+]);
+
+const beforeBroadcast = (reason: string) => preBroadcast.has(reason) || reason.startsWith("payer_");
+
+export function freesReservation(outcome: PayOutcome): boolean {
+    return (
+        (outcome.kind === "declined" || outcome.kind === "unavailable") &&
+        beforeBroadcast(outcome.reason)
+    );
+}
+
 function isAllowanceStep(step: PaymentStep): boolean {
     return step.allowance === true || step.tool === "bugnet_x402_budget";
 }
@@ -318,12 +335,7 @@ export class KeyPayer implements OrderPayer {
             payload: { transaction: wire },
         };
         const outcome = await this.submit(fetcher, orderUrl, payment);
-        // Anything but a clear refusal before broadcast stays counted
-        const spent =
-            outcome.kind === "paid" ||
-            outcome.kind === "unknown" ||
-            (outcome.kind === "declined" && spentRefusals.has(outcome.reason));
-        await ledger.settle(step.orderId, spent).catch(() => {
+        await ledger.settle(step.orderId, !freesReservation(outcome)).catch(() => {
             log.warn("key ledger settle failed", { orderId: step.orderId });
         });
         return outcome;
@@ -351,7 +363,10 @@ export class KeyPayer implements OrderPayer {
         }
         if (res.status === 200) return { kind: "paid" };
         if (res.status === 202 || res.status >= 500) return { kind: "unknown" };
-        if (res.status === 429) return { kind: "unavailable", reason: "key_busy" };
+        if (res.status === 429) {
+            const reason = await reasonOf(res);
+            return { kind: "unavailable", reason: beforeBroadcast(reason) ? reason : "key_busy" };
+        }
         return { kind: "declined", reason: await reasonOf(res) };
     }
 }

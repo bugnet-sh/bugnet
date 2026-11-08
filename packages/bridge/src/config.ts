@@ -35,6 +35,22 @@ const secureUrl = z.url().refine((s) => {
     return u.protocol === "https:" || (u.protocol === "http:" && isLoopback(u));
 }, "an https URL, or http on loopback");
 
+export const defaultPayOrigin = "https://pay.bugnet.sh";
+
+const payOrigin = secureUrl
+    .refine((s) => {
+        const u = new URL(s);
+        return (
+            u.pathname === "/" &&
+            u.search === "" &&
+            u.hash === "" &&
+            u.username === "" &&
+            u.password === ""
+        );
+    }, "an origin such as https://pay.bugnet.sh, with no path")
+    .transform((s) => new URL(s).origin)
+    .prefault(defaultPayOrigin);
+
 const settingsSchema = z
     .object({
         gateway_url: secureUrl.default("https://mcp.bugnet.sh/mcp"),
@@ -43,19 +59,7 @@ const settingsSchema = z
         call_timeout: duration.prefault("5m"),
         secrets_timeout: duration.prefault("30s"),
         pay_command: z.string().max(4096).default("pay"),
-        pay_origin: secureUrl
-            .refine((s) => {
-                const u = new URL(s);
-                return (
-                    u.pathname === "/" &&
-                    u.search === "" &&
-                    u.hash === "" &&
-                    u.username === "" &&
-                    u.password === ""
-                );
-            }, "an origin such as https://pay.bugnet.sh, with no path")
-            .transform((s) => new URL(s).origin)
-            .prefault("https://pay.bugnet.sh"),
+        pay_origin: payOrigin,
     })
     .strict();
 
@@ -117,6 +121,8 @@ const signerSchema = z
         // The allowance wallet later pays sellers the agent picked; false sends it to pay instead
         key_pays_allowances: z.boolean().default(true),
         allowance_pay_to: pinned,
+        // The key payer's origin, never the one --config or the gateway sets
+        pay_origin: payOrigin,
     })
     .refine((s) => !s.pay_to.some((a) => s.allowance_pay_to.includes(a)), {
         path: ["allowance_pay_to"],
@@ -130,6 +136,7 @@ const signerSchema = z
         feePayer: s.fee_payer,
         keyPaysAllowances: s.key_pays_allowances,
         allowancePayTo: s.allowance_pay_to,
+        keyOrigin: s.pay_origin,
     }));
 
 export type SignerSettings = z.infer<typeof signerSchema>;
@@ -140,8 +147,11 @@ export function signerSettingsPath(home: string): string {
     return join(home, ".config", "bugnet", "mcp.toml");
 }
 
+// pay_origin is an ordinary setting too, but the key payer reads it only from the fixed file
 function pickSignerKeys(doc: Record<string, unknown>): Record<string, unknown> {
-    return Object.fromEntries(Object.entries(doc).filter(([k]) => signerKeys.includes(k)));
+    return Object.fromEntries(
+        Object.entries(doc).filter(([k]) => signerKeys.includes(k) || k === "pay_origin"),
+    );
 }
 
 // Only $HOME/.config/bugnet/mcp.toml. A file that sets no signer key is not checked further, so a
@@ -160,7 +170,7 @@ export function loadSignerSettings(
         if ((e as NodeJS.ErrnoException).code === "ENOENT") return defaultSignerSettings;
         throw new ConfigError(`read ${path}: ${(e as Error).message}`);
     }
-    if (Object.keys(pickSignerKeys(parseToml(loose, path))).length === 0) {
+    if (!Object.keys(parseToml(loose, path)).some((k) => signerKeys.includes(k))) {
         return defaultSignerSettings;
     }
     let fd: number;
@@ -188,6 +198,21 @@ export function loadSignerSettings(
     if (r.success) return r.data;
     const issues = r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`);
     throw new ConfigError(`${path}: ${issues.join("; ")}`);
+}
+
+// With the key signer, every payment uses the fixed file's origin; says so when --config differs
+export function paymentOrigin(command: Extract<Command, { kind: "serve" }>): {
+    origin: string;
+    ignored: string | null;
+} {
+    if (command.signer.paySigner !== "key") {
+        return { origin: command.settings.pay_origin, ignored: null };
+    }
+    const origin = command.signer.keyOrigin;
+    return {
+        origin,
+        ignored: command.settings.pay_origin === origin ? null : command.settings.pay_origin,
+    };
 }
 
 export function defaultConfigPath(env: NodeJS.ProcessEnv = process.env): string {

@@ -2125,6 +2125,7 @@ describe("x402 allowances and the key signer", () => {
                 feePayer: [feePayer],
                 keyPaysAllowances: false,
                 allowancePayTo: [],
+                keyOrigin: testPayOrigin,
             },
             signer: async () => signer,
             ledger: new SpendLedger({ path: join(dir, "spend.json") }),

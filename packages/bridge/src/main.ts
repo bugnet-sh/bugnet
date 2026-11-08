@@ -4,7 +4,7 @@ import { pinnedKeys } from "@bugnet/seal";
 import type { KeyPairSigner } from "@solana/kit";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { buildBridgeServer, version } from "./bridge.ts";
-import { type Command, ConfigError, loadCommand, usage } from "./config.ts";
+import { type Command, ConfigError, loadCommand, paymentOrigin, usage } from "./config.ts";
 import { bugnetDir, loadWallet, runKeyCommand } from "./keyfile.ts";
 import { KeyPayer, routeAllowances } from "./keypay.ts";
 import { type Log, stderrLog } from "./log.ts";
@@ -17,17 +17,18 @@ import { SpendLedger } from "./spend.ts";
 type Serve = Extract<Command, { kind: "serve" }>;
 
 // The pay CLI by default; the wallet file only when the fixed settings file says pay_signer = "key",
-// and then for x402 allowances too unless it says key_pays_allowances = false
-function choosePayer(command: Serve, log: Log): OrderPayer | null {
+// and then for x402 allowances too unless it says key_pays_allowances = false. origin is the fixed
+// file's pay_origin whenever the key signs
+function choosePayer(command: Serve, origin: string, log: Log): OrderPayer | null {
     const s = command.settings;
     const cli = s.pay_command
-        ? new PayCli({ command: s.pay_command, origin: s.pay_origin, env: process.env, log })
+        ? new PayCli({ command: s.pay_command, origin, env: process.env, log })
         : null;
     if (command.signer.paySigner !== "key") return cli;
     const home = process.env.HOME;
     let wallet: Promise<KeyPairSigner> | undefined;
     const key = new KeyPayer({
-        origin: s.pay_origin,
+        origin,
         settings: command.signer,
         signer: () => {
             wallet ??= loadWallet(home, process.cwd()).catch((e: unknown) => {
@@ -78,7 +79,11 @@ async function main(): Promise<number> {
         log,
     });
     const started = new Set<string>();
-    const payer = choosePayer(command, log);
+    const { origin, ignored } = paymentOrigin(command);
+    if (ignored !== null) {
+        log.warn("key payer ignores pay_origin from --config", { ignored, origin });
+    }
+    const payer = choosePayer(command, origin, log);
     // Outlives one server, so a paid order is still held when the client reconnects
     const orders = new PaidOrders(Date.now);
     // The instructions come from the gateway, so the bridge connects before it answers anything
@@ -102,14 +107,14 @@ async function main(): Promise<number> {
                 now: Date.now,
                 started,
                 pay: {
-                    origin: s.pay_origin,
+                    origin,
                     payer,
                     pins: {
                         payTo: command.signer.payTo,
                         allowancePayTo: command.signer.allowancePayTo,
                     },
                     orders,
-                    status: (id, signal) => orderStatus(s.pay_origin, id, signal),
+                    status: (id, signal) => orderStatus(origin, id, signal),
                 },
             }),
         { onerror: (e) => log.warn("mcp error", { err: e.message }) },
