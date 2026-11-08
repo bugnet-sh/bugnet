@@ -103,6 +103,15 @@ describe("key import", () => {
 });
 
 describe("wallet file", () => {
+    it("works from /, from HOME and above it, and refuses a working folder below HOME holding it", async () => {
+        expect((await runKeyCommand({ kind: "key-new" }, home, home)).code).toBe(0);
+        for (const at of ["/", home, join(home, "..")]) await loadWallet(home, at);
+        await expect(loadWallet(home, join(home, ".config"))).rejects.toThrow(/inside_cwd/);
+        await rm(walletPath(home));
+        const out = await runKeyCommand({ kind: "key-new" }, home, join(home, ".config", "bugnet"));
+        expect(out.stderr).toMatch(/inside_cwd/);
+    });
+
     it("refuses a file readable by others and a folder open to others", async () => {
         await runKeyCommand({ kind: "key-new" }, home, cwd);
         await chmod(walletPath(home), 0o644);

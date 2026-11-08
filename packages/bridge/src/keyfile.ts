@@ -1,8 +1,8 @@
 // The local wallet: a Solana CLI keypair file only its owner can read, never shown or logged
 import { generateKeyPairSync } from "node:crypto";
-import { constants, type Stats } from "node:fs";
-import { lstat, mkdir, open, readFile, realpath } from "node:fs/promises";
-import { isAbsolute, join, relative } from "node:path";
+import { constants, realpathSync, type Stats } from "node:fs";
+import { lstat, mkdir, open, readFile } from "node:fs/promises";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { createSignerFromKeyPair, getBase58Encoder, type KeyPairSigner } from "@solana/kit";
 import { parseDotenv } from "./secrets/dotenv.ts";
 
@@ -51,11 +51,34 @@ function ownedPrivately(st: Stats): boolean {
     return st.uid === process.getuid?.() && (st.mode & 0o077) === 0;
 }
 
-async function checkFolder(dir: string, cwd: string): Promise<void> {
+function within(parent: string, child: string): boolean {
+    const rel = relative(parent, child);
+    return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+}
+
+// A folder the agent works in is a folder it can write. Only a working folder strictly below HOME
+// counts: one started in /, in HOME or above it (desktop clients, a fresh terminal) holds no file
+// of ~/.config/bugnet that the agent was pointed at
+export function insideWorkingFolder(dir: string, cwd: string, home: string | undefined): boolean {
+    if (home === undefined) return false;
+    let realCwd: string;
+    let realHome: string;
+    let realDir: string;
+    try {
+        realCwd = realpathSync(cwd);
+        realHome = realpathSync(home);
+        realDir = realpathSync(dir);
+    } catch {
+        return false;
+    }
+    if (realCwd === realHome || !within(realHome, realCwd)) return false;
+    return within(realCwd, realDir);
+}
+
+async function checkFolder(dir: string, cwd: string, home: string | undefined): Promise<void> {
     const st = await lstat(dir).catch(() => null);
     if (st === null || !st.isDirectory() || !ownedPrivately(st)) throw new KeyError("folder_mode");
-    const rel = relative(await realpath(cwd), await realpath(dir));
-    if (!rel.startsWith("..") && !isAbsolute(rel)) throw new KeyError("inside_cwd");
+    if (insideWorkingFolder(dir, cwd, home)) throw new KeyError("inside_cwd");
 }
 
 // Turns 64 keypair bytes into a non-extractable signer, checking the halves belong together
@@ -103,7 +126,7 @@ function keypairArray(text: string): Uint8Array | null {
 
 export async function loadWallet(home: string | undefined, cwd: string): Promise<KeyPairSigner> {
     const dir = bugnetDir(home);
-    await checkFolder(dir, cwd);
+    await checkFolder(dir, cwd, home);
     let fh;
     try {
         fh = await open(join(dir, "wallet.json"), constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -133,7 +156,7 @@ export async function loadWallet(home: string | undefined, cwd: string): Promise
 async function writeWallet(home: string | undefined, cwd: string, bytes: Uint8Array) {
     const dir = bugnetDir(home);
     await mkdir(dir, { recursive: true, mode: 0o700 });
-    await checkFolder(dir, cwd);
+    await checkFolder(dir, cwd, home);
     let fh;
     try {
         fh = await open(

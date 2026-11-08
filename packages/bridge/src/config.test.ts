@@ -200,14 +200,24 @@ describe("signer settings", () => {
         );
     });
 
-    it("refuses the fixed file when it sits inside the working folder", async () => {
+    it("refuses the fixed file only from a working folder strictly below HOME that holds it", async () => {
         await write('pay_signer = "key"\n');
-        for (const cwd of [dir, join(dir, "home"), join(dir, "home", ".config", "bugnet")]) {
-            expect(() => loadSignerSettings(join(dir, "home"), cwd), cwd).toThrow(
-                /inside the working folder/,
-            );
+        const home = join(dir, "home");
+        for (const cwd of ["/", dir, home]) {
+            expect(loadSignerSettings(home, cwd).paySigner, cwd).toBe("key");
         }
-        await mkdir(join(dir, "elsewhere"), { recursive: true });
-        expect(loadSignerSettings(join(dir, "home"), join(dir, "elsewhere")).paySigner).toBe("key");
+        for (const cwd of [join(home, ".config"), join(home, ".config", "bugnet")]) {
+            expect(() => loadSignerSettings(home, cwd), cwd).toThrow(/inside the working folder/);
+        }
+    });
+
+    it("checks a file without signer keys for nothing, so a 0664 one still starts", async () => {
+        await write('gateway_url = "https://gw.example/mcp"\n', 0o664);
+        const home = join(dir, "home");
+        const e = { HOME: home, XDG_CONFIG_HOME: join(home, ".config") };
+        const cmd = loadCommand([], e, join(home, ".config", "bugnet"));
+        expect(cmd.kind === "serve" && cmd.signer.paySigner).toBe("pay");
+        await write('pay_signer = "key"\n', 0o664);
+        expect(() => loadCommand([], e, "/")).toThrow(/not writable by group/);
     });
 });

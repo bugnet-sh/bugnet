@@ -154,8 +154,8 @@ Instead of `pay`, the bridge can sign Bugnet orders itself from a wallet file, w
    run `bugnet-mcp key import --from ./.env --var NAME`, then delete that line as it tells you.
 2. Send that address a small amount of USDC on Solana. It needs no SOL: Bugnet pays the fee.
 3. Turn it on in `~/.config/bugnet/mcp.toml`. The bridge reads these keys only from that exact
-   file, which must be yours and not writable by group or others, never from `--config` or
-   `XDG_CONFIG_HOME`:
+   file, never from `--config` or `XDG_CONFIG_HOME`. Once the file sets any of them, it must be
+   yours and not writable by group or others:
 
 ```toml
 pay_signer = "key"           # "pay" (the default) keeps using the pay CLI
@@ -183,8 +183,10 @@ signed: you get the pay link or the payment step back. `bugnet_secret_from_env` 
 that looks like a wallet key, and names such as `PRIVATE_KEY`, `SECRET_KEY`, `KEYPAIR`, `MNEMONIC`
 or `SEED`.
 
-`mcp.toml` must not sit inside the folder your client starts the bridge in. Keep a small balance:
-any process running as you can read the wallet file.
+When your client starts the bridge in a folder below your home folder, that folder must not hold
+`~/.config/bugnet` (the bridge then refuses `mcp.toml`, the wallet file and the `key` commands).
+Starting in `/`, in your home folder or above it is fine. Keep a small balance: any process running
+as you can read the wallet file.
 
 ## Secrets from your machine
 

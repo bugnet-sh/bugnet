@@ -1,13 +1,13 @@
 // Decoded strictly so a misspelt key is an error naming it, and the bridge holds no secrets
-import { closeSync, constants, fstatSync, openSync, readFileSync, realpathSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readFileSync } from "node:fs";
 import { isIPv4 } from "node:net";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, relative } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { parseArgs } from "node:util";
 import { isAddress } from "@solana/kit";
 import { parse } from "smol-toml";
 import { z } from "zod";
-import type { KeyCommand } from "./keyfile.ts";
+import { insideWorkingFolder, type KeyCommand } from "./keyfile.ts";
 
 export class ConfigError extends Error {}
 
@@ -140,35 +140,38 @@ export function signerSettingsPath(home: string): string {
     return join(home, ".config", "bugnet", "mcp.toml");
 }
 
-// A file in the folder the agent works in is a file the agent can write
-function insideFolder(path: string, cwd: string): boolean {
-    let rel: string;
-    try {
-        rel = relative(realpathSync(cwd), realpathSync(dirname(path)));
-    } catch {
-        return false;
-    }
-    return !rel.startsWith("..") && !isAbsolute(rel);
+function pickSignerKeys(doc: Record<string, unknown>): Record<string, unknown> {
+    return Object.fromEntries(Object.entries(doc).filter(([k]) => signerKeys.includes(k)));
 }
 
-// Only $HOME/.config/bugnet/mcp.toml, owned by the user, not writable by group or others, and
-// outside the working folder
+// Only $HOME/.config/bugnet/mcp.toml. A file that sets no signer key is not checked further, so a
+// bridge that never uses the key starts as before; one that does must be a regular file owned by
+// the user, not writable by group or others, and outside the working folder
 export function loadSignerSettings(
     home: string | undefined,
     cwd: string = process.cwd(),
 ): SignerSettings {
     if (home === undefined || !isAbsolute(home)) return defaultSignerSettings;
     const path = signerSettingsPath(home);
+    let loose: string;
+    try {
+        loose = readFileSync(path, "utf8");
+    } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === "ENOENT") return defaultSignerSettings;
+        throw new ConfigError(`read ${path}: ${(e as Error).message}`);
+    }
+    if (Object.keys(pickSignerKeys(parseToml(loose, path))).length === 0) {
+        return defaultSignerSettings;
+    }
     let fd: number;
     try {
         fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-    } catch (e) {
-        if ((e as NodeJS.ErrnoException).code === "ENOENT") return defaultSignerSettings;
+    } catch {
         throw new ConfigError(`${path}: must be a regular file you own, not a link`);
     }
     let text: string;
     try {
-        if (insideFolder(path, cwd)) {
+        if (insideWorkingFolder(dirname(path), cwd, home)) {
             throw new ConfigError(`${path}: must not be inside the working folder`);
         }
         const st = fstatSync(fd);
@@ -181,9 +184,7 @@ export function loadSignerSettings(
     } finally {
         closeSync(fd);
     }
-    const doc = parseToml(text, path);
-    const picked = Object.fromEntries(Object.entries(doc).filter(([k]) => signerKeys.includes(k)));
-    const r = signerSchema.safeParse(picked);
+    const r = signerSchema.safeParse(pickSignerKeys(parseToml(text, path)));
     if (r.success) return r.data;
     const issues = r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`);
     throw new ConfigError(`${path}: ${issues.join("; ")}`);
