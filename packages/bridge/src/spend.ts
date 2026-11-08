@@ -30,6 +30,8 @@ export interface SpendLedgerOptions {
     lockWaitMs?: number;
 }
 
+export type Reservation = "reserved" | "already_reserved" | "over_cap";
+
 // The lock moved away before a write, so nothing was written and the work may run again
 class LostLock extends LedgerError {
     constructor() {
@@ -234,17 +236,22 @@ export class SpendLedger {
         await rename(tmp, this.path);
     }
 
-    // Holds the amount against today's cap before anything is signed; false when it would not fit
-    async reserve(orderId: string, micros: number, dailyCapMicros: number): Promise<boolean> {
+    // Holds the amount against today's cap before anything is signed
+    async claim(orderId: string, micros: number, dailyCapMicros: number): Promise<Reservation> {
         return this.withLock(async (mine) => {
             const doc = await this.read();
-            if (Object.hasOwn(doc.entries, orderId)) return false;
+            if (Object.hasOwn(doc.entries, orderId)) return "already_reserved";
             const used = Object.values(doc.entries).reduce((n, e) => n + e.micros, 0);
-            if (used + micros > dailyCapMicros) return false;
+            if (used + micros > dailyCapMicros) return "over_cap";
             doc.entries[orderId] = { micros, state: "reserved" };
             await this.write(doc, mine);
-            return true;
+            return "reserved";
         });
+    }
+
+    // True only when this call reserved the amount
+    async reserve(orderId: string, micros: number, dailyCapMicros: number): Promise<boolean> {
+        return (await this.claim(orderId, micros, dailyCapMicros)) === "reserved";
     }
 
     // Spent stays counted; a payment that surely moved nothing frees its reservation

@@ -262,6 +262,17 @@ describe("key payer", () => {
         expect(await ledger.spentToday()).toBe(0);
     });
 
+    it("refuses an order another payment already reserved, apart from the daily cap", async () => {
+        expect(await ledger.claim(orderId, 50_000, 5_000_000)).toBe("reserved");
+        const { sent, fetcher } = fakePayments(offer());
+        expect(await payer(fetcher).pay(step, 50_000)).toEqual({
+            kind: "unavailable",
+            reason: "key_already_reserved",
+        });
+        expect(sent.filter((x) => x.headers["PAYMENT-SIGNATURE"] !== undefined)).toEqual([]);
+        expect(await ledger.spentToday()).toBe(50_000);
+    });
+
     it("refuses a fee payer that is the key itself", async () => {
         const own = { ...offer(), extra: { ...offer().extra, feePayer: key.address } };
         const { sent, fetcher } = fakePayments(own);

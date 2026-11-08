@@ -40,6 +40,17 @@ it("lets only one of two concurrent reservations past the daily cap", async () =
     expect(await a.spentToday()).toBe(3_000_000);
 });
 
+it("tells an order already reserved apart from one over the cap", async () => {
+    const ledger = new SpendLedger({ path: join(dir, "spend.json") });
+    expect(await ledger.claim("ord_a", 3_000_000, 5_000_000)).toBe("reserved");
+    expect(await ledger.claim("ord_a", 1, 5_000_000)).toBe("already_reserved");
+    expect(await ledger.claim("ord_b", 3_000_000, 5_000_000)).toBe("over_cap");
+    await ledger.settle("ord_a", true);
+    expect(await ledger.claim("ord_a", 1, 5_000_000)).toBe("already_reserved");
+    expect(await ledger.reserve("ord_a", 1, 5_000_000)).toBe(false);
+    expect(await ledger.spentToday()).toBe(3_000_000);
+});
+
 it("starts a new UTC day from nothing and frees a reservation that moved no money", async () => {
     let now = Date.parse("2026-11-08T23:59:00Z");
     const ledger = new SpendLedger({ path: join(dir, "spend.json"), now: () => now });

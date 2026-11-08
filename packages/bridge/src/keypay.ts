@@ -316,9 +316,10 @@ export class KeyPayer implements OrderPayer {
         const offer = challenge.offer as Offer;
         const amount = Number(offer.amount);
         try {
-            if (!(await ledger.reserve(step.orderId, amount, settings.dailyMicros))) {
-                return unavailable("daily_cap");
-            }
+            const held = await ledger.claim(step.orderId, amount, settings.dailyMicros);
+            // Another payment of this order is under way or done in some bridge process
+            if (held === "already_reserved") return unavailable("already_reserved");
+            if (held === "over_cap") return unavailable("daily_cap");
         } catch (e) {
             return unavailable(e instanceof LedgerError ? e.code : "ledger");
         }
