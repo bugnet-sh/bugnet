@@ -2,10 +2,12 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CallToolResult } from "@modelcontextprotocol/server";
+import { paymentRequiredResult } from "@bugnet/gateway/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { paymentRequired } from "./payment.ts";
 import {
     PayCli,
+    isAllowanceOrder,
     maxPaymentMicros,
     parsePayBody,
     payArgs,
@@ -364,5 +366,37 @@ describe("PayCli", () => {
     it("answers unknown when pay outlives its timeout, since it may have paid", async () => {
         const r = await run({ BUGNET_FAKE_PAY_DELAY_MS: "5000" }, { timeoutMs: 300 });
         expect(r.outcome).toEqual({ kind: "unknown" });
+    });
+});
+
+describe("isAllowanceOrder on the gateway's own payment step", () => {
+    const noPins = { payTo: [], allowancePayTo: [] };
+    const gatewayStep = (over: Record<string, unknown>) =>
+        paymentRequiredResult(
+            {
+                status: "payment_required",
+                orderId: "ord_2",
+                payUrl: "https://pay.bugnet.sh/o/ord_2",
+                paymentRequired: { x402Version: 2, accepts: [{ amount: "50000" }] },
+                ...over,
+            },
+            { tool: "bugnet_start" },
+        ) as CallToolResult;
+
+    it("reads the kind and allowanceMicros the gateway puts on the step", () => {
+        const allowance = gatewayStep({ kind: "allowance", allowanceMicros: 100_000 });
+        expect(allowance.structuredContent).toMatchObject({ kind: "allowance" });
+        expect(isAllowanceOrder("bugnet_start", {}, allowance, noPins)).toBe(true);
+        const startWith = gatewayStep({ kind: "start", allowanceMicros: 1_000_000 });
+        expect(isAllowanceOrder("bugnet_start", {}, startWith, noPins)).toBe(true);
+    });
+
+    it("treats a start or an extend without an allowance as sandbox time", () => {
+        for (const over of [{ kind: "start", allowanceMicros: 0 }, { kind: "extend" }, {}]) {
+            const r = gatewayStep(over);
+            expect(isAllowanceOrder("bugnet_start", {}, r, noPins), JSON.stringify(over)).toBe(
+                false,
+            );
+        }
     });
 });

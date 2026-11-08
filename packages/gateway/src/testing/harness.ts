@@ -50,6 +50,7 @@ import type {
 import { errorInfoType, retryInfoType, type RouterClient } from "../router.ts";
 import { buildMcpServer } from "../server.ts";
 import type { Deps, Register } from "../tools/common.ts";
+export { paymentRequiredResult } from "../tools/orders.ts";
 import { loadIndex, type X402Index } from "../x402/index.ts";
 import { base58Encode, serviceId, solanaNetwork, usdcAsset } from "../x402/lines.ts";
 import type { ServiceSpecInit } from "../x402/router.ts";
