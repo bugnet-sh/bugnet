@@ -410,7 +410,7 @@ async function newOrder(c: BudgetCall): Promise<Applied | CallToolResult> {
                     amountMicros: amount + feeMicros,
                     allowanceMicros: amount,
                     feeMicros,
-                    description: `Bugnet ${allowanceDescription(amount, feeMicros, pins)}`,
+                    description: `Bugnet ${allowanceDescription(amount, feeMicros)}`,
                     handleSha256: h,
                     x402: orderSetup(pins, disable, spend),
                     ...(args.orderId ? { orderId: args.orderId } : {}),

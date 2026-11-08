@@ -32,7 +32,6 @@ import {
 import { indexOf } from "../x402/index.ts";
 import { serviceLine, toMicros, usdText } from "../x402/lines.ts";
 import {
-    allowanceDescription,
     checkAddOf,
     newServiceCount,
     orderSetup,
@@ -785,11 +784,8 @@ export const registerSandboxTools: Register = (server, deps) => {
                                 "bugnet_start again starts it",
                         );
                     }
+                    // Payments adds the allowance, the fee and each service after this text
                     const named = [`Bugnet sandbox ${describeSize(pkg)}`, `${pkg.minutes} min`];
-                    if (plan) {
-                        const fee = plan.terms.sessionFeeMicros;
-                        named.push(allowanceDescription(plan.allowance, fee, plan.pins));
-                    }
                     // A claim never goes with a payment, which Payments settles before the claim
                     request = {
                         kind: "start",

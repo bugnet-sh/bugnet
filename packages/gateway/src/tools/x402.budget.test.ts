@@ -268,7 +268,7 @@ describe("bugnet_x402_budget", () => {
             amountMicros: 1_003_000,
             allowanceMicros: 1_000_000,
             feeMicros: 3_000,
-            description: "Bugnet x402 $1.00 + $0.003 fee: agent402.tools/v1/auto/ up to $0.01",
+            description: "Bugnet x402 $1.00 + $0.003 fee",
             handleSha256: h,
             x402: {
                 services: [

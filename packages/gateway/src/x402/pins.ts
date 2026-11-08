@@ -208,13 +208,8 @@ export function servicesAfter(
     return ids.size;
 }
 
-export function allowanceDescription(
-    amountMicros: number,
-    feeMicros: number,
-    pins: readonly X402ServicePin[],
-): string {
+// Payments writes the wallet's text with every service, so ours stays within its 200 characters
+export function allowanceDescription(amountMicros: number, feeMicros: number): string {
     const fee = feeMicros > 0 ? ` + ${usd(feeMicros)} fee` : "";
-    const services = pins.map((p) => `${p.host}${p.prefix} up to ${usd(p.maxPriceMicros)}`);
-    const named = services.length > 0 ? `: ${services.join(", ")}` : "";
-    return `x402 ${usd(amountMicros)}${fee}${named}`;
+    return `x402 ${usd(amountMicros)}${fee}`;
 }

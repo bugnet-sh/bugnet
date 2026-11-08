@@ -470,24 +470,10 @@ describe("plan helpers", () => {
         });
     });
 
-    it("describes an allowance and its services", () => {
-        const chatPin = {
-            host: "agent402.tools",
-            prefix: "/v1/auto/",
-            maxPriceMicros: 10_000,
-        } as X402ServicePin;
-        const ttsPin = {
-            host: "tts.example.com",
-            prefix: "/v1/",
-            maxPriceMicros: 20_000,
-        } as X402ServicePin;
-        expect(allowanceDescription(1_000_000, 3_000, [chatPin])).toBe(
-            "x402 $1.00 + $0.003 fee: agent402.tools/v1/auto/ up to $0.01",
-        );
-        expect(allowanceDescription(500_000, 0, [])).toBe("x402 $0.50");
-        expect(allowanceDescription(500_000, 0, [chatPin, ttsPin])).toBe(
-            "x402 $0.50: agent402.tools/v1/auto/ up to $0.01, tts.example.com/v1/ up to $0.02",
-        );
+    it("describes an allowance by its money only, as Payments names the services", () => {
+        expect(allowanceDescription(1_000_000, 3_000)).toBe("x402 $1.00 + $0.003 fee");
+        expect(allowanceDescription(500_000, 0)).toBe("x402 $0.50");
+        expect(`Bugnet ${allowanceDescription(5_000_000, 3_000)}`.length).toBeLessThanOrEqual(200);
     });
 });
 

@@ -1164,9 +1164,7 @@ describe("bugnet_start with x402", () => {
                 amountMicros: 1_053_000,
                 allowanceMicros: 1_000_000,
                 feeMicros: 3_000,
-                description: expect.stringMatching(
-                    /^Bugnet sandbox .+, 10 min, x402 \$1\.00 \+ \$0\.003 fee: agent402\.tools\/v1\/auto\/ up to \$0\.01$/,
-                ),
+                description: expect.stringMatching(/^Bugnet sandbox .+, 10 min$/),
                 x402: {
                     services: [
                         expect.objectContaining({

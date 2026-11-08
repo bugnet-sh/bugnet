@@ -77,6 +77,15 @@ describe("port v2 names", () => {
 });
 
 describe("DevPayments by default", () => {
+    it("refuses a new order whose description passes 200 characters, as Payments does", async () => {
+        const dev = new DevPayments(seed, 600_000, () => testNow);
+        expect(await dev.order({ ...start, description: "d".repeat(201) })).toEqual({
+            status: "refused",
+            reason: "bad_request",
+        });
+        expect((await dev.order({ ...start, description: "d".repeat(200) })).status).toBe("paid");
+    });
+
     it("settles at once and answers with the order's terms", async () => {
         const dev = new DevPayments(seed, 600_000, () => testNow);
         expect(dev.requiresPayment).toBe(false);

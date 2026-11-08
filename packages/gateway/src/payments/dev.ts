@@ -588,6 +588,8 @@ export class DevPayments implements Payments {
     async order(req: OrderRequest): Promise<OrderResult> {
         const set = this.x402.takeOrderRefusal();
         if (set) return set;
+        if ((req.description?.length ?? 0) > 200)
+            return { status: "refused", reason: "bad_request" };
         return this.requiresPayment ? this.requireOrder(req) : this.settleAtOnce(req);
     }
 
