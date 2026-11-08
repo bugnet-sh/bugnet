@@ -84,6 +84,34 @@ it("starts a new UTC day from nothing and frees a reservation that moved no mone
     expect(await readdir(join(spend, "2026-11-09"))).toEqual([]);
 });
 
+it("still sees an order claimed just before midnight once the day has turned", async () => {
+    let now = Date.parse("2026-11-08T23:59:59.900Z");
+    const a = new SpendLedger({ dir: spend, now: () => now });
+    const b = new SpendLedger({ dir: spend, now: () => now });
+    expect(await a.claim("ord_a", 1_000_000, 5_000_000)).toBe("reserved");
+    expect(await a.claim("ord_b", 1_000_000, 5_000_000)).toBe("reserved");
+    expect(await a.claim("ord_c", 1_000_000, 5_000_000)).toBe("reserved");
+    now = Date.parse("2026-11-09T00:00:00.100Z");
+    expect(await b.claim("ord_a", 1_000_000, 5_000_000)).toBe("already_reserved");
+    await a.settle("ord_b", true);
+    expect(await b.claim("ord_b", 1_000_000, 5_000_000)).toBe("already_reserved");
+    // A payment that moved nothing gave its order back
+    await a.settle("ord_c", false);
+    expect(await b.claim("ord_c", 1_000_000, 5_000_000)).toBe("reserved");
+    // A file left in the freed state holds nothing, one that cannot be read holds its order
+    const yesterday = join(spend, "2026-11-08");
+    const entry = (orderId: string) =>
+        JSON.stringify({ orderId, micros: 1, state: "freed", at: 0 });
+    await writeFile(join(yesterday, hash("ord_d")), entry("ord_d"));
+    await writeFile(join(yesterday, hash("ord_e")), "");
+    expect(await b.claim("ord_d", 1_000_000, 5_000_000)).toBe("reserved");
+    expect(await b.claim("ord_e", 1_000_000, 5_000_000)).toBe("already_reserved");
+    expect(await b.spentToday()).toBe(2_000_000);
+    // Two days on, the order is new again
+    now = Date.parse("2026-11-10T00:00:00.100Z");
+    expect(await b.claim("ord_a", 1_000_000, 5_000_000)).toBe("reserved");
+});
+
 it("refuses an orderId that is not a plain name", async () => {
     const ledger = new SpendLedger({ dir: spend });
     const bad = ["__proto__", "../x", "", "a".repeat(65), "a/b", ".x", "-x", "ord a", "ord\n"];

@@ -131,8 +131,8 @@ export class SpendLedger {
         this.retries = opts.retries ?? 4;
     }
 
-    private day(): string {
-        return new Date(this.now()).toISOString().slice(0, 10);
+    private day(offset = 0): string {
+        return new Date(this.now() + offset * 86_400_000).toISOString().slice(0, 10);
     }
 
     private async folder(day: string): Promise<string> {
@@ -156,24 +156,29 @@ export class SpendLedger {
         return JSON.stringify({ orderId, micros, state, at: this.now() });
     }
 
-    // A file that vanished was freed or backed off; one that cannot be read counts in full
-    private async count(folder: string, name: string): Promise<number> {
+    // Null for a file that vanished, which was freed or backed off
+    private async read(folder: string, name: string): Promise<Entry | null | "unreadable"> {
         let text: string;
         try {
             const fh = await open(join(folder, name), constants.O_RDONLY | constants.O_NOFOLLOW);
             try {
                 const st = await fh.stat();
-                if (!st.isFile() || st.size > maxFileBytes) return this.unreadableMicros;
+                if (!st.isFile() || st.size > maxFileBytes) return "unreadable";
                 text = await fh.readFile("utf8");
             } finally {
                 await fh.close();
             }
         } catch (e) {
-            return isMissing(e) ? 0 : this.unreadableMicros;
+            return isMissing(e) ? null : "unreadable";
         }
-        const entry = parse(text, name);
-        if (entry === null) return this.unreadableMicros;
-        return entry.state === "freed" ? 0 : entry.micros;
+        return parse(text, name) ?? "unreadable";
+    }
+
+    // A file that cannot be read counts in full
+    private async count(folder: string, name: string): Promise<number> {
+        const entry = await this.read(folder, name);
+        if (entry === "unreadable") return this.unreadableMicros;
+        return entry === null || entry.state === "freed" ? 0 : entry.micros;
     }
 
     private async total(folder: string): Promise<number> {
@@ -202,6 +207,12 @@ export class SpendLedger {
         }
         const day = this.day();
         const folder = await this.folder(day);
+        // An order claimed just before midnight is still held by yesterday's file
+        const yesterday = join(this.dir, this.day(-1));
+        const before = await this.read(yesterday, nameOf(orderId));
+        if (before !== null && (before === "unreadable" || before.state !== "freed")) {
+            return "already_reserved";
+        }
         for (let attempt = 0; ; attempt++) {
             const result = await this.tryClaim(folder, orderId, micros, dailyCapMicros);
             if (result === "reserved") this.mine.set(orderId, { day, micros });
