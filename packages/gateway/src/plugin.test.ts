@@ -75,7 +75,7 @@ describe("the plugins", () => {
     it("lets the skill redeem a paid order and never says a wallet pays by itself", () => {
         const skill = text("plugin/skills/run-in-sandbox/SKILL.md");
         expect(skill).toMatch(new RegExp(`^allowed-tools: .*${base}bugnet_redeem`, "m"));
-        expect(skill).toContain("Once they say they paid, call");
+        expect(skill).toContain("then at once call");
         expect(skill).not.toMatch(/pays automatically|x402 wallet/);
     });
 

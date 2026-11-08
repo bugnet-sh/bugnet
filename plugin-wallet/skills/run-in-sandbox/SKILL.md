@@ -44,8 +44,9 @@ such separation.
 
 1. `bugnet_start` with the assessment's `quoteId`, the `packageId`, and the price you told the
    user as `confirmPriceUsd`. Claude Code asks the user to approve.
-2. If the result is a payment step, show the user its pay link. Once they say they paid, call
-   `bugnet_redeem` with the `orderId`, `claim` and `quoteId` the step names. Never call
+2. If the result is a payment step, show the user its pay link, then at once call
+   `bugnet_redeem` with the `orderId`, `claim` and `quoteId` the step names, without waiting for
+   the user. It waits for the payment; if it answers not paid yet, call it again. Never call
    `bugnet_start` again without that `orderId`, or the user pays twice.
 3. The start result says where a quoted GitHub repo is, usually `~/src/<repo>`. When it is not
    fetched yet, `bugnet_fetch_source` fetches it, and when Bugnet did not place it, clone it.
