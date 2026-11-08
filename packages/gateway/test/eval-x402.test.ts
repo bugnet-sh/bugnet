@@ -537,7 +537,7 @@ describe("approver", () => {
 
 describe("the frozen repo set", () => {
     const file = join(root, "eval/agent/x402-repos.json");
-    // The founder's selection step writes this file, so CI passes before it and checks it after
+    // The selection step writes this file, so CI passes before it and checks it after
     it.skipIf(!existsSync(file))(
         "freezes 20 repos, 8 for OpenAI and 6 each for ElevenLabs and Replicate",
         () => {

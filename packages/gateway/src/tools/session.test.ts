@@ -82,7 +82,7 @@ describe("bugnet_stop", () => {
         expect(r.structured).not.toHaveProperty("paidUsd");
     });
 
-    it("measures use from ready to the end, as the founder's 4 s run", async () => {
+    it("measures use from ready to the end, as in a 4 s run", async () => {
         const client = await connect({
             stopPlacement: () => ({
                 placement: ended({

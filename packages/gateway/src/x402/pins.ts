@@ -159,7 +159,7 @@ export function newServiceCount(planned: readonly PlannedService[]): number {
     return planned.filter((p) => p.change === "new" || p.change === "repin").length;
 }
 
-// Founder decision F10, a minute limit under the top max left enabled never pays that service
+// A minute limit under the top max left enabled would never pay that service
 export function spendUnderPrice(
     limitMicros: number,
     account: X402Account | null,
