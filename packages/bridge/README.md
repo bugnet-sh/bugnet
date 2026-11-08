@@ -173,9 +173,12 @@ key_pays_allowances = true   # the default; false sends x402 allowances to pay w
 Setting `pay_signer = "key"` is your approval for the agent to spend from this wallet, within the
 caps and with no prompt: it pays sandbox time, and by default x402 allowances too
 (`bugnet_x402_budget`, or `bugnet_start` with an allowance). With `key_pays_allowances = false` an
-allowance goes to `pay` instead (Touch ID on macOS, its in-client prompt elsewhere), or to the pay
-link. This works the same on macOS and Linux; on Windows the wallet file cannot be loaded yet, so
-every payment goes to `pay` or the pay link.
+allowance goes to `pay` instead, or to the pay link without `pay`. With `allowance_pay_to` unset,
+Touch ID (or pay's in-client prompt) is the only check on an allowance sent to `pay`, since no
+wallet pins it. Where pay has no Touch ID it asks through MCP elicitation, and the bridge's own pay
+client offers none, so pay fails closed there and the bridge falls back to the pay link. The
+wallet file works the same on macOS and Linux; on Windows it cannot be loaded yet, so every
+payment goes to `pay` or the pay link.
 The bridge tells an allowance first by the order's own `kind` and `allowanceMicros`, which Payments
 sends on the payment step, and falls back to a payment to an `allowance_pay_to` wallet.
 The default trades a prompt for speed: the allowance wallet later pays sellers the agent picked, so
@@ -188,10 +191,11 @@ Before signing, the bridge fetches the order's payment request itself and checks
 per-payment cap and what is left of the daily cap (kept in `~/.config/bugnet/spend.json`). It
 builds the transfer itself and never signs bytes it was sent. A payment that fails a check is not
 signed: you get the pay link or the payment step back. `bugnet_secret_from_env` refuses any value
-that looks like a wallet key (a 32-byte seed or 64-byte keypair as base58, base64, a JSON array or
-`0x` hex, a wallet export with `secretKey`, a PEM or PKCS#8 key, a seed phrase), and the names
-`SOLANA_PRIVATE_KEY`, `PRIVATE_KEY`, `*_KEYPAIR`, `WALLET_KEY`, `*_WALLET_KEY`, `MNEMONIC` and
-`SEED_PHRASE`.
+that looks like a wallet key under any name (a 64-byte keypair as base58, base64, a JSON array or
+`0x` hex, a wallet export with `secretKey` or `privateKey`, a PEM or PKCS#8 key, a seed phrase),
+and the names `SOLANA_PRIVATE_KEY`, `PRIVATE_KEY`, `*_KEYPAIR`, `WALLET_KEY`, `*_WALLET_KEY`,
+`MNEMONIC` and `SEED_PHRASE`. A 32-byte value in those forms counts as a key only under such a
+name, so a Solana address or an `openssl rand -base64 32` secret goes through, as does bare hex.
 
 The bridge reads the wallet file byte by byte, never as text, and zeroes its copies once the key
 sits in a non-extractable WebCrypto key; `key new` writes it the same way. `key import` reads the

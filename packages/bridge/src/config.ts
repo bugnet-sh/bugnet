@@ -114,7 +114,7 @@ const signerSchema = z
         daily_usd: z.number().positive().max(dailyCeilingUsd).default(5),
         pay_to: pinned,
         fee_payer: pinned,
-        // The allowance wallet later pays sellers the agent picked, so it needs Touch ID by default
+        // The allowance wallet later pays sellers the agent picked; false sends it to pay instead
         key_pays_allowances: z.boolean().default(true),
         allowance_pay_to: pinned,
     })
