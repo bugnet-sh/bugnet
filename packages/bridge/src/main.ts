@@ -106,6 +106,7 @@ async function main(): Promise<number> {
                 log,
                 now: Date.now,
                 started,
+                payLinkDialog: s.pay_link_dialog,
                 pay: {
                     origin,
                     payer,

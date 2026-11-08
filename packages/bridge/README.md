@@ -111,6 +111,7 @@ call_timeout = "5m"                         # longest wait for one tool call, re
 secrets_timeout = "30s"                     # longest wait to store one secret
 pay_command = "pay"                         # the pay CLI that pays from this machine, "" for none
 pay_origin = "https://pay.bugnet.sh"        # the only pay link origin it pays, https or http on this machine
+pay_link_dialog = false                     # true opens pay links in the client's URL dialog, which waits for a click
 ```
 
 The bridge refuses plain `http` to any other machine, so a sandbox handle never crosses the
@@ -142,9 +143,10 @@ bridge pays it:
 
 It pays an order at most once. If your client stops waiting, the bridge keeps the paid order for
 30 minutes and uses it on the next call for the same size, or the next x402 allowance call for the
-same sandbox, instead of paying again. Without `pay`, or with `pay_command = ""`, it opens the pay
-link in your client when the client can open links, waits up to 10 minutes for you to pay in the
-browser, and goes on. Other clients get the pay link to show you.
+same sandbox, instead of paying again. Without `pay`, or with `pay_command = ""`, the agent shows
+you the pay link and calls `bugnet_redeem` at once, which waits up to 10 minutes and goes on by
+itself as soon as you pay in the browser. With `pay_link_dialog = true`, a client that can open
+links shows the link in its own dialog instead, and goes on only once you answer that dialog.
 
 ### Paying from a local wallet file
 

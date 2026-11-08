@@ -9,3 +9,4 @@ call_timeout = "5m"                         # longest wait for one tool call, re
 secrets_timeout = "30s"                     # longest wait for one call to the secrets route
 pay_command = "pay"                         # the pay CLI that pays from this machine, "" turns it off
 pay_origin = "https://pay.bugnet.sh"        # the only origin the bridge and pay will pay, https or loopback http
+pay_link_dialog = false                     # true opens pay links in the client's URL dialog, which waits for a click

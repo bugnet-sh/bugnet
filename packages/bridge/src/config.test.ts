@@ -33,6 +33,7 @@ describe("bridge settings", () => {
             secrets_timeout: 30_000,
             pay_command: "pay",
             pay_origin: "https://pay.bugnet.sh",
+            pay_link_dialog: false,
         });
     });
 

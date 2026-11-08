@@ -1771,6 +1771,33 @@ describe.each(["legacy", "modern"] as const)("paying by link, %s client", (era) 
 });
 
 describe.each(["legacy", "modern"] as const)("redeeming a link order, %s client", (era) => {
+    it("gives a client with URL dialogs the link in chat by default, and redeem waits on its own", async () => {
+        const gw = await gateway(requirePayments());
+        const pay = devPay(gw.payments, null, { status: queued(gw.payments, ["unpaid", "paid"]) });
+        const b = await bridge({
+            gateway: gw.url,
+            era,
+            elicitUrl: () => ({ action: "accept" }),
+            deps: { pay, payLinkDialog: false },
+        });
+        const args = startArgs(await quoteId(b.client));
+        const step = await b.client.callTool({ name: "bugnet_start", arguments: args });
+        expect(b.urls).toEqual([]);
+        expect(step.isError).toBe(true);
+        const { orderId, claim, payUrl } = step.structuredContent as {
+            orderId: string;
+            claim: string;
+            payUrl: string;
+        };
+        expect(payUrl).toBe(`${testPayOrigin}/o/${orderId}`);
+        const r = await b.client.callTool({
+            name: "bugnet_redeem",
+            arguments: { orderId, claim, quoteId: args.quoteId },
+        });
+        expect((r.structuredContent as { handle: string }).handle).toBe(testHandle);
+        expect(b.urls).toEqual([]);
+    });
+
     it.each([
         ["unpaid", ["unpaid", "unpaid", "paid"]],
         ["settling", ["settling", "paid"]],

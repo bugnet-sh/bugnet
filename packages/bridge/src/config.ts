@@ -60,6 +60,8 @@ const settingsSchema = z
         secrets_timeout: duration.prefault("30s"),
         pay_command: z.string().max(4096).default("pay"),
         pay_origin: payOrigin,
+        // The client's URL dialog waits for a click, so by default the agent shows the link
+        pay_link_dialog: z.boolean().default(false),
     })
     .strict();
 

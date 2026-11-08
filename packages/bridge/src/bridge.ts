@@ -87,6 +87,8 @@ export interface BridgeDeps {
     pay?: BridgePay;
     // How long to wait before listing the gateway's tools again after a failed listing
     relistMs?: number;
+    // Pay links open in the client's URL dialog, which goes on only once the user answers it
+    payLinkDialog?: boolean;
 }
 
 function toolError(text: string): CallToolResult {
@@ -256,6 +258,9 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         ] as ClientCapabilities | undefined) ?? server.getClientCapabilities();
     const secretDeps = { ...deps, clientCapabilities };
     // A client that can open links gets the pay link, any other the payment step to show the user
+    // Without the dialog the agent shows the link and bugnet_redeem waits for the payment itself
+    const linkDialog = (ctx: ServerContext): boolean =>
+        deps.payLinkDialog === true && canElicitUrl(clientCapabilities(ctx));
     const linkPath = (
         step: PaymentStep,
         quoteId: string | undefined,
@@ -263,7 +268,7 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         orders: PaidOrders,
     ): RemoteResult => {
         orders.holdLink(step.orderId);
-        return canElicitUrl(clientCapabilities(ctx))
+        return linkDialog(ctx)
             ? payLinkRequest(step, deps.now())
             : paymentStepResult(step, quoteId);
     };
@@ -409,7 +414,7 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         const { redeemOrder, waitAndRedeem } = redeemers(req, ctx, params, pay, progress);
         // The same order's link again, since the user can still pay it in their browser
         const sameLink = (held: PaymentStep): RemoteResult =>
-            canElicitUrl(clientCapabilities(ctx))
+            linkDialog(ctx)
                 ? payLinkRequest(held, deps.now())
                 : paymentStepResult(held, quoteIdOf(args));
         const linkReturn = ctx.mcpReq.requestState();

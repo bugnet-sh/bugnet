@@ -303,6 +303,7 @@ export async function connectBridge(setup: BridgeSetup): Promise<ConnectedBridge
         log,
         now: () => testNow,
         started: new Set(),
+        payLinkDialog: setup.elicitUrl !== undefined,
         ...setup.deps,
     };
     const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
