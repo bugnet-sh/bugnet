@@ -114,7 +114,9 @@ describe("bugnet_extend", () => {
         );
         expect(r.isError).toBe(false);
         expect(r.structured).toEqual({
-            message: "Extended by 10 min. New deadline 2026-11-05T12:20:00.000Z, time left 20 min.",
+            message:
+                "Extended by 10 min. New deadline 2026-11-05T12:20:00.000Z, time left 20 min.\n" +
+                "Paid $0.04 USDC more for this sandbox (order toolu_ext). Tell the user what it cost.",
             orderId: "toolu_ext",
             packageId: "more-10m",
             deadline: "2026-11-05T12:20:00.000Z",
@@ -462,7 +464,8 @@ describe("bugnet_extend", () => {
         );
         expect(r.structured).toEqual({
             message:
-                "Extended with more-10m. New deadline 2026-11-05T12:20:00.000Z, time left 20 min.",
+                "Extended with more-10m. New deadline 2026-11-05T12:20:00.000Z, time left 20 min.\n" +
+                `Paid $0.04 USDC more for this sandbox (order ${orderId}). Tell the user what it cost.`,
             orderId,
             packageId: "more-10m",
             deadline: "2026-11-05T12:20:00.000Z",

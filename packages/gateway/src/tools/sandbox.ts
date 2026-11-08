@@ -95,6 +95,7 @@ import {
     retryCall,
     type PaidRetry,
 } from "./orders.ts";
+import { endedAnswer, paidLine, paidOf, startSummary } from "./session.ts";
 import { describeSize, limitQuotes, quoted, unavailableWords } from "./quote.ts";
 import { fetchAfterStart, sentence, sourceView, unplacedNote, type SourceView } from "./source.ts";
 
@@ -640,6 +641,7 @@ export async function startPaid(
             : undefined;
     const failed = p?.state === PlacementState.FAILED;
     const x402 = account && enabled ? startX402Part(deps, order, account, enabled, failed) : null;
+    const summary = startSummary(deps, handle, p);
     const text = [
         `Sandbox ${view.state}. handle: ${handle}`,
         ready ? `Time left: ${view.timeLeft} (deadline ${view.deadline}).` : "",
@@ -649,6 +651,8 @@ export async function startPaid(
         p?.state === PlacementState.FAILED
             ? `It failed to start${p.refundable ? ", the payment will be refunded" : ""}.`
             : "",
+        paidLine(order.amountMicros, order.orderId, false),
+        summary.line,
         view.source ? sentence(view.source.note) : "",
         sshLine(view.sshAlias),
         ...(x402?.lines ?? []),
@@ -663,7 +667,13 @@ export async function startPaid(
         .join("\n");
     return ok(
         text,
-        { handle, orderId: order.orderId, ...view, ...(x402?.view ? { x402: x402.view } : {}) },
+        {
+            handle,
+            orderId: order.orderId,
+            ...view,
+            ...summary.fields,
+            ...(x402?.view ? { x402: x402.view } : {}),
+        },
         meta,
     );
 }
@@ -922,13 +932,28 @@ export const registerSandboxTools: Register = (server, deps) => {
                               budget,
                           })
                         : { lines: [], view: null };
+                const done = endedAnswer(
+                    deps,
+                    args.handle,
+                    p,
+                    used,
+                    p?.terminationReason && p.terminationReason !== "stop"
+                        ? terminationText(p.terminationReason)
+                        : null,
+                );
+                const paid = p && !ended(p.state) ? paidOf(p) : 0n;
                 const text = [
-                    `Sandbox ${view.state}, package ${view.packageId}, time left ${view.timeLeft}` +
-                        (view.deadline ? ` (deadline ${view.deadline})` : "") +
-                        (view.failureReason ? `, reason ${view.failureReason}` : "") +
-                        (p?.readyAt ? usedText(used) : "") +
-                        ".",
-                    view.terminationReason ? sentence(view.terminationReason) : "",
+                    ...(done
+                        ? done.lines
+                        : [
+                              `Sandbox ${view.state}, package ${view.packageId}, time left ${view.timeLeft}` +
+                                  (view.deadline ? ` (deadline ${view.deadline})` : "") +
+                                  (view.failureReason ? `, reason ${view.failureReason}` : "") +
+                                  (p?.readyAt ? usedText(used) : "") +
+                                  ".",
+                          ]),
+                    !done && view.terminationReason ? sentence(view.terminationReason) : "",
+                    !done && paid > 0n ? `Paid so far: ${usd(paid)} USDC.` : "",
                     view.source && !(p && ended(p.state)) ? sentence(view.source.note) : "",
                     ready ? sshLine(view.sshAlias) : "",
                     offer.length > 0
@@ -943,6 +968,7 @@ export const registerSandboxTools: Register = (server, deps) => {
                     .join("\n");
                 return ok(text, {
                     ...view,
+                    ...(done ? done.fields : paid > 0n ? { paidUsd: usd(paid) } : {}),
                     extensions,
                     ...(part.view ? { x402: part.view } : {}),
                 });
@@ -987,14 +1013,15 @@ export const registerSandboxTools: Register = (server, deps) => {
                     ...placementView(p, deps.now()),
                     ...(used !== undefined ? { usedSeconds: used } : {}),
                 };
+                const done = endedAnswer(deps, args.handle, p, used, null);
                 const text = [
-                    `Sandbox ${view.state}${usedText(used)}.`,
+                    ...(done ? done.lines : [`Sandbox ${view.state}${usedText(used)}.`]),
                     money,
                     files.length > 0 ? stopFilesLine(files) : "",
                 ]
                     .filter(Boolean)
                     .join("\n");
-                return ok(text, view);
+                return ok(text, { ...view, ...(done ? done.fields : {}) });
             } catch (e) {
                 return failure(e, "stop");
             }

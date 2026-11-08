@@ -2099,8 +2099,8 @@ describe("bugnet_status", () => {
         expect(r.structured.endedAt).toBe("2026-11-05T11:59:50.000Z");
         expect(r.structured.usedSeconds).toBe(20);
         expect(r.structured.message.split("\n")[0]).toBe(
-            "Sandbox ended, package small-10m, time left none, the sandbox has ended " +
-                "(deadline 2026-11-05T12:10:00.000Z), used for about 20 s.",
+            "The sandbox is stopped. It ended at 2026-11-05 11:59 UTC after 20 s of use, " +
+                "and everything in it was deleted. Tell the user it is stopped.",
         );
     });
 
@@ -2153,7 +2153,8 @@ describe("bugnet_stop", () => {
         });
         expect(r.structured).toEqual(
             expect.objectContaining({
-                message: "Sandbox ended, used for about 90 s.",
+                message:
+                    "The sandbox is stopped. It ended at 2026-11-05 12:00 UTC after 1 min 30 s of use, and everything in it was deleted. Tell the user it is stopped.",
                 state: "ended",
                 endedAt: new Date(testNow).toISOString(),
                 usedSeconds: 90,
@@ -2184,7 +2185,9 @@ describe("bugnet_stop", () => {
         expect(first.structured.usedSeconds).toBe(90);
         expect(second.structured.usedSeconds).toBe(90);
         expect(status.structured.usedSeconds).toBe(90);
-        expect(second.text).toBe("Sandbox ended, used for about 90 s.");
+        expect(second.text).toBe(
+            "The sandbox is stopped. It ended at 2026-11-05 12:00 UTC after 1 min 30 s of use, and everything in it was deleted. Tell the user it is stopped.",
+        );
         expect(status.structured.endedAt).toBe(new Date(testNow).toISOString());
     });
 
@@ -3076,7 +3079,7 @@ function countingPayments(account: () => Promise<{ x402: X402Account | null; fee
 }
 
 const stopLines = [
-    "Sandbox ended, used for about 90 s.",
+    "The sandbox is stopped. It ended at 2026-11-05 12:00 UTC after 1 min 30 s of use, and everything in it was deleted. Tell the user it is stopped.",
     "x402: $0.02 spent in 2 paid calls. About $0.98 goes back to the paying wallet, usually within 10 minutes.",
     "Files that call x402 services: /root/src/app/main.py, /root/src/app/.env. They work only inside Bugnet, so ask the user before copying them into their own files.",
 ];
@@ -3237,7 +3240,9 @@ describe("bugnet_stop with x402", () => {
             }),
         );
         const quiet = await callTool(none.client, "bugnet_stop", { handle: testHandle });
-        expect(quiet.text).toBe("Sandbox ended, used for about 90 s.");
+        expect(quiet.text).toBe(
+            "The sandbox is stopped. It ended at 2026-11-05 12:00 UTC after 1 min 30 s of use, and everything in it was deleted. Tell the user it is stopped.",
+        );
         expect(seen).toEqual({ exec: 0, account: 0 });
         const slow = await setupX402(
             stopImpl([], {
@@ -3278,7 +3283,9 @@ describe("bugnet_stop with x402", () => {
             none,
         );
         const r = await callTool(client, "bugnet_stop", { handle: testHandle });
-        expect(r.text).toBe("Sandbox ended, used for about 90 s.");
+        expect(r.text).toBe(
+            "The sandbox is stopped. It ended at 2026-11-05 12:00 UTC after 1 min 30 s of use, and everything in it was deleted. Tell the user it is stopped.",
+        );
     });
 
     it("says the totals are unavailable when the account cannot be read after the stop", async () => {

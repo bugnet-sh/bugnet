@@ -127,6 +127,9 @@ describe("bugnet_redeem", () => {
         );
         expect(r.isError).toBe(false);
         expect(r.structured).toEqual(expect.objectContaining({ handle: testHandle, orderId }));
+        expect(r.text).toContain(
+            `Paid $0.25 USDC for this sandbox (order ${orderId}). Tell the user what it cost.`,
+        );
         expect(payments.orders).toEqual([{ orderId, claim }]);
         expect(created[0]?.requirements?.ssh).toBe(true);
         expect(created[0]?.estimateId).toBe("0f8b6c2e-41d7-4a3b-9c5e-7d2a1b3c4d5e");
@@ -172,7 +175,8 @@ describe("bugnet_redeem", () => {
         const r = await callTool(client, "bugnet_redeem", { orderId, claim, handle: testHandle });
         expect(r.structured).toEqual({
             message:
-                "Extended with more-10m. New deadline 2026-11-05T12:20:00.000Z, time left 20 min.",
+                "Extended with more-10m. New deadline 2026-11-05T12:20:00.000Z, time left 20 min.\n" +
+                `Paid $0.04 USDC more for this sandbox (order ${orderId}). Tell the user what it cost.`,
             orderId,
             packageId: "more-10m",
             deadline: "2026-11-05T12:20:00.000Z",
