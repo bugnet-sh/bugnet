@@ -144,7 +144,7 @@ export const routerRows = {
             : `${what}: Bugnet cannot make this change (${words}). Nothing was charged`,
 } as const;
 
-// Spec 6.3 gives each of these placement-wide reasons one Connect code
+// Spec 6.3 gives each of these reasons one Connect code
 const ownCode: Readonly<Record<string, Code>> = {
     X402_DISABLED: Code.FailedPrecondition,
     FEATURE_UNAVAILABLE: Code.FailedPrecondition,

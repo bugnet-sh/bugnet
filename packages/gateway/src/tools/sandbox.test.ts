@@ -1432,7 +1432,7 @@ describe("bugnet_start with x402", () => {
         expect(seen.enables).toHaveLength(1);
     });
 
-    // After the payment the quote expired and the seller asks more, which only the order may outlast
+    // After the payment the quote expired and the seller asks more, which only the order outlasts
     it.each([
         ["1.00", "1.053"],
         ["3.00", "3.053"],
