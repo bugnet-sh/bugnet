@@ -322,9 +322,21 @@ export function packageOption(
 
 /* Deps */
 
+// Made-up provider names, so tests check the scrub without naming a real provider
+export const testProviderNames = ["acmebox", "cloudvm"];
+export const testProviders = /\b(acmebox|cloudvm)\b/i;
+
 export function testConfig(toml = ""): Config {
+    const settings = parseSettings(toml, "test settings");
     return {
-        ...parseSettings(toml, "test settings"),
+        ...settings,
+        router: {
+            ...settings.router,
+            provider_names:
+                settings.router.provider_names.length > 0
+                    ? settings.router.provider_names
+                    : testProviderNames,
+        },
         secrets: {
             internalToken: "t".repeat(32),
             quoteKey: Buffer.alloc(32, 7),

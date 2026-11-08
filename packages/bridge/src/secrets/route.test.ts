@@ -118,7 +118,7 @@ describe("secrets route client", () => {
         [404, "", /does not know this sandbox/],
         [500, "", /answered 500/],
     ])("turns %i %j into a fixed sentence", async (status, error, text) => {
-        const body = { error, message: "router said: e2b sbx_secret_handle" };
+        const body = { error, message: "router said: acmebox sbx_secret_handle" };
         const e = await refusal(
             getSealingKeys(
                 route(() => json(status, body)),
@@ -127,7 +127,7 @@ describe("secrets route client", () => {
             ),
         );
         expect(e.message).toMatch(text);
-        expect(e.message).not.toMatch(/e2b|sbx_/);
+        expect(e.message).not.toMatch(/acmebox|sbx_/);
         expect(e.reason).toBe(error || `http_${status}`);
     });
 

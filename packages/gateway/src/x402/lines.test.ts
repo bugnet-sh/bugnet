@@ -337,14 +337,15 @@ describe("hosts and env lines", () => {
             "Example.com",
             "bugnet.sh",
             "x.bugnet.sh",
-            "x.e2b.app",
-            "boxd.sh",
+            "x.acmebox.dev",
+            "cloudvm.app",
         ]) {
-            expect(hostRefused(h, "bugnet.sh"), h).toBe(true);
+            expect(hostRefused(h, "bugnet.sh", ["acmebox.dev", "cloudvm.app"]), h).toBe(true);
         }
         for (const h of ["agent402.tools", "xn--mnchen-3ya.de", "api.example.com"]) {
-            expect(hostRefused(h, "bugnet.sh"), h).toBe(false);
+            expect(hostRefused(h, "bugnet.sh", ["acmebox.dev", "cloudvm.app"]), h).toBe(false);
         }
+        expect(hostRefused("x.acmebox.dev", "bugnet.sh", [])).toBe(false);
     });
     it("gives OpenAI env lines for the OpenAI shape only", () => {
         expect(openAiEndings).toEqual([

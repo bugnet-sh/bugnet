@@ -40,6 +40,6 @@ describe("server instructions", () => {
 
     it("stay factual and never name infrastructure providers", () => {
         expect(instructions).not.toMatch(/\b(best|amazing|always use|you should)\b/i);
-        expect(instructions).not.toMatch(/koyeb|\bboat\b|e2b|boxd|instabox|daytona/i);
+        expect(instructions).not.toMatch(/\b(acmebox|cloudvm)\b/i);
     });
 });

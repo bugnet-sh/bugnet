@@ -7,6 +7,7 @@ import { allowedHosts } from "./config.ts";
 import { instructions } from "./instructions.ts";
 import { DevPayments } from "./payments/dev.ts";
 import { peerAddress, withClientAddress, withToolCall } from "./request.ts";
+import { setProviderNames } from "./router.ts";
 import { registerAssessTool } from "./tools/assess.ts";
 import type { Deps, Register } from "./tools/common.ts";
 import { registerExtendTool } from "./tools/extend.ts";
@@ -72,6 +73,7 @@ export function buildMcpServer(deps: Deps, extra: Register[] = []): McpServer {
         { name: "bugnet", title: "Bugnet sandboxes", version },
         { instructions },
     );
+    setProviderNames(deps.config.router.provider_names);
     scopeToolCalls(server, deps);
     for (const register of [...registrations, ...extra]) register(server, deps);
     return server;

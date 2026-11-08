@@ -30,7 +30,7 @@ const publicKey = `ssh-ed25519 ${body} me@laptop.local`;
 const fingerprint = "SHA256:UOTMgQOqiiMfzLDkpttT80jlnh7DzrYQ+TwhD7RrU6Y";
 const alias = "bn-k3fz2q7max";
 const hostLine = "ssh.bugnet.sh ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHostKeyHostKeyHostKeyHostKey";
-const providers = /\b(koyeb|boat|e2b|boxd|instabox|daytona)\b/i;
+const providers = /\b(acmebox|cloudvm)\b/i;
 
 interface LogLine {
     level: string;
@@ -459,7 +459,7 @@ describe("bugnet_ssh", () => {
         const bare = await connect({
             addSshKey() {
                 throw routerError(Code.InvalidArgument, undefined, {
-                    message: "api: e2b rejected the key\nstack",
+                    message: "api: acmebox rejected the key\nstack",
                 });
             },
         });

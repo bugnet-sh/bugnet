@@ -265,7 +265,7 @@ describe("bugnet_preview", () => {
         const client = await connect(
             refusing(
                 routerError(Code.InvalidArgument, undefined, {
-                    message: "api: e2b rejected the port\nsecond line",
+                    message: "api: acmebox rejected the port\nsecond line",
                 }),
             ),
         );
@@ -310,7 +310,7 @@ describe("bugnet_preview", () => {
         expect(t?._meta?.["anthropic/requiresUserInteraction"]).toBeUndefined();
         expect(t?.description?.length).toBeLessThan(600);
         expect(t?.description).toMatch(/needs \["preview"\]/);
-        expect(t?.description).not.toMatch(/\b(koyeb|boat|e2b|boxd|instabox)\b/i);
+        expect(t?.description).not.toMatch(/\b(acmebox|cloudvm)\b/i);
         expect(t?.inputSchema.properties?.port).toMatchObject({ minimum: 1, maximum: 65_535 });
     });
 });

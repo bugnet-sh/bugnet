@@ -97,7 +97,7 @@ describe.skipIf(!url)("gateway end to end", () => {
         expect(said).toMatch(
             /does not fetch repos yet|not open yet|no GitHub repo|named no source/,
         );
-        expect(said).not.toMatch(/e2b|boat|boxd|koyeb/i);
+        expect(said).not.toMatch(/\b(acmebox|cloudvm)\b/i);
     });
 
     it("runs a command and cleans its output", async () => {

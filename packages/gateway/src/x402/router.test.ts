@@ -197,7 +197,10 @@ describe("x402RouterError", () => {
     // The second add entry failed, as the router names it in ErrorInfo metadata (S 6.3)
     const tts = { service_id: "xs_b3mm6u5x36em5pdt", host: "tts.example.com" };
     const refused = (code: Code, reason?: string, metadata?: Record<string, string>) =>
-        routerError(code, reason, { message: "boxd said no", ...(metadata ? { metadata } : {}) });
+        routerError(code, reason, {
+            message: "cloudvm said no",
+            ...(metadata ? { metadata } : {}),
+        });
 
     it("gives the switched-off text for X402_DISABLED, never the not-open text", () => {
         const e = x402RouterError(

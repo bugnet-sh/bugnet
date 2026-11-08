@@ -230,21 +230,16 @@ export function underSuffix(host: string, suffixes: readonly string[]): boolean 
     return suffixes.some((s) => host === s || host.endsWith("." + s));
 }
 
-const sandboxHostDomains = [
-    "e2b.app",
-    "e2b.dev",
-    "e2b-juliett.dev",
-    "boxd.sh",
-    "koyeb.app",
-    "boat.dev",
-    "ascii.dev",
-];
-
-export function hostRefused(host: string, linksDomain: string): boolean {
+// sandboxDomains is [x402] sandbox_host_domains, set only in the private production settings
+export function hostRefused(
+    host: string,
+    linksDomain: string,
+    sandboxDomains: readonly string[],
+): boolean {
     const labels = host.split(".");
     if (labels.length < 2 || labels.some((l) => l === "" || l.length > 63)) return true;
     if (!/^[a-z0-9.-]+$/.test(host) || isIP(host) !== 0) return true;
-    return underSuffix(host, [linksDomain, ...sandboxHostDomains]);
+    return underSuffix(host, [linksDomain, ...sandboxDomains]);
 }
 
 export const openAiEndings: readonly string[] = [

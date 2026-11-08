@@ -11,6 +11,7 @@ allowed_origins = ["https://claude.ai"] # Origins of hosted MCP clients /mcp acc
 url = "http://127.0.0.1:8080"           # Router API base URL, Connect over h2c
 timeout = "20s"                         # deadline of a router call that sets none, 1s to under 45s, long polls add their wait
 links_domain = "bugnet.sh"              # every preview, transfer, secret and SSH host the router names is under it
+provider_names = []                     # sandbox provider names scrubbed from router text, set only in the private production settings
 
 [payments]
 mode = "http"                           # "http" calls the Payments service, "dev" settles free on loopback only
@@ -60,6 +61,7 @@ probe_cache_ttl = "2m"                  # one probe answer per method and URL
 payai_refresh = "1h"                    # how often PayAI's list is fetched again, 1m or more
 max_results = 5                         # services find returns, 1 to 5
 default_max_price_usd = "0.10"          # find's price cap a call when the agent gives none
+sandbox_host_domains = []               # sandbox providers' host domains x402 never pays, set only in the private production settings
 shared_hosting_suffixes = ["workers.dev", "onrender.com", "vercel.app", "netlify.app", "pages.dev", "herokuapp.com", "fly.dev", "up.railway.app", "replit.app", "ngrok-free.app", "ngrok.io", "trycloudflare.com", "github.io", "glitch.me", "deno.dev", "web.app"] # hosts refused unless the index lists them, the router's list
 
 [telemetry]

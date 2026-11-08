@@ -74,7 +74,7 @@ describe.each(copies)("the run-in-sandbox skill in $path", ({ path, prefix }) =>
         const s = flat(section(skill, keyHeading));
         expect(s).not.toContain("allowUnlisted");
         expect(s).not.toMatch(/approve/i);
-        expect(s).not.toMatch(/E2B|Boat|InstaBox/i);
+        expect(s).not.toMatch(/\b(acmebox|cloudvm)\b/i);
     });
 
     it("names only tools and arguments the gateway registers", async () => {

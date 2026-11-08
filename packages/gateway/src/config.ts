@@ -36,6 +36,10 @@ const settingsSchema = z
                     .string()
                     .regex(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/, "a lower-case domain such as bugnet.sh")
                     .default("bugnet.sh"),
+                provider_names: z
+                    .array(z.string().regex(/^[a-z0-9-]{2,32}$/, "a lower-case provider name"))
+                    .max(20)
+                    .default([]),
             })
             .strict()
             .prefault({}),
@@ -107,6 +111,17 @@ const settingsSchema = z
                     .string()
                     .regex(/^\d{1,3}(\.\d{1,6})?$/, "a dollar amount such as 0.10")
                     .default("0.10"),
+                sandbox_host_domains: z
+                    .array(
+                        z
+                            .string()
+                            .regex(
+                                /^[a-z0-9-]+(\.[a-z0-9-]+)+$/,
+                                "a lower-case domain such as sandbox.example",
+                            ),
+                    )
+                    .max(50)
+                    .default([]),
                 shared_hosting_suffixes: z
                     .array(
                         z

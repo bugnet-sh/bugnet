@@ -42,6 +42,9 @@ try {
         router: config.router.url,
         traces: config.telemetry.traces,
     });
+    if (config.payments.mode === "http" && config.router.provider_names.length === 0) {
+        log.warn("router.provider_names is empty, so router text reaches agents unscrubbed");
+    }
     if (front) process.on("SIGHUP", () => front.reload());
     const stop = () => {
         for (const s of x402Stops) s();

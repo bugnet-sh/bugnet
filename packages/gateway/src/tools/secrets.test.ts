@@ -270,7 +270,7 @@ describe("bugnet_secret_link", () => {
         reason = "HOST_REFUSED";
         const host = await callTool(client, "bugnet_secret_link", {
             handle: testHandle,
-            hosts: ["e2b.app"],
+            hosts: ["acmebox.dev"],
         });
         expect(host.text).toBe("secret link: a secret cannot be sent to that host.");
     });
@@ -349,7 +349,7 @@ describe("bugnet_secrets", () => {
             listSecrets: () => ({
                 secrets: [
                     secret("A\u001b[31m", ["a.example"], SecretState.FAILED, {
-                        failureReason: "e2b refused: port taken",
+                        failureReason: "acmebox refused: port taken",
                     }),
                 ],
             }),
@@ -362,7 +362,7 @@ describe("bugnet_secrets", () => {
         expect(r.structured.secrets[0]).toEqual(
             expect.objectContaining({ name: "A", failureReason: "UNKNOWN" }),
         );
-        expect(JSON.stringify(r.structured)).not.toMatch(/e2b/i);
+        expect(JSON.stringify(r.structured)).not.toMatch(/acmebox/i);
     });
 });
 
@@ -536,7 +536,9 @@ describe.each(tools)("$tool refusals", ({ tool, method, what, args }) => {
 
     it("passes an InvalidArgument through with provider names scrubbed", async () => {
         const { client } = await refusing(
-            routerError(Code.InvalidArgument, undefined, { message: "boxd refused the request" }),
+            routerError(Code.InvalidArgument, undefined, {
+                message: "cloudvm refused the request",
+            }),
         );
         const r = await callTool(client, tool, args);
         expect(r.isError).toBe(true);
@@ -567,7 +569,7 @@ describe("secret tools", () => {
         ]);
         for (const t of mine) {
             expect(t.description?.length).toBeLessThan(600);
-            expect(t.description).not.toMatch(/\b(e2b|boat|boxd|koyeb|instabox)\b/i);
+            expect(t.description).not.toMatch(/\b(acmebox|cloudvm)\b/i);
             expect(t._meta?.["anthropic/requiresUserInteraction"]).toBeUndefined();
         }
         const by = (n: string) => listed.find((t) => t.name === n);

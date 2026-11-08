@@ -484,7 +484,14 @@ async function findByUrl(
     const out = (urlFailure: string | null, results: Found[] = []): FindOutcome =>
         seal({ results, dropped, partial, urlFailure });
     const parts = urlParts(url);
-    if (parts === null || hostRefused(parts.host, deps.config.router.links_domain)) {
+    if (
+        parts === null ||
+        hostRefused(
+            parts.host,
+            deps.config.router.links_domain,
+            deps.config.x402.sandbox_host_domains,
+        )
+    ) {
         dropped.terms++;
         return out(null);
     }
@@ -583,7 +590,13 @@ export async function findServices(
     for (const e of matchIndex(index, q.api, q.keyName)) {
         const key = `${e.method} ${e.url}`;
         if (kept.has(key)) continue;
-        if (hostRefused(e.host, deps.config.router.links_domain)) {
+        if (
+            hostRefused(
+                e.host,
+                deps.config.router.links_domain,
+                deps.config.x402.sandbox_host_domains,
+            )
+        ) {
             kept.set(key, null);
             dropped.terms++;
             continue;
@@ -608,7 +621,14 @@ export async function findServices(
         if (cheapest === "terms") return { drop: "terms" };
         if (cheapest.amount > BigInt(q.maxPriceMicros)) return { drop: "price" };
         const parts = urlParts(l.resource);
-        if (parts === null || hostRefused(parts.host, deps.config.router.links_domain)) {
+        if (
+            parts === null ||
+            hostRefused(
+                parts.host,
+                deps.config.router.links_domain,
+                deps.config.x402.sandbox_host_domains,
+            )
+        ) {
             return { drop: "terms" };
         }
         if (underSuffix(parts.host, s.shared_hosting_suffixes) && !hostIndexed(index, parts.host)) {

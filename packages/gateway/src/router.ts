@@ -544,15 +544,21 @@ export function fromRouter(err: unknown, what: string): GatewayError {
     }
 }
 
-const providerNames = /\b(koyeb|boat|e2b|boxd|instabox|daytona)\b/gi;
+// The names come from settings so the public source never lists Bugnet's providers
+let providerNames: RegExp | null = null;
+let providerKey = "";
+
+export function setProviderNames(names: readonly string[]): void {
+    const key = names.join("|");
+    if (key === providerKey) return;
+    providerKey = key;
+    providerNames = names.length > 0 ? new RegExp(`\\b(${key})\\b`, "gi") : null;
+}
 
 // Router wording cut to one line, with any provider name scrubbed because callers never learn it
 export function routerText(text: string): string {
-    const first = text.split("\n")[0] ?? "";
-    return first
-        .replace(/\b(api|saga|jobs|streams|placement): /g, "")
-        .replace(providerNames, "provider")
-        .slice(0, 200);
+    const first = (text.split("\n")[0] ?? "").replace(/\b(api|saga|jobs|streams|placement): /g, "");
+    return (providerNames ? first.replace(providerNames, "provider") : first).slice(0, 200);
 }
 
 // Only a router code reaches the model, never free text

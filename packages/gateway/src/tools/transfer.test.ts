@@ -572,7 +572,7 @@ describe("bugnet_transfer listing", () => {
 
     it("keeps a short, factual description that names no provider", () => {
         expect(transferDescription.length).toBeLessThan(600);
-        expect(transferDescription).not.toMatch(/koyeb|boat|e2b|boxd|instabox|daytona/i);
+        expect(transferDescription).not.toMatch(/\b(acmebox|cloudvm)\b/i);
         expect(transferDescription).not.toMatch(/\b(must|never|always|do not|don't)\b/i);
     });
 

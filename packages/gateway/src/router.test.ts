@@ -1,5 +1,5 @@
 import { Code, ConnectError } from "@connectrpc/connect";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
     errorInfoType,
     errorMetadata,
@@ -9,11 +9,18 @@ import {
     notOpenText,
     reasonOf,
     retryDelayMs,
+    setProviderNames,
     x402OffText,
 } from "./router.ts";
-import { fakeRouter, routerError, testHandle } from "./testing/harness.ts";
+import {
+    fakeRouter,
+    routerError,
+    testHandle,
+    testProviderNames,
+    testProviders as providers,
+} from "./testing/harness.ts";
 
-const providers = /koyeb|boat|e2b|boxd|instabox|daytona/i;
+beforeAll(() => setProviderNames(testProviderNames));
 
 // Every reason the gateway maps, with the code the router sends it under and the kind it becomes
 const table: [string, Code, string][] = [
@@ -153,7 +160,10 @@ describe("router error details", () => {
 
 describe("fromRouter", () => {
     it.each(table)("maps %s under its code", (reason, code, kind) => {
-        const e = fromRouter(routerError(code, reason, { message: "boxd said e2b no" }), "op");
+        const e = fromRouter(
+            routerError(code, reason, { message: "cloudvm said acmebox no" }),
+            "op",
+        );
         expect(e.kind).toBe(kind);
         expect(e.reason).toBe(reason);
         expect(e.message).toMatch(/^op: \S/);
@@ -241,6 +251,6 @@ describe("fromRouter", () => {
         expect(fromRouter(g, "op")).toBe(g);
         expect(reasonOf(g)).toBeNull();
         expect(reasonOf(new Error("boom"))).toBeNull();
-        expect(fromRouter(new Error("e2b exploded"), "op").message).toBe("op failed");
+        expect(fromRouter(new Error("acmebox exploded"), "op").message).toBe("op failed");
     });
 });

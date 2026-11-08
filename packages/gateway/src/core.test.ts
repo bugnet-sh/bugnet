@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { Code, ConnectError } from "@connectrpc/connect";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
     ConfigError,
     checkSettings,
@@ -9,7 +9,7 @@ import {
     parseSettings,
     readSecrets,
 } from "./config.ts";
-import { fromRouter, safeMessage } from "./router.ts";
+import { fromRouter, safeMessage, setProviderNames } from "./router.ts";
 import { cleanText, looksLikeText, tail } from "./sanitize.ts";
 import vectors from "./testing/sanitize-vectors.json" with { type: "json" };
 import { x402Vector } from "./testing/vectors.ts";
@@ -145,6 +145,7 @@ describe("x402 settings", () => {
             payai_refresh: 3_600_000,
             max_results: 5,
             default_max_price_usd: "0.10",
+            sandbox_host_domains: [],
             shared_hosting_suffixes: sixteen,
         });
     });
@@ -205,12 +206,58 @@ describe("x402 settings", () => {
     });
 });
 
+describe("provider settings", () => {
+    it("default to no provider names and no sandbox host domains", () => {
+        expect(parseSettings("").router.provider_names).toEqual([]);
+        expect(parseSettings("").x402.sandbox_host_domains).toEqual([]);
+    });
+    it("take lower-case provider names and domains", () => {
+        const s = parseSettings(
+            '[router]\nprovider_names = ["acmebox", "cloud-vm"]\n' +
+                '[x402]\nsandbox_host_domains = ["acmebox.dev"]',
+        );
+        expect(s.router.provider_names).toEqual(["acmebox", "cloud-vm"]);
+        expect(s.x402.sandbox_host_domains).toEqual(["acmebox.dev"]);
+    });
+    it.each([
+        ['[router]\nprovider_names = ["AcmeBox"]', /a lower-case provider name/],
+        ['[router]\nprovider_names = ["a"]', /a lower-case provider name/],
+        ['[x402]\nsandbox_host_domains = ["AcmeBox.dev"]', /a lower-case domain/],
+    ])("refuses %s", (toml, message) => {
+        expect(() => parseSettings(toml)).toThrow(message);
+    });
+    it("lists both in config/example.toml, empty, as the real names stay private", () => {
+        const example = readFileSync(
+            new URL("../../../config/example.toml", import.meta.url),
+            "utf8",
+        );
+        expect(example).toMatch(/\nprovider_names = \[\]/);
+        expect(example).toMatch(/\nsandbox_host_domains = \[\]/);
+    });
+});
+
 describe("router errors", () => {
-    it("maps codes and never names a provider", () => {
-        const e = new ConnectError("saga: e2b refused the boxd thing", Code.FailedPrecondition);
+    afterEach(() => setProviderNames([]));
+    it("maps codes and never names a configured provider", () => {
+        setProviderNames(["acmebox", "cloudvm"]);
+        const e = new ConnectError(
+            "saga: acmebox refused the CloudVM thing",
+            Code.FailedPrecondition,
+        );
         expect(safeMessage(e)).toBe("provider refused the provider thing");
         expect(fromRouter(new ConnectError("x", Code.NotFound), "exec").kind).toBe("not_found");
         expect(fromRouter(new Error("boom"), "exec").message).toBe("exec failed");
+    });
+    it("keeps a word whole, so a name inside another word stays", () => {
+        setProviderNames(["acme"]);
+        expect(safeMessage(new ConnectError("acme said no to acmes", Code.NotFound))).toBe(
+            "provider said no to acmes",
+        );
+    });
+    it("passes the text on when no provider is configured", () => {
+        setProviderNames([]);
+        const e = new ConnectError("saga: acmebox refused", Code.FailedPrecondition);
+        expect(safeMessage(e)).toBe("acmebox refused");
     });
 });
 
