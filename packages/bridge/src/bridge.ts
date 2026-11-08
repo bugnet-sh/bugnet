@@ -493,12 +493,14 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         if (name === "bugnet_start") relayed.add(paid.orderId);
         const confirmed = priceMicros(args.confirmPriceUsd);
         const pins = pay.pins ?? { payTo: [], allowancePayTo: [] };
+        const allowance = isAllowanceOrder(name, args, result as CallToolResult, pins);
         const why = payRefusal(
             paid,
             pay.origin,
             confirmed,
             paymentRequired(result as CallToolResult)!,
             pins,
+            allowance,
         );
         if (why !== null) {
             deps.log.warn("pay link refused", { orderId: paid.orderId, why });
@@ -507,7 +509,6 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         if (orders.tried(paid.orderId)) return linkPath(paid, quoteIdOf(args), ctx, orders);
         if (!pay.payer) return linkPath(paid, quoteIdOf(args), ctx, orders);
         orders.markTried(paid.orderId);
-        const allowance = isAllowanceOrder(name, args, result as CallToolResult, pins);
         // Never raced against the client's signal, since pay may have paid by the time it gives up
         // The outcome is recorded as it lands, even when this call is already gone
         const flight = pay.payer

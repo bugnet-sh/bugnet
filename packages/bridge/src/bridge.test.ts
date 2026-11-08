@@ -1993,7 +1993,12 @@ describe("x402 allowances and the key signer", () => {
                 payTo: "A",
             },
         ];
-        for (const over of [{ accepts: allowanceAccepts }, { allowanceMicros: 1_000_000 }]) {
+        // allowanceMicros alone, with allowance_pay_to unset so the pay_to pin is all there is
+        const cases = [
+            { over: { accepts: allowanceAccepts }, pins },
+            { over: { allowanceMicros: 1_000_000 }, pins: { payTo: ["P"], allowancePayTo: [] } },
+        ];
+        for (const { over, pins: casePins } of cases) {
             const remote = fakeRemote((params) =>
                 (params.arguments as { claim?: string }).claim === undefined
                     ? stepResult(over)
@@ -2002,7 +2007,7 @@ describe("x402 allowances and the key signer", () => {
             const { key, cli, payer } = routed(testPayments(), false);
             const b = await bridge({
                 remote,
-                deps: { pay: devPay(testPayments(), payer, { pins }) },
+                deps: { pay: devPay(testPayments(), payer, { pins: casePins }) },
             });
             await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
             expect(key.calls).toEqual([]);
@@ -2017,6 +2022,27 @@ describe("x402 allowances and the key signer", () => {
         await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
         expect(key.calls).toHaveLength(1);
         expect(cli!.calls).toEqual([]);
+    });
+
+    it("takes an allowance past a pay_to pin to the pay CLI when allowance_pay_to is unset", async () => {
+        const accepts = [
+            {
+                ...(stepResult().structuredContent as { accepts: object[] }).accepts[0],
+                payTo: "AllowanceWallet",
+            },
+        ];
+        const remote = fakeRemote((params) =>
+            (params.arguments as { claim?: string }).claim === undefined
+                ? stepResult({ accepts, kind: "allowance" })
+                : done,
+        );
+        const { key, cli, payer } = routed(testPayments(), false);
+        const pins = { payTo: ["P"], allowancePayTo: [] };
+        const b = await bridge({ remote, deps: { pay: devPay(testPayments(), payer, { pins }) } });
+        await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
+        expect(key.calls).toEqual([]);
+        expect(cli!.calls).toHaveLength(1);
+        expect(cli!.calls[0]!.step).toMatchObject({ allowance: true });
     });
 
     it("never pays a payment step to a wallet the settings file does not pin", async () => {

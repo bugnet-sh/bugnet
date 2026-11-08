@@ -124,13 +124,15 @@ export function isAllowanceOrder(
     return typeof payTo === "string" && pins.allowancePayTo.includes(payTo);
 }
 
-// Returns the first check that fails, in the order origin, path, memo, pay_to, price
+// Returns the first check that fails, in the order origin, path, memo, pay_to, price. An
+// allowance pays Bugnet's allowance wallet, so pay_to never pins it; allowance_pay_to does when set
 export function payRefusal(
     step: PaymentStep,
     origin: string,
     confirmedMicros: number | null,
     required: X402PaymentRequired,
     pins: PayPins = { payTo: [], allowancePayTo: [] },
+    allowance = false,
 ): string | null {
     const url = new URL(step.payUrl);
     if (url.origin !== origin || url.username !== "" || url.password !== "") return "origin";
@@ -140,7 +142,7 @@ export function payRefusal(
     const offer = required.accepts[0] as
         { extra?: { memo?: unknown }; payTo?: unknown } | undefined;
     if (offer?.extra?.memo !== step.orderId) return "memo";
-    const pinned = [...pins.payTo, ...pins.allowancePayTo];
+    const pinned = allowance ? pins.allowancePayTo : [...pins.payTo, ...pins.allowancePayTo];
     if (pinned.length > 0 && !(typeof offer.payTo === "string" && pinned.includes(offer.payTo))) {
         return "pay_to";
     }

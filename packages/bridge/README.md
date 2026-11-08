@@ -128,8 +128,9 @@ bridge pays it:
 
 1. It checks that the pay link is `pay_origin` followed by `/o/` and the order, that the payment's
    memo is that order, that it asks for USDC on Solana mainnet, and that the amount is at most the
-   `confirmPriceUsd` you approved. When `~/.config/bugnet/mcp.toml` pins `pay_to` or
-   `allowance_pay_to` wallets, the payment must go to one of them.
+   `confirmPriceUsd` you approved. When `~/.config/bugnet/mcp.toml` pins wallets, sandbox time
+   must go to a `pay_to` or `allowance_pay_to` one, and an x402 allowance to an `allowance_pay_to`
+   one (`pay_to` never pins an allowance, which pays Bugnet's allowance wallet).
 2. It starts `pay mcp --allow-origin https://pay.bugnet.sh --allow-network mainnet
 --max-payment <that price>`, with every `PAY_` variable removed and without letting pay ask
    through your client, so pay asks for Touch ID or pays nothing. pay 0.29.0 refuses every
@@ -171,6 +172,8 @@ key_pays_allowances = false  # true lets the key pay x402 allowances too, with n
 
 The key always pays sandbox time. An x402 allowance (`bugnet_x402_budget`, or `bugnet_start` with
 an allowance) goes to `pay` with Touch ID, or to the pay link, unless `key_pays_allowances = true`.
+The bridge tells an allowance first by the order's own `kind` and `allowanceMicros`, which Payments
+sends on the payment step, and falls back to a payment to an `allowance_pay_to` wallet.
 Turn that on with care: the allowance wallet later pays sellers the agent picked, so without
 Touch ID an injected agent could send up to `daily_usd` a day to an x402 host of its own.
 
