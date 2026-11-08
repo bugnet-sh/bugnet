@@ -202,7 +202,12 @@ export async function stopFiles(
         const res = await deps.router.exec(
             {
                 handle,
-                argv: ["sh", "-c", `grep -rIlF --exclude-dir=.git ${words} "$HOME/src"`],
+                // Exits 0 with no ~/src or no match, so the session page shows no failed command
+                argv: [
+                    "sh",
+                    "-c",
+                    `[ -d "$HOME/src" ] || exit 0; grep -rIlF --exclude-dir=.git ${words} "$HOME/src" || true`,
+                ],
                 cwd: "",
                 env: {},
                 idempotencyKey: hashKey(["x402-stop-files", handle]),

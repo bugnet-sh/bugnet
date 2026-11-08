@@ -401,7 +401,7 @@ describe("stop parts", () => {
             argv: [
                 "sh",
                 "-c",
-                `grep -rIlF --exclude-dir=.git -e 'agent402.tools' -e 'api.example.com' -e 'x402' "$HOME/src"`,
+                `[ -d "$HOME/src" ] || exit 0; grep -rIlF --exclude-dir=.git -e 'agent402.tools' -e 'api.example.com' -e 'x402' "$HOME/src" || true`,
             ],
         });
         expect(paths).toHaveLength(5);
