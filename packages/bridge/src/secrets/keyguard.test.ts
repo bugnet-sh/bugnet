@@ -164,6 +164,37 @@ it("refuses a 32-byte form only under a wallet key name", () => {
     }
 });
 
+it("reads wallet names as whole underscore tokens and passes public key names", () => {
+    const seed = keyBytes().subarray(0, 32);
+    const passing = [
+        "CONSOLE_API_KEY",
+        "SOLR_API_KEY",
+        "RESOLVER_KEY",
+        "SOLANA_PUBLIC_KEY",
+        "WALLET_PUBKEY",
+    ];
+    for (const n of passing) {
+        expect(looksLikeSeedName(n), n).toBe(false);
+        for (const v of forms(seed)) {
+            expect(looksLikeSolanaKey(v, [n]), `${n} ${v.slice(0, 12)}`).toBe(false);
+        }
+    }
+    const refused = [
+        "SOL_PRIVATE_KEY",
+        "WALLET_PRIVATE_KEY",
+        "SOLANA_SECRET_KEY",
+        "PAYER_PRIVATE_KEY",
+        "PRIVATE_KEY",
+        "MY_KEYPAIR",
+    ];
+    for (const n of refused) {
+        expect(looksLikeSeedName(n), n).toBe(true);
+        for (const v of forms(seed)) {
+            expect(looksLikeSolanaKey(v, [n]), `${n} ${v.slice(0, 12)}`).toBe(true);
+        }
+    }
+});
+
 it("lets a NEXTAUTH_SECRET and a Solana address through under ordinary names", () => {
     // openssl rand -base64 32
     const nextauth = Buffer.from(keyBytes().subarray(32)).toString("base64");

@@ -14,9 +14,11 @@ export function looksLikeKeyName(name: string): boolean {
     return keyNames.test(name);
 }
 
-// Wider: a 32-byte value under one of these names is taken for an Ed25519 seed
+// Wider: a 32-byte value under one of these names is taken for an Ed25519 seed. Whole
+// underscore tokens, so CONSOLE_API_KEY is not a SOL name, and no PUB token, so
+// SOLANA_PUBLIC_KEY is not a private one
 const seedNames =
-    /(SOL|SOLANA|WALLET|PAYER|SIGNER|KEYPAIR|PHANTOM)\w*(PRIVATE|SECRET)?_?KEY|PRIVATE_?KEY|KEYPAIR|MNEMONIC|SEED_?PHRASE/i;
+    /(?:^|_)(?:SOL|SOLANA|WALLET|PAYER|SIGNER|KEYPAIR|PHANTOM)(?:_(?!PUB)[A-Z0-9]+)*_(?:PRIVATE_|SECRET_)?KEY$|(?:^|_)PRIVATE_?KEY$|KEYPAIR|MNEMONIC|SEED_?PHRASE/i;
 
 export function looksLikeSeedName(name: string): boolean {
     return seedNames.test(name);
