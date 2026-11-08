@@ -163,12 +163,14 @@ pay_signer = "key"           # "pay" (the default) keeps using the pay CLI
 max_payment_usd = 1          # per payment, default 1, at most 20
 daily_usd = 5                # per UTC day across all bridges, default 5, at most 100
 # Bugnet's wallets for sandbox time and its fee payer; without them it signs nothing
-pay_to = ["Bhhc3XNdjtCNr3pj2aZwhCt8pHwsU8wRL7dqJNDZEExw"]
-fee_payer = ["73iCm2eWpXsEqTpYkNHe4VoiR4Eq7nyCLv9wYZzEnFM9"]
+pay_to = ["<bugnet sandbox wallet>"]
+fee_payer = ["<bugnet fee payer>"]
 # Bugnet's x402 allowance wallet, never one of the pay_to wallets
-allowance_pay_to = ["9gw8RJhnpnYgrfhj1UWAFbQvDVfYGYVk8ndb6bLUmzDo"]
+allowance_pay_to = ["<bugnet allowance wallet>"]
 key_pays_allowances = true   # the default; false sends x402 allowances to pay with Touch ID
 ```
+
+Bugnet publishes its real wallet addresses at launch; put those in place of the placeholders.
 
 Setting `pay_signer = "key"` is your approval for the agent to spend from this wallet, within the
 caps and with no prompt: it pays sandbox time, and by default x402 allowances too
