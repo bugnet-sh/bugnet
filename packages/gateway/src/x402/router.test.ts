@@ -280,10 +280,23 @@ describe("x402RouterError", () => {
         ["FEATURE_UNAVAILABLE", Code.NotFound],
         ["NOT_READY", Code.Internal],
         ["TOO_MANY_SERVICES", Code.FailedPrecondition],
+        ["HOST_REFUSED", Code.Unavailable],
+        ["HOST_NOT_ALLOWED", Code.InvalidArgument],
+        ["HOST_IN_USE", Code.Internal],
+        ["PREFIX_REFUSED", Code.FailedPrecondition],
+        ["SERVICE_DUPLICATE", Code.Unavailable],
+        ["METHOD_REFUSED", Code.Internal],
+        ["PRICE_REFUSED", Code.ResourceExhausted],
+        ["PAYTO_REFUSED", Code.NotFound],
+        ["TOO_MANY_SECRETS", Code.FailedPrecondition],
+        ["SERVICE_UNKNOWN", Code.InvalidArgument],
     ])("takes %s only under its own code", (reason, code) => {
-        const e = x402RouterError(refused(code, reason), "x402", hosts, 5);
-        expect(e.message).not.toMatch(/ended|switched off|cannot use x402|at most/);
-        expect(e.message).toBe(fromRouter(refused(code, reason), "x402").message);
+        const e = x402RouterError(refused(code, reason, tts), "x402", hosts, 5);
+        expect(e.message).not.toMatch(
+            /ended|switched off|cannot use x402|at most|cannot be enabled/,
+        );
+        expect(e.message).not.toMatch(/cannot make this change/);
+        expect(e.message).toBe(fromRouter(refused(code, reason, tts), "x402").message);
     });
 
     it("takes the service cap from the terms and the prefix from the caller", () => {

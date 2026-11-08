@@ -25,6 +25,7 @@ import {
     lineCut,
     lineMax,
     payToShort,
+    serviceIdPattern,
     toMicros,
     type X402Method,
 } from "./lines.ts";
@@ -737,13 +738,15 @@ export function paymentsRefusal(
             return fail("maxAbove", { line: (high ?? c.planned[0])?.parts.line ?? "" });
         }
         case "pin_refused": {
-            const id = order.serviceId;
+            // Payments' text reaches the model only in the shape of an id or a code
+            const id = serviceIdPattern.test(order.serviceId ?? "") ? order.serviceId : undefined;
             const host =
                 c.planned.find((p) => p.parts.serviceId === id)?.parts.host ??
                 c.account?.services.find((s) => s.serviceId === id)?.host ??
                 id ??
-                "";
-            return fail("pinRefused", { host, words: reasonWords(order.pinReason ?? "") });
+                "the service";
+            const words = reasonWords(refusalWord(order.pinReason ?? ""));
+            return fail("pinRefused", { host, words });
         }
         case "spend_rate_out_of_range": {
             const limit = c.spendPerMinuteMicros;

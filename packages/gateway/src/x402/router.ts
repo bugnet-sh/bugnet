@@ -144,17 +144,50 @@ export const routerRows = {
             : `${what}: Bugnet cannot make this change (${words}). Nothing was charged`,
 } as const;
 
-// Spec 6.2 gives each of these reasons one Connect code
+// Spec 6.3 gives each of these placement-wide reasons one Connect code
 const ownCode: Readonly<Record<string, Code>> = {
     X402_DISABLED: Code.FailedPrecondition,
     FEATURE_UNAVAILABLE: Code.FailedPrecondition,
     NOT_READY: Code.FailedPrecondition,
     TOO_MANY_SERVICES: Code.ResourceExhausted,
+    TOO_MANY_SECRETS: Code.ResourceExhausted,
+    SERVICE_UNKNOWN: Code.NotFound,
+};
+
+// Spec 6.3 gives each per-service reason one Connect code
+const perServiceCode: Readonly<Record<string, Code>> = {
+    HOST_REFUSED: Code.InvalidArgument,
+    PREFIX_REFUSED: Code.InvalidArgument,
+    SERVICE_DUPLICATE: Code.InvalidArgument,
+    METHOD_REFUSED: Code.InvalidArgument,
+    PRICE_REFUSED: Code.InvalidArgument,
+    PAYTO_REFUSED: Code.InvalidArgument,
+    HOST_NOT_ALLOWED: Code.FailedPrecondition,
+    HOST_IN_USE: Code.FailedPrecondition,
 };
 
 // True only for a router answer that carries this reason under its spec code
 export function hasOwnReason(err: unknown, reason: keyof typeof ownCode): boolean {
     return err instanceof ConnectError && err.code === ownCode[reason] && reasonOf(err) === reason;
+}
+
+// A per-service reason under its spec code, else null
+export function perServiceReason(err: unknown): string | null {
+    const reason = reasonOf(err);
+    if (reason === null || !(err instanceof ConnectError)) return null;
+    return Object.hasOwn(perServiceCode, reason) && perServiceCode[reason] === err.code
+        ? reason
+        : null;
+}
+
+// A reason the spec gives a code counts only under that code, any other reason as it comes
+function underSpecCode(err: unknown, reason: string): boolean {
+    const table = Object.hasOwn(ownCode, reason)
+        ? ownCode
+        : Object.hasOwn(perServiceCode, reason)
+          ? perServiceCode
+          : null;
+    return table === null || (err instanceof ConnectError && err.code === table[reason]);
 }
 
 export function x402RouterError(
@@ -168,9 +201,7 @@ export function x402RouterError(
     if (reason === null || reason === "HANDLE_UNKNOWN" || reason === "RATE_LIMITED") {
         return fromRouter(err, what);
     }
-    const own = ownCode[reason];
-    if (own !== undefined && err instanceof ConnectError && own !== err.code)
-        return fromRouter(err, what);
+    if (!underSpecCode(err, reason)) return fromRouter(err, what);
     switch (reason) {
         case "X402_DISABLED":
             return new GatewayError("precondition", routerRows.switchedOff(what), null, reason);

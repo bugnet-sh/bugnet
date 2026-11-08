@@ -1,4 +1,3 @@
-import { Code, ConnectError } from "@connectrpc/connect";
 import {
     JobState,
     PlacementState,
@@ -24,6 +23,7 @@ import {
     enableServices,
     hostnamePattern,
     listServices,
+    perServiceReason,
     pinToServiceSpec,
     x402RefusalTarget,
 } from "./router.ts";
@@ -49,26 +49,6 @@ export function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<
         signal.addEventListener("abort", onAbort, { once: true });
         work.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
     });
-}
-
-// Spec 6.3 gives each per-service reason one Connect code
-const perServiceCode: Readonly<Record<string, Code>> = {
-    HOST_REFUSED: Code.InvalidArgument,
-    PREFIX_REFUSED: Code.InvalidArgument,
-    SERVICE_DUPLICATE: Code.InvalidArgument,
-    METHOD_REFUSED: Code.InvalidArgument,
-    PRICE_REFUSED: Code.InvalidArgument,
-    PAYTO_REFUSED: Code.InvalidArgument,
-    HOST_NOT_ALLOWED: Code.FailedPrecondition,
-    HOST_IN_USE: Code.FailedPrecondition,
-};
-
-function perServiceReason(err: unknown): string | null {
-    const reason = reasonOf(err);
-    if (reason === null || !(err instanceof ConnectError)) return null;
-    return Object.hasOwn(perServiceCode, reason) && perServiceCode[reason] === err.code
-        ? reason
-        : null;
 }
 
 function hostsOf(rows: readonly X402ServiceInfo[]): string[] {
