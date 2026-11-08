@@ -95,7 +95,14 @@ import {
     retryCall,
     type PaidRetry,
 } from "./orders.ts";
-import { endedAnswer, paidLine, paidOf, paidX402Line, startSummary } from "./session.ts";
+import {
+    endedAnswer,
+    paidLine,
+    paidOf,
+    paidX402Line,
+    paymentTxUrl,
+    startSummary,
+} from "./session.ts";
 import { describeSize, limitQuotes, quoted, unavailableWords } from "./quote.ts";
 import { fetchAfterStart, sentence, sourceView, unplacedNote, type SourceView } from "./source.ts";
 
@@ -643,10 +650,11 @@ export async function startPaid(
     const x402 = account && enabled ? startX402Part(deps, order, account, enabled, failed) : null;
     const summary = startSummary(deps, handle, p);
     const allowance = order.allowanceMicros ?? 0;
+    const txUrl = paymentTxUrl(order.paymentResponse);
     const paidStart =
         account && allowance > 0 && order.amountMicros > 0
-            ? paidX402Line(order.amountMicros, allowance, order.orderId)
-            : paidLine(order.amountMicros, order.orderId, false);
+            ? paidX402Line(order.amountMicros, allowance, order.orderId, txUrl)
+            : paidLine(order.amountMicros, order.orderId, false, txUrl);
     const text = [
         `Sandbox ${view.state}. handle: ${handle}`,
         ready ? `Time left: ${view.timeLeft} (deadline ${view.deadline}).` : "",
@@ -675,6 +683,7 @@ export async function startPaid(
         {
             handle,
             orderId: order.orderId,
+            ...(txUrl ? { transactionUrl: txUrl } : {}),
             ...view,
             ...summary.fields,
             ...(x402?.view ? { x402: x402.view } : {}),

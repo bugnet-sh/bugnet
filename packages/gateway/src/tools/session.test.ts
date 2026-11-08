@@ -334,6 +334,7 @@ describe("the link shape check", () => {
 });
 
 describe("bugnet_start", () => {
+    const tx = "5".repeat(43) + "Ab9xYz".repeat(7);
     const startQuote = (deps: Deps) =>
         signQuote(deps.config.secrets.quoteKey, {
             requirements: { ssh: false, preview: false, gpu: false, secrets: false },
@@ -346,6 +347,7 @@ describe("bugnet_start", () => {
         state: PlacementState,
         init = {},
         log?: Deps["log"],
+        payments = testPayments(),
     ): Promise<Awaited<ReturnType<typeof callTool<Record<string, unknown>>>>> {
         // The wait for ready ends on the clock, so each look moves it on
         const clock = { now: testNow };
@@ -361,7 +363,7 @@ describe("bugnet_start", () => {
                     return { placement: placement(state, init) };
                 },
             }),
-            payments: testPayments(),
+            payments,
             now: () => clock.now,
             ...(log ? { log } : {}),
         });
@@ -384,6 +386,33 @@ describe("bugnet_start", () => {
             `After this sandbox ends, its summary and logs stay at ${url} for 48 hours. Show this link to the user.`,
         );
         expect(r.structured.sessionUrl).toBe(url);
+    });
+
+    // Payments' settle answer, as its paid order carries it
+    function settledWith(transaction: unknown): ReturnType<typeof testPayments> {
+        const payments = testPayments(async (req) => {
+            const r = await payments.dev.order(req);
+            if (r.status !== "paid") return r;
+            return { ...r, paymentResponse: { success: true, transaction, network: "solana:x" } };
+        });
+        return payments;
+    }
+
+    it("links the Solana transaction that paid", async () => {
+        const r = await start(PlacementState.READY, {}, undefined, settledWith(tx));
+        expect((r.structured.message as string).split("\n")).toContain(
+            `Paid $0.05 USDC for this sandbox (order toolu_start), Solana transaction ` +
+                `https://explorer.solana.com/tx/${tx}. Tell the user what it cost and show the ` +
+                "transaction link.",
+        );
+        expect(r.structured.transactionUrl).toBe(`https://explorer.solana.com/tx/${tx}`);
+    });
+
+    it("links no transaction that is not a Solana signature", async () => {
+        const r = await start(PlacementState.READY, {}, undefined, settledWith("not/a sig"));
+        expect(r.text).toContain("(order toolu_start). Tell the user what it cost.");
+        expect(r.text).not.toContain("explorer");
+        expect(r.structured).not.toHaveProperty("transactionUrl");
     });
 
     it("says both while the sandbox is still starting", async () => {

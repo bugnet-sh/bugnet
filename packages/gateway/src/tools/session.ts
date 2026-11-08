@@ -17,12 +17,36 @@ export function paidOf(p: Placement | undefined): bigint {
     return p && p.paidMicros > 0n ? p.paidMicros : 0n;
 }
 
+// A Solana transaction signature is 64 to 88 base58 characters
+const signature = /^[1-9A-HJ-NP-Za-km-z]{64,88}$/;
+
+// The explorer link of the transaction in Payments' settle answer, or null without a valid one
+export function paymentTxUrl(paymentResponse: unknown): string | null {
+    const tx = (paymentResponse as { transaction?: unknown } | null | undefined)?.transaction;
+    return typeof tx === "string" && signature.test(tx)
+        ? `https://explorer.solana.com/tx/${tx}`
+        : null;
+}
+
+function txTail(txUrl: string | null): string {
+    return txUrl ? `, Solana transaction ${txUrl}` : "";
+}
+
+function tellPaid(txUrl: string | null): string {
+    return `Tell the user what it cost${txUrl ? " and show the transaction link" : ""}.`;
+}
+
 // Pay lines for a start, an extension or a redeem, left out when the amount is unknown
-export function paidLine(amountMicros: number | undefined, orderId: string, more: boolean): string {
+export function paidLine(
+    amountMicros: number | undefined,
+    orderId: string,
+    more: boolean,
+    txUrl: string | null = null,
+): string {
     if (!amountMicros || amountMicros <= 0) return "";
     return (
         `Paid ${usd(amountMicros)} USDC${more ? " more" : ""} for this sandbox ` +
-        `(order ${orderId}). Tell the user what it cost.`
+        `(order ${orderId})${txTail(txUrl)}. ${tellPaid(txUrl)}`
     );
 }
 
@@ -42,10 +66,11 @@ export function paidX402Line(
     amountMicros: number,
     allowanceMicros: number,
     orderId: string,
+    txUrl: string | null = null,
 ): string {
     return (
         `Paid ${usd(amountMicros)} USDC (order ${orderId}), including a ` +
-        `${usd(allowanceMicros)} x402 allowance. Tell the user what it cost.`
+        `${usd(allowanceMicros)} x402 allowance${txTail(txUrl)}. ${tellPaid(txUrl)}`
     );
 }
 

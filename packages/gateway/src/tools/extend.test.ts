@@ -135,6 +135,30 @@ describe("bugnet_extend", () => {
         expect(applied[0]?.orderToken).toBeTruthy();
     });
 
+    it("links the Solana transaction that paid the extension", async () => {
+        const tx = "4".repeat(44) + "Zq8".repeat(7);
+        const payments = testPayments(async (req) => {
+            const r = await payments.dev.order(req);
+            return r.status === "paid" ? { ...r, paymentResponse: { transaction: tx } } : r;
+        });
+        const deps = testDeps({
+            router: fakeRouter({ ...checked, extendPlacement: () => ({ placement: extended }) }),
+            payments,
+        });
+        const r = await callTool<{ transactionUrl: string }>(
+            await connectTools(deps),
+            "bugnet_extend",
+            args(),
+            { toolUseId: "toolu_ext" },
+        );
+        expect(r.text).toContain(
+            "Paid $0.04 USDC more for this sandbox (order toolu_ext), Solana transaction " +
+                `https://explorer.solana.com/tx/${tx}. Tell the user what it cost and show the ` +
+                "transaction link.",
+        );
+        expect(r.structured.transactionUrl).toBe(`https://explorer.solana.com/tx/${tx}`);
+    });
+
     it("refuses a price other than the extension's before any order", async () => {
         const { client, payments } = await connect(checked);
         const r = await callTool(client, "bugnet_extend", args("0.4"));

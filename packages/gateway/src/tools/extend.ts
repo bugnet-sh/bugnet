@@ -37,7 +37,7 @@ import {
     refusalError,
     retryCall,
 } from "./orders.ts";
-import { paidLine } from "./session.ts";
+import { paidLine, paymentTxUrl } from "./session.ts";
 import { describeSize } from "./sandbox.ts";
 
 // A first refusal with these codes means the router recorded nothing, so the order is refunded
@@ -179,7 +179,8 @@ export async function extendPaid(
         order.paymentResponse !== undefined
             ? { "x402/payment-response": order.paymentResponse }
             : undefined;
-    const paid = paidLine(order.amountMicros, order.orderId, true);
+    const txUrl = paymentTxUrl(order.paymentResponse);
+    const paid = paidLine(order.amountMicros, order.orderId, true, txUrl);
     return ok(
         (opts.minutes !== null
             ? `Extended by ${opts.minutes} min.`
@@ -188,6 +189,7 @@ export async function extendPaid(
             (paid ? `\n${paid}` : ""),
         {
             orderId: order.orderId,
+            ...(txUrl ? { transactionUrl: txUrl } : {}),
             packageId: order.packageId,
             deadline: deadline?.toISOString() ?? null,
             timeLeft: left,
