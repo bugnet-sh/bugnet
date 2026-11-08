@@ -292,6 +292,26 @@ describe("key payer", () => {
         expect(await payer(ok.fetcher, allowed).pay(budget, 50_000)).toEqual({ kind: "paid" });
     });
 
+    it("pays an allowance only to an allowance_pay_to wallet when one is pinned", async () => {
+        const allowed = { ...settings, keyPaysAllowances: true };
+        const budget: PaymentStep = { ...step, tool: "bugnet_x402_budget" };
+        for (const st of [budget, { ...step, allowance: true } as PaymentStep]) {
+            const toTime = fakePayments(offer());
+            expect(await payer(toTime.fetcher, allowed).pay(st, 50_000)).toMatchObject({
+                reason: "key_pay_to",
+            });
+            expect(toTime.sent).toHaveLength(1);
+        }
+        // Unpinned, an allowance may pay a pay_to wallet
+        const open = fakePayments(offer());
+        const unpinned = { ...allowed, allowancePayTo: [] };
+        expect(await payer(open.fetcher, unpinned).pay(budget, 50_000)).toEqual({ kind: "paid" });
+        // Time still pays either set when allowances are on
+        ledger = new SpendLedger({ path: join(dir, "spend-time.json") });
+        const time = fakePayments({ ...offer(), payTo: allowanceWallet });
+        expect(await payer(time.fetcher, allowed).pay(step, 50_000)).toEqual({ kind: "paid" });
+    });
+
     it("never puts the key or the signed transaction in the log or the outcome", async () => {
         const jwk = generateKeyPairSync("ed25519").privateKey.export({ format: "jwk" });
         const bytes = new Uint8Array(64);

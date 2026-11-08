@@ -162,9 +162,13 @@ export function offerRefusal(
         return declined("network");
     }
     if (typeof extra.memo !== "string" || extra.memo !== step.orderId) return declined("memo");
-    const payable = settings.keyPaysAllowances
-        ? [...settings.payTo, ...settings.allowancePayTo]
-        : settings.payTo;
+    // An allowance step pays only the allowance wallets when they are pinned
+    const payable =
+        isAllowanceStep(step) && settings.allowancePayTo.length > 0
+            ? settings.allowancePayTo
+            : isAllowanceStep(step) || settings.keyPaysAllowances
+              ? [...settings.payTo, ...settings.allowancePayTo]
+              : settings.payTo;
     if (typeof offer.payTo !== "string" || !payable.includes(offer.payTo)) {
         return declined("pay_to");
     }
