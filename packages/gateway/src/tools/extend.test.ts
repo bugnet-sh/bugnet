@@ -161,7 +161,7 @@ describe("bugnet_extend", () => {
         expect(again.isError).toBe(true);
         expect(again.text).toMatch(/\nOrder ord_x is not paid yet/);
         expect(again.text).toMatch(
-            /then call bugnet_redeem with orderId and claim \(orderId "ord_x" and the claim from its first payment step\)\./,
+            /without waiting for the user, call bugnet_redeem with orderId and claim \(orderId "ord_x" and the claim from its first payment step\)\./,
         );
         expect(again.text).toMatch(/Calling bugnet_extend again without this orderId/);
     });

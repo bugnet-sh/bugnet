@@ -25,6 +25,8 @@ export interface Deps {
     x402Fetch?: Fetcher;
     // Tests replace the built-in x402 index
     x402Index?: X402Index;
+    // Tests replace the pause between looks at an order that waits for its payment
+    sleep?: (ms: number, signal: AbortSignal | undefined) => Promise<void>;
 }
 
 export type Register = (server: McpServer, deps: Deps) => void;

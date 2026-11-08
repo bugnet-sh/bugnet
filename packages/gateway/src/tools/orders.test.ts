@@ -49,12 +49,16 @@ const step = (over: Partial<AwaitingPayment> = {}): AwaitingPayment => ({
     paymentRequired: required,
     ...over,
 });
-const show = "Show the user the link, since they pay in their own browser.";
 const limit =
     "The x402 maxTimeoutSeconds limits a wallet's signed payment, not the user's time to pay.";
 const next =
-    `Next: pay at ${payUrl} with a Solana wallet holding USDC, then call bugnet_redeem ` +
+    "Next: show the user this link to pay in their browser with a Solana wallet holding USDC: " +
+    `${payUrl}. Then, in the same turn and without waiting for the user, call bugnet_redeem ` +
     "with orderId and claim";
+const waits =
+    "It waits for the payment and goes on once it lands; if it answers that the order is not " +
+    "paid yet, call it again, for up to 10 minutes.";
+const keepWaiting = "Call bugnet_redeem again with the same arguments to keep waiting.";
 
 describe("claimInput and paidRetry", () => {
     it("takes a claim of 43 base64url characters only", () => {
@@ -109,7 +113,7 @@ describe("paymentRequiredResult", () => {
         const guide = [
             "Payment required for order ord_2.",
             `${next} (orderId "ord_2", claim "${claim}", quoteId "q3.x").`,
-            show,
+            waits,
             "Calling bugnet_start again without this orderId opens a new order the user would " +
                 "pay again.",
             limit,
@@ -142,7 +146,7 @@ describe("paymentRequiredResult", () => {
             text: [
                 "Payment required for order ord_2.",
                 `${next} (orderId "ord_2", claim "${claim}" and this sandbox's handle).`,
-                show,
+                waits,
                 "Calling bugnet_extend again without this orderId opens a new order the user " +
                     "would pay again.",
                 limit,
@@ -162,8 +166,9 @@ describe("paymentRequiredResult", () => {
             text: [
                 "Order ord_2 is not paid yet, and a payment can take a few seconds to confirm.",
                 `${next} (orderId "ord_2", claim "${claim}").`,
-                show,
+                waits,
                 limit,
+                keepWaiting,
             ].join(" "),
         });
         expect(r.structuredContent).toEqual(expect.objectContaining({ claim }));

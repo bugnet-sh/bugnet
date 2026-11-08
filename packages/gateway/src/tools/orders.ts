@@ -82,15 +82,20 @@ export function paymentRequiredResult(r: AwaitingPayment, c: PaymentStepContext)
         c.sentOrderId === id
             ? `Order ${id} is not paid yet, and a payment can take a few seconds to confirm.`
             : `Payment required for order ${id}.`,
-        `Next: pay at ${r.payUrl} with a Solana wallet holding USDC, then call bugnet_redeem ` +
-            `with orderId and claim${named}.`,
-        "Show the user the link, since they pay in their own browser.",
+        "Next: show the user this link to pay in their browser with a Solana wallet holding " +
+            `USDC: ${r.payUrl}. Then, in the same turn and without waiting for the user, call ` +
+            `bugnet_redeem with orderId and claim${named}.`,
+        "It waits for the payment and goes on once it lands; if it answers that the order is " +
+            "not paid yet, call it again, for up to 10 minutes.",
         c.tool === "bugnet_redeem"
             ? ""
             : `Calling ${c.tool} again without this orderId opens a new order the user would ` +
               "pay again.",
         // Live runs saw the model tell users they had 60 s to pay
         "The x402 maxTimeoutSeconds limits a wallet's signed payment, not the user's time to pay.",
+        c.tool === "bugnet_redeem"
+            ? "Call bugnet_redeem again with the same arguments to keep waiting."
+            : "",
     ]
         .filter(Boolean)
         .join(" ");

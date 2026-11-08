@@ -1,6 +1,6 @@
 import { timestampFromMs } from "@bufbuild/protobuf/wkt";
 import { Code } from "@connectrpc/connect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
     PlacementState,
     X402ServiceState,
@@ -9,6 +9,8 @@ import {
     type ExtendPlacementRequest,
 } from "../gen/bugnet/router/v1/router_pb.ts";
 import type {
+    OrderRequest,
+    OrderResult,
     PaidAllowanceOrder,
     RefusedOrder,
     X402Account,
@@ -230,24 +232,6 @@ describe("bugnet_redeem", () => {
         expect(applied).toEqual([]);
     });
 
-    it("says an order is not paid yet and opens no new one", async () => {
-        const { client, deps, payments } = await setup(startRouter([]));
-        const { orderId, claim } = await devOrder(payments, startTerms, { paid: false });
-        const quoteId = quote(deps);
-        const r = await callTool(client, "bugnet_redeem", { orderId, claim, quoteId });
-        expect(r.isError).toBe(true);
-        expect(r.text.split("\n")[1]).toBe(
-            `Order ${orderId} is not paid yet, and a payment can take a few seconds to confirm. ` +
-                `Next: pay at http://127.0.0.1:8787/o/${orderId} with a Solana wallet holding ` +
-                `USDC, then call bugnet_redeem with orderId and claim (orderId "${orderId}", ` +
-                `claim "${claim}", quoteId "${quoteId}"). Show the user the link, since they pay ` +
-                "in their own browser. The x402 maxTimeoutSeconds limits a wallet's signed " +
-                "payment, not the user's time to pay.",
-        );
-        expect(payments.orders).toEqual([{ orderId, claim }]);
-        expect(payments.dev.status(orderId).body.state).toBe("unpaid");
-    });
-
     it("asks to call again while the payment is still confirming", async () => {
         const payments = testPayments(() => ({
             status: "refused",
@@ -322,6 +306,188 @@ describe("bugnet_redeem", () => {
                 "paid twice.",
         );
         expect(payments.orders).toEqual([]);
+    });
+});
+
+describe("bugnet_redeem while the order waits for its payment", () => {
+    // Each pause moves the gateway's clock, so a wait costs no real time
+    async function waiting(
+        impl: RouterImpl,
+        payments = testPayments(undefined, { requirePayment: true }),
+    ) {
+        const clock = { now: testNow };
+        const sleeps: number[] = [];
+        const deps = testDeps({
+            router: fakeRouter(impl),
+            payments,
+            now: () => clock.now,
+            sleep: async (ms) => {
+                sleeps.push(ms);
+                clock.now += ms;
+            },
+        });
+        return { client: await connectTools(deps), deps, payments, sleeps };
+    }
+
+    // Answers each look in turn from answers, the dev ledger once they run out
+    function looks(payments: TestPayments, answers: ((req: OrderRequest) => OrderResult | void)[]) {
+        const order = payments.order.bind(payments);
+        let n = 0;
+        payments.order = async (req, signal) => {
+            const given = answers[n++]?.(req);
+            if (given) {
+                payments.orders.push(req);
+                return given;
+            }
+            return order(req, signal);
+        };
+    }
+
+    it("waits for the payment and starts the sandbox once it lands", async () => {
+        const created: CreatePlacementRequest[] = [];
+        const { client, deps, payments, sleeps } = await waiting(startRouter(created));
+        const { orderId, claim } = await devOrder(payments, startTerms, { paid: false });
+        // The user pays while the redeem waits, before its third look
+        looks(payments, [() => {}, () => {}, () => void payments.dev.pay(orderId)]);
+        const r = await callTool(client, "bugnet_redeem", { orderId, claim, quoteId: quote(deps) });
+        expect(r.isError).toBe(false);
+        expect(r.structured).toEqual(expect.objectContaining({ handle: testHandle, orderId }));
+        expect(sleeps).toEqual([5_000, 5_000]);
+        expect(payments.orders).toEqual([
+            { orderId, claim },
+            { orderId, claim },
+            { orderId, claim },
+        ]);
+        expect(created).toHaveLength(1);
+    });
+
+    it.each([
+        ["a new sandbox", "start", 4],
+        ["more time", "extend", 3],
+    ] as const)(
+        "says the order is not paid yet once the budget runs low, for %s",
+        async (_n, kind, pauses) => {
+            const { client, deps, payments, sleeps } = await waiting(startRouter([]));
+            const terms = kind === "start" ? startTerms : extendTerms;
+            const { orderId, claim } = await devOrder(payments, terms, { paid: false });
+            const quoteId = quote(deps);
+            const extra = kind === "start" ? { quoteId } : { handle: testHandle };
+            const r = await callTool(client, "bugnet_redeem", { orderId, claim, ...extra });
+            const named =
+                kind === "start"
+                    ? `(orderId "${orderId}", claim "${claim}", quoteId "${quoteId}")`
+                    : `(orderId "${orderId}", claim "${claim}" and this sandbox's handle)`;
+            expect(r.isError).toBe(true);
+            expect(r.text.split("\n")[1]).toBe(
+                `Order ${orderId} is not paid yet, and a payment can take a few seconds to ` +
+                    "confirm. Next: show the user this link to pay in their browser with a Solana " +
+                    `wallet holding USDC: http://127.0.0.1:8787/o/${orderId}. Then, in the same ` +
+                    "turn and without waiting for the user, call bugnet_redeem with orderId and " +
+                    `claim ${named}. It waits for the payment and goes on once it lands; if it ` +
+                    "answers that the order is not paid yet, call it again, for up to 10 minutes. " +
+                    "The x402 maxTimeoutSeconds limits a wallet's signed payment, not the user's " +
+                    "time to pay. Call bugnet_redeem again with the same arguments to keep waiting.",
+            );
+            // A sandbox start keeps 12 s and an extension 20 s, each after a 5 s look
+            expect(sleeps).toEqual(Array(pauses).fill(5_000));
+            const sent =
+                kind === "start"
+                    ? { orderId, claim }
+                    : { orderId, claim, handleSha256: handleHash(testHandle) };
+            expect(payments.orders).toEqual(Array(pauses + 1).fill(sent));
+            expect(payments.dev.status(orderId).body.state).toBe("unpaid");
+        },
+    );
+
+    it("keeps waiting while a payment confirms and goes on once it is paid", async () => {
+        const created: CreatePlacementRequest[] = [];
+        const { client, deps, payments, sleeps } = await waiting(startRouter(created));
+        const { orderId, claim } = await devOrder(payments, startTerms, { paid: false });
+        const settling = (): OrderResult => ({
+            status: "refused",
+            orderId,
+            reason: "settling",
+            retryAfterSeconds: 2,
+        });
+        looks(payments, [() => {}, settling, () => void payments.dev.pay(orderId)]);
+        const r = await callTool(client, "bugnet_redeem", { orderId, claim, quoteId: quote(deps) });
+        expect(r.isError).toBe(false);
+        expect(r.structured).toEqual(expect.objectContaining({ handle: testHandle, orderId }));
+        expect(sleeps).toEqual([5_000, 5_000]);
+        expect(created).toHaveLength(1);
+    });
+
+    it("answers a refusal that lands during the wait as it answers one at once", async () => {
+        for (const reason of ["order_expired", "order_closed", "payment_late"] as const) {
+            const refused = (): OrderResult => ({ status: "refused", orderId: "ord_w", reason });
+            const atOnce = await waiting(startRouter([]), testPayments(refused));
+            const later = await waiting(startRouter([]));
+            looks(later.payments, [
+                () => ({
+                    status: "payment_required",
+                    orderId: "ord_w",
+                    payUrl: "https://pay.bugnet.sh/o/ord_w",
+                    paymentRequired: { x402Version: 2, accepts: [] },
+                }),
+                refused,
+            ]);
+            const args = { orderId: "ord_w", claim, quoteId: quote(atOnce.deps) };
+            const a = await callTool(atOnce.client, "bugnet_redeem", args);
+            const b = await callTool(later.client, "bugnet_redeem", args);
+            expect(b.isError).toBe(true);
+            expect([b.text, b.structured]).toEqual([a.text, a.structured]);
+            expect(later.sleeps).toEqual([5_000]);
+        }
+    });
+
+    it("stops looking once the client gives up", async () => {
+        const { client, deps, payments } = await waiting(startRouter([]));
+        const { orderId, claim } = await devOrder(payments, startTerms, { paid: false });
+        const giveUp = new AbortController();
+        let stopped = false;
+        deps.sleep = (_ms, signal) =>
+            new Promise((_resolve, reject) => {
+                signal?.addEventListener(
+                    "abort",
+                    () => {
+                        stopped = true;
+                        reject(signal.reason);
+                    },
+                    { once: true },
+                );
+                giveUp.abort();
+            });
+        const call = client.callTool(
+            { name: "bugnet_redeem", arguments: { orderId, claim, quoteId: quote(deps) } },
+            { signal: giveUp.signal },
+        );
+        await expect(call).rejects.toThrow();
+        await vi.waitFor(() => expect(stopped).toBe(true));
+        await new Promise((r) => setTimeout(r, 20));
+        expect(payments.orders).toEqual([{ orderId, claim }]);
+    });
+
+    it("sends progress while it waits", async () => {
+        vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+        try {
+            const { client, deps, payments } = await waiting(startRouter([]));
+            const sleep = deps.sleep!;
+            deps.sleep = async (ms, signal) => {
+                await sleep(ms, signal);
+                vi.advanceTimersByTime(ms);
+            };
+            const { orderId, claim } = await devOrder(payments, startTerms, { paid: false });
+            looks(payments, [() => {}, () => void payments.dev.pay(orderId)]);
+            const seen: string[] = [];
+            const r = await client.callTool(
+                { name: "bugnet_redeem", arguments: { orderId, claim, quoteId: quote(deps) } },
+                { onprogress: (p) => seen.push(p.message ?? "") },
+            );
+            expect(r.isError).toBeFalsy();
+            expect(seen).toContain("waiting for the payment");
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });
 

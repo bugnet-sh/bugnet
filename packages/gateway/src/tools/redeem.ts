@@ -1,8 +1,10 @@
 // Finishes an order paid outside the MCP client, keeping nothing between calls
+import { setTimeout as sleep } from "node:timers/promises";
 import type { CallToolResult, ServerContext } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { X402ServiceInfo } from "../gen/bugnet/router/v1/router_pb.ts";
-import type { OrderResult, PaidAllowanceOrder } from "../payments/port.ts";
+import type { ClaimOrderRequest, OrderResult, PaidAllowanceOrder } from "../payments/port.ts";
+import { toolCallSignal } from "../request.ts";
 import { GatewayError } from "../router.ts";
 import { QuoteError, verifyQuote, type QuoteClaims } from "../quote.ts";
 import { indexOf } from "../x402/index.ts";
@@ -30,6 +32,7 @@ import {
     handleInput,
     ok,
     sandboxFailure,
+    withProgress,
     type Deps,
     type Register,
 } from "./common.ts";
@@ -51,6 +54,49 @@ export const redeemInput = z.object({
 // The redeem's own words for an error that names its order, so a client reading fields gets it
 function orderError(orderId: string, text: string): GatewayError {
     return new GatewayError("invalid", text, null, null, { orderId });
+}
+
+// The pause between two looks at an order that waits for its payment
+const lookEveryMs = 5_000;
+// The least time a look at the order gets, as bugnet_start leaves for its own order call
+const lookMs = 5_000;
+
+function awaitingPayment(order: OrderResult): boolean {
+    return (
+        order.status === "payment_required" ||
+        (order.status === "refused" && order.reason === "settling")
+    );
+}
+
+// Looks at an unpaid order again until it is paid or refused, or the call's budget runs low
+async function waitForPayment(
+    deps: Deps,
+    ctx: ServerContext,
+    first: OrderResult,
+    look: () => Promise<OrderResult>,
+    budget: Budget,
+    reserveMs: number,
+): Promise<OrderResult> {
+    const tool = toolCallSignal();
+    const pause =
+        deps.sleep ??
+        ((ms: number, signal: AbortSignal | undefined) =>
+            sleep(ms, undefined, signal ? { signal } : {}));
+    // The look count caps the wait too, so a stopped clock cannot keep it going
+    const most = Math.ceil(deps.config.limits.tool_budget / lookEveryMs);
+    return withProgress(ctx, "waiting for the payment", async () => {
+        let order = first;
+        for (let n = 0; n < most && awaitingPayment(order); n++) {
+            if (tool?.aborted || budget.left() < lookEveryMs + lookMs + reserveMs) break;
+            try {
+                await pause(lookEveryMs, tool);
+            } catch {
+                break;
+            }
+            order = await look();
+        }
+        return order;
+    });
 }
 
 // Enables a paid allowance's services from the stored answer, as the budget tool's paid retry does
@@ -151,28 +197,32 @@ export const registerRedeemTool: Register = (server, deps) => {
                     }
                 }
                 const budget = new Budget(deps);
-                let order: OrderResult;
-                try {
-                    // Keeps EnableX402's wait for an allowance, which an extension fits in too
-                    order = await deps.payments.order(
-                        {
-                            orderId,
-                            claim,
-                            ...(handle !== undefined ? { handleSha256: handleHash(handle) } : {}),
-                        },
-                        budget.signal(30_000, handle !== undefined ? enableWaitMs : placeReserveMs),
-                    );
-                } catch {
-                    // A redeem is a retry by claim, so the user may have paid
-                    throw new GatewayError(
-                        "unavailable",
-                        `redeem: Bugnet could not check order ${orderId} right now. Call ` +
-                            "bugnet_redeem again with orderId and claim in a minute, and do not " +
-                            "pay again",
-                        null,
-                        null,
-                        { orderId },
-                    );
+                // Keeps EnableX402's wait for an allowance, which an extension fits in too
+                const reserve = handle !== undefined ? enableWaitMs : placeReserveMs;
+                const request: ClaimOrderRequest = {
+                    orderId,
+                    claim,
+                    ...(handle !== undefined ? { handleSha256: handleHash(handle) } : {}),
+                };
+                const look = async (): Promise<OrderResult> => {
+                    try {
+                        return await deps.payments.order(request, budget.signal(30_000, reserve));
+                    } catch {
+                        // A redeem is a retry by claim, so the user may have paid
+                        throw new GatewayError(
+                            "unavailable",
+                            `redeem: Bugnet could not check order ${orderId} right now. Call ` +
+                                "bugnet_redeem again with orderId and claim in a minute, and do " +
+                                "not pay again",
+                            null,
+                            null,
+                            { orderId },
+                        );
+                    }
+                };
+                let order = await look();
+                if (order.status === "payment_required") {
+                    order = await waitForPayment(deps, ctx, order, look, budget, reserve);
                 }
                 if (order.status === "payment_required") {
                     return paymentRequiredResult(order, {

@@ -434,7 +434,7 @@ describe("bugnet_x402_budget", () => {
         expect(r.structured.claim).toMatch(/^[A-Za-z0-9_-]{43}$/);
         const id = r.structured.orderId;
         expect(r.text).toContain(
-            `then call bugnet_redeem with orderId and claim (orderId "${id}", claim "${r.structured.claim}" and this sandbox's handle).`,
+            `without waiting for the user, call bugnet_redeem with orderId and claim (orderId "${id}", claim "${r.structured.claim}" and this sandbox's handle).`,
         );
         expect(r.text).toContain(
             "Calling bugnet_x402_budget again without this orderId opens a new order the user would pay again.",

@@ -466,6 +466,8 @@ export function testDeps(overrides: Partial<Deps> = {}): Deps {
         assessor: noAssessor,
         log: silentLog,
         now: () => testNow,
+        // The clock stands still, so a redeem's wait for payment ends on its look count at once
+        sleep: async () => {},
         ...overrides,
     };
 }
