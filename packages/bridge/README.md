@@ -190,7 +190,7 @@ Keep `daily_usd` low, or set `key_pays_allowances = false`.
 Before signing, the bridge fetches the order's payment request itself and checks that it is
 `pay_origin`'s `/o/` link for this order, USDC on Solana mainnet, with the order as memo, paid to a
 `pay_to` wallet (or an `allowance_pay_to` one when allowed) with a `fee_payer` wallet as fee payer, and within the price you approved, the
-per-payment cap and what is left of the daily cap (kept in `~/.config/bugnet/spend.json`). It
+per-payment cap and what is left of the daily cap (kept in `~/.config/bugnet/spend/`, a folder per UTC day). It
 builds the transfer itself and never signs bytes it was sent. A payment that fails a check is not
 signed: you get the pay link or the payment step back. Once a signed payment has been sent, it stays
 counted against the daily cap unless Payments refuses it before broadcasting (`payment_invalid`,

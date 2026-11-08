@@ -182,7 +182,7 @@ describe("wallet file", () => {
                 keyOrigin: "https://pay.bugnet.sh",
             },
             signer: () => loadWallet(home, cwd),
-            ledger: new SpendLedger({ path: join(dir, "spend.json") }),
+            ledger: new SpendLedger({ dir: join(dir, "spend") }),
             log: stderrLog((l) => lines.push(l)),
         });
         const out = await payer.pay(

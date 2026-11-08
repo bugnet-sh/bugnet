@@ -1,252 +1,196 @@
-// What the key signer spent today (UTC), shared by every bridge process through one lockfile
-import { randomUUID } from "node:crypto";
+// What the key signer spent today (UTC), shared by every bridge process with no lock: a folder per
+// day holds one file per reservation, made through O_EXCL, and a claim that then finds the day over
+// its cap takes its own file back. Two claims at the cap can both back off; none goes over it
+import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { open, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, rename, unlink } from "node:fs/promises";
+import { join } from "node:path";
+import { paymentCeilingUsd } from "./config.ts";
 
 export class LedgerError extends Error {
-    readonly code: "ledger_busy" | "ledger_corrupt";
+    readonly code: "ledger_order" | "ledger_folder" | "ledger_io";
 
-    constructor(code: "ledger_busy" | "ledger_corrupt") {
+    constructor(code: "ledger_order" | "ledger_folder" | "ledger_io") {
         super(code);
         this.code = code;
     }
 }
 
-interface Entry {
-    micros: number;
-    state: "reserved" | "spent";
-}
-
-interface Doc {
-    day: string;
-    entries: Record<string, Entry>;
-}
-
 export interface SpendLedgerOptions {
-    path: string;
+    // ~/.config/bugnet/spend; each UTC day gets a folder under it
+    dir: string;
     now?: () => number;
-    // A lock is held for milliseconds, so one this old is taken as left by a crash whatever its pid
-    staleLockMs?: number;
-    lockWaitMs?: number;
+    // What a file that cannot be read counts as, so it must be at least any one payment
+    unreadableMicros?: number;
 }
 
 export type Reservation = "reserved" | "already_reserved" | "over_cap";
 
-// The lock moved away before a write, so nothing was written and the work may run again
-class LostLock extends LedgerError {
-    constructor() {
-        super("ledger_busy");
+type State = "reserved" | "spent" | "freed";
+
+interface Entry {
+    orderId: string;
+    micros: number;
+    state: State;
+    at: number;
+}
+
+// The first character is never "_", "-" or "." so names like __proto__ and ../x are refused
+const orderIdPattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+const fileName = /^[0-9a-f]{64}$/;
+const maxFileBytes = 4096;
+
+const nameOf = (orderId: string) => createHash("sha256").update(orderId).digest("hex");
+
+function checkOrder(orderId: string): void {
+    if (typeof orderId !== "string" || !orderIdPattern.test(orderId)) {
+        throw new LedgerError("ledger_order");
     }
 }
 
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-async function readLock(lock: string): Promise<string | null> {
-    return readFile(lock, "utf8").catch(() => null);
-}
-
-interface LockFile {
-    text: string;
-    dev: number;
-    ino: number;
-    mtimeMs: number;
-}
-
-// Content and inode from one open file, so both describe the same lock
-async function inspect(path: string): Promise<LockFile | null> {
-    let fh;
+function parse(text: string, name: string): Entry | null {
+    let v: unknown;
     try {
-        fh = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+        v = JSON.parse(text);
     } catch {
         return null;
     }
-    try {
-        const st = await fh.stat();
-        const text = await fh.readFile("utf8");
-        return { text, dev: st.dev, ino: st.ino, mtimeMs: st.mtimeMs };
-    } finally {
-        await fh.close();
-    }
-}
-
-const maxPid = 2 ** 31 - 1;
-
-// ESRCH is the only proof of death and EPERM the only proof of life (another user's process);
-// any other answer or a pid out of range leaves the lock to the age rule
-function holder(text: string): "alive" | "dead" | "unknown" {
-    const m = /^(\d{1,10}) /.exec(text);
-    const pid = m ? Number(m[1]) : 0;
-    if (pid < 1 || pid > maxPid) return "unknown";
-    try {
-        process.kill(pid, 0);
-        return "alive";
-    } catch (e) {
-        const code = (e as NodeJS.ErrnoException).code;
-        return code === "ESRCH" ? "dead" : code === "EPERM" ? "alive" : "unknown";
-    }
-}
-
-function isEntry(v: unknown): v is Entry {
     const e = v as Entry;
-    return (
-        typeof e === "object" &&
-        e !== null &&
-        Number.isSafeInteger(e.micros) &&
-        e.micros >= 0 &&
-        (e.state === "reserved" || e.state === "spent")
-    );
+    if (
+        typeof e !== "object" ||
+        e === null ||
+        typeof e.orderId !== "string" ||
+        nameOf(e.orderId) !== name ||
+        !Number.isSafeInteger(e.micros) ||
+        e.micros < 0 ||
+        (e.state !== "reserved" && e.state !== "spent" && e.state !== "freed")
+    ) {
+        return null;
+    }
+    return e;
 }
+
+// Fails with EEXIST when anything, a symlink included, already has the name
+async function create(path: string, text: string): Promise<void> {
+    const fh = await open(
+        path,
+        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+        0o600,
+    );
+    try {
+        await fh.writeFile(text);
+    } catch (e) {
+        await fh.close().catch(() => {});
+        await unlink(path).catch(() => {});
+        throw e;
+    }
+    await fh.close();
+}
+
+const isMissing = (e: unknown) => (e as NodeJS.ErrnoException).code === "ENOENT";
 
 export class SpendLedger {
-    private readonly path: string;
+    private readonly dir: string;
     private readonly now: () => number;
-    private readonly staleLockMs: number;
-    private readonly lockWaitMs: number;
+    private readonly unreadableMicros: number;
+    // This process's own reservations, the only files settle touches
+    private readonly mine = new Map<string, { day: string; micros: number }>();
 
     constructor(opts: SpendLedgerOptions) {
-        this.path = opts.path;
+        this.dir = opts.dir;
         this.now = opts.now ?? Date.now;
-        this.staleLockMs = opts.staleLockMs ?? 30_000;
-        this.lockWaitMs = opts.lockWaitMs ?? 10_000;
+        this.unreadableMicros = opts.unreadableMicros ?? paymentCeilingUsd * 1_000_000;
     }
 
     private day(): string {
         return new Date(this.now()).toISOString().slice(0, 10);
     }
 
-    // The lock is only ever made through O_EXCL and holds its owner's pid and a random nonce, so
-    // a holder only removes its own. work gets a check that the lock is still ours, which write
-    // runs just before its rename; a lock lost before that runs the work again under a new one
-    private async withLock<T>(work: (mine: () => Promise<boolean>) => Promise<T>): Promise<T> {
-        const lock = `${this.path}.lock`;
-        const started = Date.now();
-        for (;;) {
-            const nonce = `${process.pid} ${randomUUID()}`;
-            await this.acquire(lock, nonce, started);
-            try {
-                return await work(async () => (await readLock(lock)) === nonce);
-            } catch (e) {
-                if (!(e instanceof LostLock)) throw e;
-                if (Date.now() - started > this.lockWaitMs) throw new LedgerError("ledger_busy");
-            } finally {
-                if ((await readLock(lock)) === nonce) await unlink(lock).catch(() => {});
-            }
-        }
-    }
-
-    private async acquire(lock: string, nonce: string, started: number): Promise<void> {
-        for (;;) {
-            if (await this.tryCreate(lock, nonce)) return;
-            if ((await this.clearStale(lock)) && (await this.tryCreate(lock, nonce))) return;
-            if (Date.now() - started > this.lockWaitMs) throw new LedgerError("ledger_busy");
-            await wait(10 + Math.random() * 20);
-        }
-    }
-
-    private async tryCreate(lock: string, nonce: string): Promise<boolean> {
-        let fh;
+    private async folder(day: string): Promise<string> {
+        const folder = join(this.dir, day);
         try {
-            fh = await open(
-                lock,
-                constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
-                0o600,
-            );
-        } catch (e) {
-            if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
-            return false;
+            await mkdir(folder, { recursive: true, mode: 0o700 });
+        } catch {
+            throw new LedgerError("ledger_folder");
         }
-        try {
-            await fh.writeFile(nonce);
-        } finally {
-            await fh.close();
+        const st = await lstat(folder).catch(() => {
+            throw new LedgerError("ledger_folder");
+        });
+        const owner = process.getuid?.() ?? st.uid;
+        if (!st.isDirectory() || st.uid !== owner || (st.mode & 0o077) !== 0) {
+            throw new LedgerError("ledger_folder");
         }
-        return true;
+        return folder;
     }
 
-    // Stale: older than staleLockMs, or younger with a pid that is surely dead
-    private isStale(l: LockFile): boolean {
-        if (Math.abs(Date.now() - l.mtimeMs) > this.staleLockMs) return true;
-        return holder(l.text) === "dead";
+    private body(orderId: string, micros: number, state: State): string {
+        return JSON.stringify({ orderId, micros, state, at: this.now() });
     }
 
-    // The stale lock is moved whole to a tombstone of our own, then removed. True when the
-    // tombstone is the file judged stale. Otherwise a fresh lock was moved: it is never put back,
-    // its holder's check before writing fails and it runs again, and we wait before taking the
-    // lock so a write already past that check lands first
-    private async clearStale(lock: string): Promise<boolean> {
-        const seen = await inspect(lock);
-        if (seen === null || !this.isStale(seen)) return false;
-        const tomb = `${lock}.dead.${randomUUID()}`;
-        try {
-            await rename(lock, tomb);
-        } catch (e) {
-            if ((e as NodeJS.ErrnoException).code === "ENOENT") return false;
-            throw e;
-        }
-        const moved = await inspect(tomb);
-        await unlink(tomb).catch(() => {});
-        return (
-            moved !== null &&
-            moved.dev === seen.dev &&
-            moved.ino === seen.ino &&
-            moved.text === seen.text
-        );
-    }
-
-    private async read(): Promise<Doc> {
+    // A file that vanished was freed or backed off; one that cannot be read counts in full
+    private async count(folder: string, name: string): Promise<number> {
         let text: string;
         try {
-            text = await readFile(this.path, "utf8");
-        } catch (e) {
-            if ((e as NodeJS.ErrnoException).code === "ENOENT") {
-                return { day: this.day(), entries: {} };
+            const fh = await open(join(folder, name), constants.O_RDONLY | constants.O_NOFOLLOW);
+            try {
+                const st = await fh.stat();
+                if (!st.isFile() || st.size > maxFileBytes) return this.unreadableMicros;
+                text = await fh.readFile("utf8");
+            } finally {
+                await fh.close();
             }
-            throw e;
+        } catch (e) {
+            return isMissing(e) ? 0 : this.unreadableMicros;
         }
-        let doc: unknown;
-        try {
-            doc = JSON.parse(text);
-        } catch {
-            throw new LedgerError("ledger_corrupt");
-        }
-        const d = doc as Doc;
-        if (
-            typeof d !== "object" ||
-            d === null ||
-            typeof d.day !== "string" ||
-            typeof d.entries !== "object" ||
-            d.entries === null ||
-            !Object.values(d.entries).every(isEntry)
-        ) {
-            throw new LedgerError("ledger_corrupt");
-        }
-        // A new UTC day starts from nothing
-        return d.day === this.day() ? d : { day: this.day(), entries: {} };
+        const entry = parse(text, name);
+        if (entry === null) return this.unreadableMicros;
+        return entry.state === "freed" ? 0 : entry.micros;
     }
 
-    // Renamed into place only while the lock is still ours, so a lost lock never overwrites
-    // another's work; the check runs after the temp file is written to keep that gap short
-    private async write(doc: Doc, mine: () => Promise<boolean>): Promise<void> {
-        const tmp = `${this.path}.${randomUUID()}.tmp`;
-        await writeFile(tmp, JSON.stringify(doc), { mode: 0o600 });
-        if (!(await mine())) {
-            await unlink(tmp).catch(() => {});
-            throw new LostLock();
+    private async total(folder: string): Promise<number> {
+        let names: string[];
+        try {
+            names = await readdir(folder);
+        } catch (e) {
+            if (isMissing(e)) return 0;
+            throw new LedgerError("ledger_io");
         }
-        await rename(tmp, this.path);
+        let sum = 0;
+        // Temp files of a settle in progress are skipped: the file they replace still counts
+        for (const name of names) {
+            if (fileName.test(name)) sum += await this.count(folder, name);
+        }
+        return sum;
     }
 
     // Holds the amount against today's cap before anything is signed
     async claim(orderId: string, micros: number, dailyCapMicros: number): Promise<Reservation> {
-        return this.withLock(async (mine) => {
-            const doc = await this.read();
-            if (Object.hasOwn(doc.entries, orderId)) return "already_reserved";
-            const used = Object.values(doc.entries).reduce((n, e) => n + e.micros, 0);
-            if (used + micros > dailyCapMicros) return "over_cap";
-            doc.entries[orderId] = { micros, state: "reserved" };
-            await this.write(doc, mine);
-            return "reserved";
-        });
+        checkOrder(orderId);
+        if (!Number.isSafeInteger(micros) || micros < 0 || micros > this.unreadableMicros) {
+            throw new RangeError("micros");
+        }
+        const day = this.day();
+        const folder = await this.folder(day);
+        const file = join(folder, nameOf(orderId));
+        try {
+            await create(file, this.body(orderId, micros, "reserved"));
+        } catch (e) {
+            if ((e as NodeJS.ErrnoException).code === "EEXIST") return "already_reserved";
+            throw new LedgerError("ledger_io");
+        }
+        let used: number;
+        try {
+            used = await this.total(folder);
+        } catch (e) {
+            await unlink(file).catch(() => {});
+            throw e;
+        }
+        if (used > dailyCapMicros) {
+            await unlink(file).catch(() => {});
+            return "over_cap";
+        }
+        this.mine.set(orderId, { day, micros });
+        return "reserved";
     }
 
     // True only when this call reserved the amount
@@ -256,19 +200,32 @@ export class SpendLedger {
 
     // Spent stays counted; a payment that surely moved nothing frees its reservation
     async settle(orderId: string, spent: boolean): Promise<void> {
-        await this.withLock(async (mine) => {
-            const doc = await this.read();
-            const e = doc.entries[orderId];
-            if (e === undefined) return;
-            if (spent) e.state = "spent";
-            else delete doc.entries[orderId];
-            await this.write(doc, mine);
-        });
+        checkOrder(orderId);
+        const held = this.mine.get(orderId);
+        if (held === undefined) return;
+        const folder = join(this.dir, held.day);
+        const file = join(folder, nameOf(orderId));
+        if (!spent) {
+            try {
+                await unlink(file);
+            } catch (e) {
+                if (!isMissing(e)) throw new LedgerError("ledger_io");
+            }
+            this.mine.delete(orderId);
+            return;
+        }
+        const tmp = `${file}.${randomUUID()}.tmp`;
+        try {
+            await create(tmp, this.body(orderId, held.micros, "spent"));
+            await rename(tmp, file);
+        } catch {
+            await unlink(tmp).catch(() => {});
+            throw new LedgerError("ledger_io");
+        }
+        this.mine.delete(orderId);
     }
 
     async spentToday(): Promise<number> {
-        return this.withLock(async () =>
-            Object.values((await this.read()).entries).reduce((n, e) => n + e.micros, 0),
-        );
+        return this.total(join(this.dir, this.day()));
     }
 }

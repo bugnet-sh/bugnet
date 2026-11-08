@@ -37,7 +37,7 @@ function choosePayer(command: Serve, origin: string, log: Log): OrderPayer | nul
             });
             return wallet;
         },
-        ledger: new SpendLedger({ path: join(bugnetDir(home), "spend.json") }),
+        ledger: new SpendLedger({ dir: join(bugnetDir(home), "spend") }),
         log,
     });
     if (command.signer.keyPaysAllowances) {

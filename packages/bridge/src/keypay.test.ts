@@ -100,7 +100,7 @@ let ledger: SpendLedger;
 beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "bugnet-keypay-"));
     key = await generateKeyPairSigner();
-    ledger = new SpendLedger({ path: join(dir, "spend.json") });
+    ledger = new SpendLedger({ dir: join(dir, "spend") });
 });
 
 afterEach(async () => {
@@ -209,7 +209,7 @@ describe("key payer", () => {
             [() => Response.json({ refused: "payer_blocked" }, { status: 403 }), false],
         ];
         for (const [i, [answer, kept]] of answers.entries()) {
-            ledger = new SpendLedger({ path: join(dir, `spend-${i}.json`) });
+            ledger = new SpendLedger({ dir: join(dir, `spend-${i}`) });
             const { sent, fetcher } = fakePayments(offer(), answer);
             await payer(fetcher).pay(step, 50_000);
             expect(sent, String(i)).toHaveLength(2);
@@ -318,7 +318,7 @@ describe("key payer", () => {
         const unpinned = { ...allowed, allowancePayTo: [] };
         expect(await payer(open.fetcher, unpinned).pay(budget, 50_000)).toEqual({ kind: "paid" });
         // Time still pays either set when allowances are on
-        ledger = new SpendLedger({ path: join(dir, "spend-time.json") });
+        ledger = new SpendLedger({ dir: join(dir, "spend-time") });
         const time = fakePayments({ ...offer(), payTo: allowanceWallet });
         expect(await payer(time.fetcher, allowed).pay(step, 50_000)).toEqual({ kind: "paid" });
     });
@@ -349,7 +349,7 @@ describe("key payer", () => {
                 origin,
                 settings,
                 signer: async () => key,
-                ledger: new SpendLedger({ path: join(dir, `spend-${i}.json`) }),
+                ledger: new SpendLedger({ dir: join(dir, `spend-${i}`) }),
                 log: stderrLog((l) => lines.push(l)),
                 fetch: fetcher,
             });
