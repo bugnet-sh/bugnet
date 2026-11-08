@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="320 264 608 693">
-  <g fill="#52ffb8">
-    <path d="M 556 415 C 546 364 514 330 460 309" fill="none" stroke="#52ffb8" stroke-width="31" stroke-linecap="round"/>
-    <path d="M 694 415 C 704 364 736 330 790 309" fill="none" stroke="#52ffb8" stroke-width="31" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" role="img" aria-label="Bugnet">
+  <rect width="1254" height="1254" fill="#0A0A0A"/>
+  <g fill="#EDEDED">
+    <path d="M 556 415 C 546 364 514 330 460 309" fill="none" stroke="#EDEDED" stroke-width="31" stroke-linecap="round"/>
+    <path d="M 694 415 C 704 364 736 330 790 309" fill="none" stroke="#EDEDED" stroke-width="31" stroke-linecap="round"/>
     <circle cx="440" cy="307" r="43"/>
     <circle cx="810" cy="307" r="43"/>
     <path fill-rule="evenodd" d="M 446 563 L 446 534 C 446 455 524 393 624 393 C 724 393 802 455 802 534 L 802 563 L 624 640 Z M 573 499 A 31 31 0 1 0 511 499 A 31 31 0 1 0 573 499 Z M 737 499 A 31 31 0 1 0 675 499 A 31 31 0 1 0 737 499 Z"/>
