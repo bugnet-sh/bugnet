@@ -39,6 +39,9 @@ function choosePayer(command: Serve, log: Log): OrderPayer | null {
         ledger: new SpendLedger({ path: join(bugnetDir(home), "spend.json") }),
         log,
     });
+    if (command.signer.keyPaysAllowances) {
+        log.info("wallet file pays x402 allowances too", { setting: "key_pays_allowances" });
+    }
     return routeAllowances(key, cli, command.signer.keyPaysAllowances);
 }
 
