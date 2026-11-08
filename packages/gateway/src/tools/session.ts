@@ -102,15 +102,18 @@ export function endedAnswer(
           ? `The sandbox has ended because ${causeWords[reason]}.`
           : "The sandbox has ended.";
     const tell = stopped ? "it is stopped" : "it has ended";
+    // The router sets refundable on a provider failure or an operator end, never on a user's stop
+    const refund = p.refundable ? " Its unused time will be refunded to the wallet that paid." : "";
     const url = sessionLink(deps, p.sessionUrl, handle);
     return {
         lines: [
             `${lead} It ended at ${whenText(at)} after ${usedLong(used)} of use, and ` +
-                `everything in it was deleted.${total} Tell the user ${tell}.`,
+                `everything in it was deleted.${total}${refund} Tell the user ${tell}.`,
             ...(url ? [summaryLine(url, at)] : []),
         ],
         fields: {
             ...(paid > 0n ? { paidUsd: usd(paid) } : {}),
+            ...(p.refundable ? { refundable: true } : {}),
             ...(url
                 ? {
                       sessionUrl: url,

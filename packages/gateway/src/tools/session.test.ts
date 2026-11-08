@@ -161,6 +161,26 @@ describe("bugnet_status", () => {
         });
     }
 
+    it("says the unused time will be refunded when the router marks the end refundable", async () => {
+        const client = await connect({
+            getPlacement: () => ({
+                placement: ended({
+                    terminationReason: "provider_failed",
+                    refundable: true,
+                    paidMicros: 50_000n,
+                    sessionUrl: "",
+                }),
+            }),
+        });
+        const r = await callTool<Record<string, unknown>>(client, "bugnet_status", {
+            handle: testHandle,
+        });
+        expect(r.text).toBe(
+            `The sandbox has ended because its host failed. It ended at ${whenText} after 1 min 30 s of use, and everything in it was deleted. It cost $0.05 USDC in total. Its unused time will be refunded to the wallet that paid. Tell the user it has ended.`,
+        );
+        expect(r.structured.refundable).toBe(true);
+    });
+
     it("uses the stop line for a stopped sandbox", async () => {
         const client = await connect({
             getPlacement: () => ({ placement: ended({ terminationReason: "stop" }) }),
