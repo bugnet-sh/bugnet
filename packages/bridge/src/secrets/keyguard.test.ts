@@ -11,43 +11,84 @@ function keyBytes(): Uint8Array {
     return bytes;
 }
 
-it("spots a Solana key in every encoding and leaves ordinary tokens alone", () => {
-    const k = keyBytes();
-    expect(looksLikeSolanaKey(getBase58Decoder().decode(k))).toBe(true);
-    expect(looksLikeSolanaKey(`[${Array.from(k).join(", ")}]`)).toBe(true);
-    expect(looksLikeSolanaKey("0x" + Buffer.from(k).toString("hex"))).toBe(true);
-    expect(looksLikeSolanaKey(Buffer.from(k).toString("base64"))).toBe(true);
-    expect(looksLikeSolanaKey(Array(12).fill("abandon").join(" "))).toBe(true);
-    expect(looksLikeSolanaKey("hf_" + "a".repeat(34))).toBe(false);
-    expect(looksLikeSolanaKey("sk-proj-" + "Ab1".repeat(30))).toBe(false);
-});
+function forms(bytes: Uint8Array): string[] {
+    const b = Buffer.from(bytes);
+    return [
+        getBase58Decoder().decode(bytes),
+        b.toString("base64"),
+        b.toString("base64").replace(/=+$/, ""),
+        b.toString("base64url"),
+        `[${Array.from(bytes).join(", ")}]`,
+        `[${Array.from(bytes).join(",")}]`,
+        "0x" + b.toString("hex"),
+        "0X" + b.toString("hex").toUpperCase(),
+    ];
+}
 
-it("spots a 32-byte seed, a wallet export and a PEM or PKCS#8 key", () => {
+const ordinaryNames = ["API_URL", "NEXTAUTH_SECRET", "TREASURY_ADDRESS", "HF_TOKEN", ""];
+
+it("refuses every 64-byte form under any name", () => {
     const k = keyBytes();
-    const seed = k.subarray(0, 32);
-    const pem = generateKeyPairSync("ed25519").privateKey.export({ format: "pem", type: "pkcs8" });
-    const der = generateKeyPairSync("ed25519").privateKey.export({ format: "der", type: "pkcs8" });
-    for (const v of [
-        getBase58Decoder().decode(seed),
-        `[${Array.from(seed).join(",")}]`,
-        "0X" + Buffer.from(seed).toString("hex"),
-        "0x" + Buffer.from(k).toString("hex").toUpperCase(),
-        Buffer.from(seed).toString("base64"),
-        Buffer.from(seed).toString("base64url"),
-        Buffer.from(k).toString("base64url"),
-        JSON.stringify({ publicKey: "x", secretKey: Array.from(k) }),
-        JSON.stringify({ privateKey: getBase58Decoder().decode(k) }),
-        pem.toString(),
-        der.toString("base64"),
-    ]) {
+    for (const v of forms(k)) {
+        for (const n of [...ordinaryNames, "SOLANA_PRIVATE_KEY"]) {
+            expect(looksLikeSolanaKey(v, [n]), `${n} ${v.slice(0, 12)}`).toBe(true);
+        }
         expect(looksLikeSolanaKey(v), v.slice(0, 12)).toBe(true);
     }
 });
 
-it("lets common secrets through: a Stripe key, a Rails key base, a bare hex token", () => {
+it("refuses a wallet export, a PEM or PKCS#8 key and a seed phrase under any name", () => {
+    const k = keyBytes();
+    const pem = generateKeyPairSync("ed25519").privateKey.export({ format: "pem", type: "pkcs8" });
+    const der = generateKeyPairSync("ed25519").privateKey.export({ format: "der", type: "pkcs8" });
+    for (const v of [
+        JSON.stringify({ publicKey: "x", secretKey: Array.from(k) }),
+        JSON.stringify({ privateKey: getBase58Decoder().decode(k.subarray(0, 32)) }),
+        JSON.stringify({ secretKey: Array.from(k.subarray(0, 32)) }),
+        pem.toString(),
+        der.toString("base64"),
+        Array(12).fill("abandon").join(" "),
+        Array(24).fill("Zoo").join(" "),
+    ]) {
+        expect(looksLikeSolanaKey(v, ["API_URL"]), v.slice(0, 12)).toBe(true);
+    }
+});
+
+it("refuses a 32-byte form only under a wallet key name", () => {
+    const seed = keyBytes().subarray(0, 32);
+    for (const v of forms(seed)) {
+        for (const n of ordinaryNames) {
+            expect(looksLikeSolanaKey(v, [n]), `${n} ${v.slice(0, 12)}`).toBe(false);
+        }
+        for (const n of ["SOLANA_PRIVATE_KEY", "deployer_keypair", "WALLET_KEY"]) {
+            expect(looksLikeSolanaKey(v, ["HF_TOKEN", n]), `${n} ${v.slice(0, 12)}`).toBe(true);
+        }
+    }
+});
+
+it("lets a NEXTAUTH_SECRET and a Solana address through under ordinary names", () => {
+    // openssl rand -base64 32
+    const nextauth = Buffer.from(keyBytes().subarray(32)).toString("base64");
+    expect(nextauth).toHaveLength(44);
+    expect(looksLikeSolanaKey(nextauth, ["NEXTAUTH_SECRET"])).toBe(false);
+    const address = getBase58Decoder().decode(keyBytes().subarray(32));
+    for (const n of ["API_URL", "SOLANA_API_URL", "PAY_TO_ADDRESS"]) {
+        expect(looksLikeSolanaKey(address, [n]), n).toBe(false);
+    }
+    expect(looksLikeSolanaKey(nextauth, ["SOLANA_PRIVATE_KEY"])).toBe(true);
+    expect(looksLikeSolanaKey(address, ["SOLANA_PRIVATE_KEY"])).toBe(true);
+});
+
+it("lets common secrets through: a Stripe key, a Rails key base, bare hex", () => {
     const hex = (n: number) => Buffer.from(keyBytes().subarray(0, n)).toString("hex");
-    for (const v of ["sk_live_" + "51HxYzAbCdEfGhIjKlMnOpQr".repeat(4), hex(32), hex(64)]) {
-        expect(looksLikeSolanaKey(v), v).toBe(false);
+    for (const v of [
+        "sk_live_" + "51HxYzAbCdEfGhIjKlMnOpQr".repeat(4),
+        "hf_" + "a".repeat(34),
+        "sk-proj-" + "Ab1".repeat(30),
+        hex(32),
+        hex(64),
+    ]) {
+        expect(looksLikeSolanaKey(v, ["SECRET_KEY_BASE"]), v).toBe(false);
     }
     for (const n of ["STRIPE_SECRET_KEY", "CLERK_SECRET_KEY", "SECRET_KEY", "SECRET_KEY_BASE"]) {
         expect(looksLikeKeyName(n), n).toBe(false);

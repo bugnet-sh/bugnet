@@ -13,31 +13,36 @@ export function looksLikeKeyName(name: string): boolean {
     return keyNames.test(name);
 }
 
-// An Ed25519 seed is 32 bytes, a Solana keypair 64
-const keyLength = (n: number) => n === 32 || n === 64;
-
-function base58Key(v: string): boolean {
-    if (!/^[1-9A-HJ-NP-Za-km-z]{32,90}$/.test(v)) return false;
+// Each returns the byte length a value decodes to: 64 is a Solana keypair, 32 an Ed25519 seed
+// or, just as often, a public address or a random secret such as openssl rand -base64 32
+function base58Length(v: string): number | undefined {
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,90}$/.test(v)) return undefined;
     try {
-        return keyLength(getBase58Encoder().encode(v).length);
+        return getBase58Encoder().encode(v).length;
     } catch {
-        return false;
+        return undefined;
     }
 }
 
-function base64Key(v: string): boolean {
+function base64Length(v: string): number | undefined {
     const m = /^([A-Za-z0-9+/]+|[A-Za-z0-9_-]+)(={0,2})$/.exec(v);
-    if (!m) return false;
+    if (!m) return undefined;
     const body = m[1] as string;
-    if (body.length !== 43 && body.length !== 86) return false;
-    return keyLength(Buffer.from(body, /[-_]/.test(body) ? "base64url" : "base64").length);
+    if (body.length !== 43 && body.length !== 86) return undefined;
+    return Buffer.from(body, /[-_]/.test(body) ? "base64url" : "base64").length;
 }
 
-function byteArray(v: string): boolean {
+function byteArrayLength(v: string): number | undefined {
     const m = /^\[([\d\s,]*)\]$/.exec(v);
-    if (!m) return false;
+    if (!m) return undefined;
     const parts = (m[1] as string).split(",").map((p) => p.trim());
-    return keyLength(parts.length) && parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255);
+    if (!parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255)) return undefined;
+    return parts.length;
+}
+
+function hexLength(v: string): number | undefined {
+    const m = /^0x([0-9a-f]+)$/i.exec(v);
+    return m ? (m[1] as string).length / 2 : undefined;
 }
 
 // A wallet export such as {"publicKey": ..., "secretKey": [...]}
@@ -60,18 +65,22 @@ function seedPhrase(v: string): boolean {
     );
 }
 
-// A bare 64-hex value is left alone: API tokens take that form far more often than keys do
-export function looksLikeSolanaKey(value: string): boolean {
+// A 64-byte form is always refused. A 32-byte form is refused only under a wallet key name,
+// since public addresses and random secrets share it. Bare hex is left alone: API tokens take
+// that form far more often than keys do
+export function looksLikeSolanaKey(value: string, names: readonly string[] = []): boolean {
     const v = value.trim();
-    return (
+    if (
         v.startsWith("-----BEGIN") ||
         // An Ed25519 PKCS#8 key in DER, base64 without the PEM lines
         v.startsWith("MC4CAQAwBQYDK2Vw") ||
-        /^0x(?:[0-9a-f]{64}|[0-9a-f]{128})$/i.test(v) ||
-        byteArray(v) ||
         keyObject(v) ||
-        base58Key(v) ||
-        base64Key(v) ||
         seedPhrase(v.toLowerCase())
+    ) {
+        return true;
+    }
+    const walletName = names.some(looksLikeKeyName);
+    return [hexLength(v), byteArrayLength(v), base58Length(v), base64Length(v)].some(
+        (n) => n === 64 || (n === 32 && walletName),
     );
 }

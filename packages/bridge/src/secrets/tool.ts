@@ -429,7 +429,7 @@ export async function secretFromEnv(
     const signal = ctx.mcpReq.signal;
     try {
         const value = await readSource(checked, deps.sources, signal);
-        if (looksLikeSolanaKey(value)) {
+        if (looksLikeSolanaKey(value, [spec.name, sourceName])) {
             deps.log.warn("secret refused", {
                 handle: handleTag(args.handle),
                 reason: "wallet_key",

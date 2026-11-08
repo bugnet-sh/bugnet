@@ -249,6 +249,16 @@ describe("a wallet key", () => {
         expect(res.raw).not.toContain(encoded);
         expect(r.route.opened).toEqual([]);
     });
+
+    it("lets a 32-byte value such as a public address through under an ordinary name", async () => {
+        const jwk = generateKeyPairSync("ed25519").privateKey.export({ format: "jwk" });
+        const address = getBase58Decoder().decode(Buffer.from(jwk.x as string, "base64url"));
+        const r = await rig({ era: "modern", elicit: accept }, startRouter, { HF_TOKEN: address });
+        await startSandbox(r);
+        const res = await call(r, hf());
+        expect(res.isError).toBe(false);
+        expect(r.route.opened).toHaveLength(1);
+    });
 });
 
 describe("a client that cannot ask the user", () => {
