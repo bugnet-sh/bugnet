@@ -16,6 +16,8 @@ import {
     payTimeoutMs,
     priceMicros,
     progressEveryMs,
+    solanaMainnet,
+    usdcMint,
     usdText,
     type PayCliOptions,
 } from "./pay.ts";
@@ -27,7 +29,16 @@ const orderId = "ord_abcdefghijklmnopqrstuvwxyz";
 function stepResult(over: Record<string, unknown> = {}, isError = true): CallToolResult {
     const required = {
         x402Version: 2,
-        accepts: [{ scheme: "exact", amount: "50000", payTo: "P", extra: { memo: orderId } }],
+        accepts: [
+            {
+                scheme: "exact",
+                network: solanaMainnet,
+                asset: usdcMint,
+                amount: "50000",
+                payTo: "P",
+                extra: { memo: orderId },
+            },
+        ],
     };
     return {
         isError,
@@ -117,7 +128,16 @@ describe("pay helpers", () => {
 
     it("reads a bugnet_x402_budget payment step", () => {
         const due = stepResult({
-            accepts: [{ scheme: "exact", amount: "5003000", payTo: "P", extra: { memo: orderId } }],
+            accepts: [
+                {
+                    scheme: "exact",
+                    network: solanaMainnet,
+                    asset: usdcMint,
+                    amount: "5003000",
+                    payTo: "P",
+                    extra: { memo: orderId },
+                },
+            ],
         });
         expect(paymentStep("bugnet_x402_budget", due)).toEqual({
             tool: "bugnet_x402_budget",
@@ -168,10 +188,29 @@ describe("pay helpers", () => {
         ).toBe("path");
         const otherMemo = { ...required, accepts: [{ amount: "50000", extra: { memo: "ord_x" } }] };
         expect(payRefusal(step, origin, 50_000, otherMemo)).toBe("memo");
-        const noMemo = { ...required, accepts: [{ amount: "50000" }] };
+        const noMemo = {
+            ...required,
+            accepts: [{ amount: "50000", network: solanaMainnet, asset: usdcMint }],
+        };
         expect(payRefusal(step, origin, 50_000, noMemo)).toBeNull();
         expect(payRefusal(step, origin, 49_999, required)).toBe("price");
         expect(payRefusal(step, origin, null, required)).toBe("price");
+    });
+
+    it("refuses a link that does not ask for USDC on Solana mainnet, as pay may run without limits", () => {
+        const step = paymentStep("bugnet_start", stepResult())!;
+        const origin = "https://pay.bugnet.sh";
+        const ask = (accept: Record<string, unknown>) =>
+            payRefusal(step, origin, 50_000, { x402Version: 2, accepts: [accept] });
+        const base = { amount: "50000", network: solanaMainnet, asset: usdcMint };
+        expect(ask(base)).toBeNull();
+        expect(ask({ ...base, network: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1" })).toBe(
+            "network",
+        );
+        expect(ask({ ...base, asset: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB" })).toBe(
+            "network",
+        );
+        expect(ask({ amount: "50000" })).toBe("network");
     });
 
     it("finds the answer body in pay's curl text", () => {
@@ -244,6 +283,20 @@ describe("PayCli", () => {
         expect(record.capabilities).toEqual({});
         expect(lines.map((l) => JSON.parse(l).msg)).toEqual(["pay started", "pay finished"]);
         expect(lines.join("\n")).not.toContain(step.claim);
+    });
+
+    it("pays again without its limits when pay cannot read the Solana network, and only then", async () => {
+        const r = await run({ BUGNET_FAKE_PAY_NETWORK_BUG: "1" });
+        expect(r.outcome).toEqual({ kind: "paid" });
+        expect(r.starts).toBe(2);
+        expect(r.record.argv).toEqual(["mcp"]);
+        expect(r.lines.map((l) => JSON.parse(l).msg)).toEqual([
+            "pay started",
+            "pay retried without its limits",
+            "pay finished",
+        ]);
+        const other = await run({ BUGNET_FAKE_PAY_ANSWER: "Touch ID was cancelled" });
+        expect([other.outcome.kind, other.starts]).toEqual(["unknown", 1]);
     });
 
     it("uses a tool named pay.curl", async () => {

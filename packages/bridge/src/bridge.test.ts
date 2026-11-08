@@ -21,7 +21,7 @@ import { CLIENT_CAPABILITIES_META_KEY, inputRequired } from "@modelcontextprotoc
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { linkState, lostLinkText, paymentStepResult } from "./linkpay.ts";
 import { afterPaymentText, spentOrderText, unpaidText, type PublicOrderState } from "./orders.ts";
-import type { PayOutcome, PaymentStep } from "./pay.ts";
+import { solanaMainnet, usdcMint, type PayOutcome, type PaymentStep } from "./pay.ts";
 import type { X402PaymentRequired } from "./payment.ts";
 import type { CallOptions, RemoteResult, RemoteTools } from "./remote.ts";
 import type { BridgePay } from "./bridge.ts";
@@ -281,7 +281,16 @@ async function budgetGateway(
 function stepResult(over: Record<string, unknown> = {}): CallToolResult {
     const due = {
         x402Version: 2,
-        accepts: [{ scheme: "exact", amount: "50000", payTo: "P", extra: { memo: standInOrder } }],
+        accepts: [
+            {
+                scheme: "exact",
+                network: solanaMainnet,
+                asset: usdcMint,
+                amount: "50000",
+                payTo: "P",
+                extra: { memo: standInOrder },
+            },
+        ],
     };
     return {
         isError: true,
@@ -963,6 +972,8 @@ describe("paying with pay, the gateway stand-in", () => {
                 accepts: [
                     {
                         scheme: "exact",
+                        network: solanaMainnet,
+                        asset: usdcMint,
                         amount: "1003000",
                         payTo: "P",
                         extra: { memo: standInOrder },

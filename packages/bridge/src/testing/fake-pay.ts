@@ -37,9 +37,14 @@ serveStdio(() => {
         );
         const delay = Number(process.env.BUGNET_FAKE_PAY_DELAY_MS ?? 0);
         if (delay > 0) await new Promise((r) => setTimeout(r, delay));
-        const text =
-            process.env.BUGNET_FAKE_PAY_ANSWER ??
-            JSON.stringify({ paid: true, orderId: url.split("/").at(-1) });
+        // pay 0.29.0 cannot read the CAIP-2 Solana network once any limit flag is set
+        const networkBug =
+            process.env.BUGNET_FAKE_PAY_NETWORK_BUG === "1" && process.argv.length > 3;
+        const text = networkBug
+            ? "Pay curl failed: Payment rejected: MCP permission denied: invalid Solana network " +
+              "`solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`"
+            : (process.env.BUGNET_FAKE_PAY_ANSWER ??
+              JSON.stringify({ paid: true, orderId: url.split("/").at(-1) }));
         return { content: [{ type: "text", text }] };
     });
     return server;

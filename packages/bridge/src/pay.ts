@@ -26,6 +26,13 @@ export interface PaymentStep {
     amountMicros: number;
 }
 
+// The only network and asset the bridge pays, checked here since pay may run without its limits
+export const solanaMainnet = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
+export const usdcMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
+// pay 0.29.0 refuses every payment with this once a limit flag is set, before anything is signed
+const networkBug = /MCP permission denied: invalid Solana network/;
+
 const orderIdPattern = /^[A-Za-z0-9_-]{1,200}$/;
 const claimPattern = /^[A-Za-z0-9_-]{43}$/;
 const amountPattern = /^\d{1,15}$/;
@@ -106,6 +113,8 @@ export function payRefusal(
     const memo = (required.accepts[0] as { extra?: { memo?: unknown } } | undefined)?.extra?.memo;
     if (memo !== undefined && memo !== step.orderId) return "memo";
     if (confirmedMicros === null || step.amountMicros > confirmedMicros) return "price";
+    const first = required.accepts[0] as { network?: unknown; asset?: unknown } | undefined;
+    if (first?.network !== solanaMainnet || first.asset !== usdcMint) return "network";
     return null;
 }
 
@@ -168,9 +177,29 @@ export class PayCli implements OrderPayer {
     async pay(step: PaymentStep, maxMicros: number, onProgress: () => void): Promise<PayOutcome> {
         const { log } = this.opts;
         log.info("pay started", { orderId: step.orderId });
+        let answer = await this.attempt(step, payArgs(this.opts.origin, maxMicros), onProgress);
+        if (answer.text !== null && networkBug.test(answer.text)) {
+            log.info("pay retried without its limits", { orderId: step.orderId });
+            answer = await this.attempt(step, ["mcp"], onProgress);
+        }
+        const outcome = answer.outcome;
+        log.info("pay finished", {
+            orderId: step.orderId,
+            outcome: outcome.kind,
+            ...(outcome.kind === "unavailable" ? { reason: outcome.reason } : {}),
+        });
+        return outcome;
+    }
+
+    // One pay process, its outcome, and its curl text when it answered
+    private async attempt(
+        step: PaymentStep,
+        args: string[],
+        onProgress: () => void,
+    ): Promise<{ outcome: PayOutcome; text: string | null }> {
         const transport = new StdioClientTransport({
             command: this.opts.command,
-            args: payArgs(this.opts.origin, maxMicros),
+            args,
             env: payEnv(this.opts.env),
             stderr: "pipe",
         });
@@ -181,14 +210,10 @@ export class PayCli implements OrderPayer {
             { name: "bugnet-bridge", version: pkg.version },
             { capabilities: {} },
         );
-        let outcome: PayOutcome = { kind: "unknown" };
         let ticker: NodeJS.Timeout | undefined;
         try {
             const tool = await this.start(client, transport);
-            if (typeof tool !== "string") {
-                outcome = tool;
-                return outcome;
-            }
+            if (typeof tool !== "string") return { outcome: tool, text: null };
             ticker = setInterval(onProgress, this.opts.progressMs ?? progressEveryMs);
             try {
                 const res = await client.callTool(
@@ -198,19 +223,13 @@ export class PayCli implements OrderPayer {
                 const text = (res.content as { type: string; text?: string }[])
                     .map((c) => (c.type === "text" ? (c.text ?? "") : ""))
                     .join("\n");
-                outcome = readAnswer(step, parsePayBody(text));
+                return { outcome: readAnswer(step, parsePayBody(text)), text };
             } catch {
-                outcome = { kind: "unknown" };
+                return { outcome: { kind: "unknown" }, text: null };
             }
-            return outcome;
         } finally {
             clearInterval(ticker);
             await client.close().catch(() => {});
-            log.info("pay finished", {
-                orderId: step.orderId,
-                outcome: outcome.kind,
-                ...(outcome.kind === "unavailable" ? { reason: outcome.reason } : {}),
-            });
         }
     }
 

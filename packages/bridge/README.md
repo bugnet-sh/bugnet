@@ -127,10 +127,14 @@ When `bugnet_start`, `bugnet_extend` or `bugnet_x402_budget` answers with a paym
 bridge pays it:
 
 1. It checks that the pay link is `pay_origin` followed by `/o/` and the order, that the payment
-   names that order, and that the amount is at most the `confirmPriceUsd` you approved.
+   names that order, that it asks for USDC on Solana mainnet, and that the amount is at most the
+   `confirmPriceUsd` you approved.
 2. It starts `pay mcp --allow-origin https://pay.bugnet.sh --allow-network mainnet
 --max-payment <that price>`, with every `PAY_` variable removed and without letting pay ask
-   through your client, so pay asks for Touch ID or pays nothing.
+   through your client, so pay asks for Touch ID or pays nothing. pay 0.29.0 refuses every
+   payment once these limits are set, because it cannot read the Solana network's name. When it
+   answers that, the bridge starts pay once more without the limits, relying on its own checks
+   above. Touch ID still approves the payment.
 3. Once pay has paid, it calls the tool again with the order and its claim, and you get the
    sandbox, the time or the x402 allowance.
 
