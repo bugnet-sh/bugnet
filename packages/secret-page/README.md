@@ -15,13 +15,15 @@ pnpm --filter @bugnet/secret-page build
 
 The build writes `dist/`:
 
-| File              | Served as                            |
-| ----------------- | ------------------------------------ |
-| `index.html`      | every `GET /l/*`                     |
-| `assets/page.js`  | `GET /assets/page.js`                |
-| `assets/page.css` | `GET /assets/page.css`               |
-| `assets/icon.svg` | `GET /assets/icon.svg`               |
-| `headers.txt`     | not served, the headers listed below |
+| File                                                                                                  | Served as                                               |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `index.html`                                                                                          | every `GET /l/*`                                        |
+| `assets/page.js`                                                                                      | `GET /assets/page.js`                                   |
+| `assets/page.css`                                                                                     | `GET /assets/page.css`                                  |
+| `assets/icon.svg`                                                                                     | `GET /assets/icon.svg`, `image/svg+xml`                 |
+| `assets/fonts/manrope-400.woff2`, `manrope-600.woff2`, `lexend-deca-200.woff2`, `obel-mono-400.woff2` | `GET /assets/fonts/<name>`, `font/woff2`                |
+| `assets/fonts/OFL-manrope.txt`, `OFL-lexend-deca.txt`, `OFL-obel-mono.txt`                            | `GET /assets/fonts/<name>`, `text/plain; charset=utf-8` |
+| `headers.txt`                                                                                         | not served, the headers listed below                    |
 
 `index.html` pins `page.js` and `page.css` by SHA-384, so the three files deploy together: a page
 from one build never runs a script from another.
@@ -37,7 +39,7 @@ Cache-Control: no-store
 Referrer-Policy: no-referrer
 X-Content-Type-Options: nosniff
 Cross-Origin-Opener-Policy: same-origin
-Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'
+Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'
 ```
 
 In `headers.txt`, each line is `Name: value`, and lines starting with `#` are comments. The

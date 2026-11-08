@@ -1,8 +1,8 @@
 /**
  * Builds the secret entry page into a static bundle for the secrets route's page_dir.
  *
- * The bundle is index.html, assets/page.js, assets/page.css and assets/icon.svg, plus
- * headers.txt, the response headers the route sends with every one of them (data-plane 8.4).
+ * The bundle is index.html, assets/page.js, assets/page.css, assets/icon.svg and the fonts with
+ * their licences under assets/fonts, plus headers.txt, the response headers the route sends with every one of them (data-plane 8.4).
  * The pinned sealing keys are built in, so neither the router nor the route can hand the page a
  * key of its own (data-plane 10.2).
  */
@@ -21,6 +21,17 @@ const pageDir = join(here, "page");
 const require = createRequire(import.meta.url);
 
 export const headersFile = "headers.txt";
+
+// Each font and its licence, served under a fixed name
+export const fontFiles = [
+    "manrope-400.woff2",
+    "manrope-600.woff2",
+    "lexend-deca-200.woff2",
+    "obel-mono-400.woff2",
+    "OFL-manrope.txt",
+    "OFL-lexend-deca.txt",
+    "OFL-obel-mono.txt",
+].map((name) => `assets/fonts/${name}`);
 
 export interface BuildOptions {
     outdir: string;
@@ -114,6 +125,8 @@ export async function buildPage(opts: BuildOptions): Promise<BuildResult> {
         minify: true,
         write: false,
         logLevel: "silent",
+        // The font URLs stay as written, the route serves them
+        external: ["/assets/*"],
     });
     const js = script.outputFiles[0]?.contents;
     const css = style.outputFiles[0]?.contents;
@@ -122,6 +135,10 @@ export async function buildPage(opts: BuildOptions): Promise<BuildResult> {
     await writeFile(join(assets, "page.js"), js);
     await writeFile(join(assets, "page.css"), css);
     await copyFile(join(pageDir, "icon.svg"), join(assets, "icon.svg"));
+    await mkdir(join(assets, "fonts"), { recursive: true });
+    for (const file of fontFiles) {
+        await copyFile(join(pageDir, file.replace("assets/", "")), join(opts.outdir, file));
+    }
     await copyFile(join(pageDir, headersFile), join(opts.outdir, headersFile));
 
     // A half-deployed bundle then fails loudly instead of pairing a page with the wrong script
@@ -132,7 +149,14 @@ export async function buildPage(opts: BuildOptions): Promise<BuildResult> {
     await writeFile(join(opts.outdir, "index.html"), html);
 
     return {
-        files: ["index.html", "assets/page.js", "assets/page.css", "assets/icon.svg", headersFile],
+        files: [
+            "index.html",
+            "assets/page.js",
+            "assets/page.css",
+            "assets/icon.svg",
+            ...fontFiles,
+            headersFile,
+        ],
         scriptBytes: js.length,
     };
 }
