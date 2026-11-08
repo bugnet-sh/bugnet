@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SpendLedger } from "./spend.ts";
 
 let dir = "";
@@ -46,6 +46,28 @@ it("tells an order already reserved apart from one over the cap", async () => {
     expect(await ledger.spentToday()).toBe(3_000_000);
     // The order over the cap took its file back
     expect(await ledger.claim("ord_b", 2_000_000, 5_000_000)).toBe("reserved");
+});
+
+it("tries afresh after backing off while the day still has room, and only then", async () => {
+    const ledger = new SpendLedger({ dir: spend });
+    const total = vi.spyOn(ledger as unknown as { total(f: string): Promise<number> }, "total");
+    // Its first try saw another claim made at the same moment, which then backed off
+    total.mockResolvedValueOnce(6_000_000).mockResolvedValueOnce(0);
+    expect(await ledger.claim("ord_a", 3_000_000, 5_000_000)).toBe("reserved");
+    expect(total).toHaveBeenCalledTimes(3);
+    // The other claim stayed, so it looks once and gives up
+    total.mockClear().mockResolvedValueOnce(6_000_000).mockResolvedValueOnce(3_000_000);
+    expect(await ledger.claim("ord_b", 3_000_000, 5_000_000)).toBe("over_cap");
+    expect(total).toHaveBeenCalledTimes(2);
+    total.mockRestore();
+    expect(await ledger.spentToday()).toBe(3_000_000);
+    const once = new SpendLedger({ dir: spend, retries: 0 });
+    const first = vi.spyOn(once as unknown as { total(f: string): Promise<number> }, "total");
+    first.mockResolvedValueOnce(6_000_000);
+    expect(await once.claim("ord_c", 1, 5_000_000)).toBe("over_cap");
+    expect(first).toHaveBeenCalledTimes(1);
+    first.mockRestore();
+    expect(await ledger.spentToday()).toBe(3_000_000);
 });
 
 it("starts a new UTC day from nothing and frees a reservation that moved no money", async () => {

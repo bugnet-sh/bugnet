@@ -22,6 +22,8 @@ export interface SpendLedgerOptions {
     now?: () => number;
     // What a file that cannot be read counts as, so it must be at least any one payment
     unreadableMicros?: number;
+    // Fresh tries after a claim backs off while the day still has room
+    retries?: number;
 }
 
 export type Reservation = "reserved" | "already_reserved" | "over_cap";
@@ -87,12 +89,15 @@ async function create(path: string, text: string): Promise<void> {
     await fh.close();
 }
 
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 const isMissing = (e: unknown) => (e as NodeJS.ErrnoException).code === "ENOENT";
 
 export class SpendLedger {
     private readonly dir: string;
     private readonly now: () => number;
     private readonly unreadableMicros: number;
+    private readonly retries: number;
     // This process's own reservations, the only files settle touches
     private readonly mine = new Map<string, { day: string; micros: number }>();
 
@@ -100,6 +105,7 @@ export class SpendLedger {
         this.dir = opts.dir;
         this.now = opts.now ?? Date.now;
         this.unreadableMicros = opts.unreadableMicros ?? paymentCeilingUsd * 1_000_000;
+        this.retries = opts.retries ?? 4;
     }
 
     private day(): string {
@@ -163,7 +169,9 @@ export class SpendLedger {
         return sum;
     }
 
-    // Holds the amount against today's cap before anything is signed
+    // Holds the amount against today's cap before anything is signed. A claim that backed off
+    // looks again after a short random wait and tries afresh while the day, without it, still
+    // has room: claims made at the same moment see each other and could otherwise all back off
     async claim(orderId: string, micros: number, dailyCapMicros: number): Promise<Reservation> {
         checkOrder(orderId);
         if (!Number.isSafeInteger(micros) || micros < 0 || micros > this.unreadableMicros) {
@@ -171,6 +179,23 @@ export class SpendLedger {
         }
         const day = this.day();
         const folder = await this.folder(day);
+        for (let attempt = 0; ; attempt++) {
+            const result = await this.tryClaim(folder, orderId, micros, dailyCapMicros);
+            if (result === "reserved") this.mine.set(orderId, { day, micros });
+            if (result !== "over_cap" || attempt === this.retries) return result;
+            await wait(2 + Math.random() * 8 * (attempt + 1));
+            if ((await this.total(folder)) + micros > dailyCapMicros) return "over_cap";
+        }
+    }
+
+    // Each try is whole on its own: the file is made first, then every file of the day is summed,
+    // so of two tries the later to make its file always sees the other
+    private async tryClaim(
+        folder: string,
+        orderId: string,
+        micros: number,
+        dailyCapMicros: number,
+    ): Promise<Reservation> {
         const file = join(folder, nameOf(orderId));
         try {
             await create(file, this.body(orderId, micros, "reserved"));
@@ -189,7 +214,6 @@ export class SpendLedger {
             await unlink(file).catch(() => {});
             return "over_cap";
         }
-        this.mine.set(orderId, { day, micros });
         return "reserved";
     }
 
