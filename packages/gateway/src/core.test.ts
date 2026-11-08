@@ -290,6 +290,15 @@ describe("recommend", () => {
         expect(recommend(pkgs, "inference", undefined)?.pkg.id).toBe("l30");
     });
 
+    it("picks the longest package when none lasts the expected time", () => {
+        const short = [pkg("a1", 10, 1, 1024), pkg("a10", 50, 10, 1024)];
+        expect(recommend(short, "serve", undefined)).toEqual({
+            pkg: short[1],
+            why: "it is the longest package, and none lasts 20 min, so extend it when needed",
+        });
+        expect(recommend(short, "script", 30)?.pkg.id).toBe("a10");
+    });
+
     it("gives the length as the reason when every long enough package has the same memory", () => {
         const same = [pkg("a1", 10, 1, 1024), pkg("a10", 50, 10, 1024)];
         expect(recommend(same, "build", 5)).toEqual({

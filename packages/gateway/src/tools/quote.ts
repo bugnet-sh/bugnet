@@ -154,7 +154,9 @@ export function recommend(
     const minutes = expectedMinutes ?? (heavy ? 20 : 10);
     const byPrice = [...pkgs].sort((a, b) => a.priceMicros - b.priceMicros);
     const longEnough = byPrice.filter((p) => p.minutes >= minutes);
-    const pool = longEnough.length > 0 ? longEnough : byPrice;
+    const longest = Math.max(...byPrice.map((p) => p.minutes));
+    // Short of a package that lasts, the longest one leaves the most time before an extension
+    const pool = longEnough.length > 0 ? longEnough : byPrice.filter((p) => p.minutes === longest);
     // Memory is a reason only when the packages that last long enough differ in it
     if (heavy && new Set(pool.map((p) => p.memoryMib)).size > 1) {
         const biggest = Math.max(...pool.map((p) => p.memoryMib));
@@ -165,7 +167,7 @@ export function recommend(
     const why =
         longEnough.length > 0
             ? `it is the cheapest package that lasts ${minutes} min`
-            : `no package lasts ${minutes} min, so extend it when needed`;
+            : `it is the longest package, and none lasts ${minutes} min, so extend it when needed`;
     return { pkg, why };
 }
 
