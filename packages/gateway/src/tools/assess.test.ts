@@ -559,6 +559,38 @@ describe("bugnet_assess with the router's estimator", () => {
         expect(busy.text).toMatch(/^No package can start right now\. Try again in a minute\.$/m);
     });
 
+    it("keeps the sandbox summary when open packages are only short on time", async () => {
+        const short = (id: string) => ({
+            ...option(id, 50_000n, 0, 4096),
+            fits: false,
+            shortOn: [Dimension.MINUTES],
+        });
+        const cpuOnly: Assessment = {
+            ...assessment,
+            needs: { gpu: false, minMemoryGiB: null, minDiskGiB: null, workload: "serve" },
+            fit: { level: "unknown", findings: [] },
+        };
+        const { client } = await connect(
+            {
+                estimate: () => ({
+                    options: [short("a"), short("b")],
+                    basis: EstimateBasis.SIGNALS,
+                    recommendedPackageId: "",
+                }),
+            },
+            {},
+            cpuOnly,
+        );
+        const r = await callTool<{ assessment: Assessment }>(client, "bugnet_assess", {
+            task: "Run this dev server and give me a link",
+        });
+        expect(r.structured.assessment.summary).toBe(cpuOnly.summary);
+        expect(r.text).not.toMatch(/can start right now/);
+        expect(r.text).toMatch(
+            /^No package fits these needs, each is short on time\. The 2 open packages are in the quote\.$/m,
+        );
+    });
+
     it("is limited per client address before any source is read", async () => {
         const seen: { input?: unknown } = {};
         const assessor: Assessor = {

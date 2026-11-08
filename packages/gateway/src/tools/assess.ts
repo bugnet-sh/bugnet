@@ -137,9 +137,13 @@ function quoteLines(quote: BuiltQuote | null, opts: RenderOptions): string[] {
             `Recommended package: ${rec.packageId}${size}, ${rec.priceUsd} USDC${total}${why}.`,
         );
         if (!rec.why && q.reasons.length > 0) lines.push(`Why: ${q.reasons.join(". ")}.`);
+    } else if (open.length > 0 && !q.largeEnough) {
+        lines.push(`No package is large enough, ${open.length} others are in the quote.`);
     } else if (open.length > 0) {
-        const why = q.largeEnough ? "fits these needs" : "is large enough";
-        lines.push(`No package ${why}, ${open.length} others are in the quote.`);
+        const common = open.map((p) => p.shortOn).reduce((a, b) => a.filter((d) => b.includes(d)));
+        const short = common.length > 0 ? `, each is short on ${common.join(" and ")}` : "";
+        const ones = open.length === 1 ? "1 open package is" : `${open.length} open packages are`;
+        lines.push(`No package fits these needs${short}. The ${ones} in the quote.`);
     } else {
         lines.push(quote.headline);
     }
@@ -192,6 +196,13 @@ export function tooLargeSummary(a: Assessment): string {
         "so a smaller or quantised variant is the way to run it.";
     if (fit && a.risk.level !== "high") return `${sentence(fit.title)} ${tail}`;
     return `${withoutSandboxClaim(a.summary)} ${tail}`;
+}
+
+// An open package that only lasts too short can still run the work, so the sandbox offer stands
+function onlyShortOnTime(quote: BuiltQuote): boolean {
+    return quote.structured.packages.some(
+        (p) => p.available && p.shortOn.length > 0 && p.shortOn.every((d) => d === "time"),
+    );
 }
 
 // For work that fits a package Bugnet sells but none can start now, such as GPU work without a GPU class
@@ -347,7 +358,7 @@ export const registerAssessTool: Register = (server, deps) => {
                 const sized = n.minMemoryGiB !== null || n.minDiskGiB !== null;
                 if (!quote.structured.largeEnough && sized) {
                     assessment = { ...assessment, summary: tooLargeSummary(assessment) };
-                } else if (!quote.structured.recommended) {
+                } else if (!quote.structured.recommended && !onlyShortOnTime(quote)) {
                     const notOpen = needsNotOpen(quote.structured.packages);
                     assessment = {
                         ...assessment,
