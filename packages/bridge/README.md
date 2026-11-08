@@ -195,6 +195,4 @@ secrets. The rest of Bugnet's security model, and what Bugnet can and cannot see
 
 ## License
 
-<!-- Waits on founder decision 18, which picks the license -->
-
-License: to be announced.
+Licensed under the [Apache License 2.0](../../LICENSE).

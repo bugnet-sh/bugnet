@@ -1,5 +1,6 @@
 {
     "name": "bugnet-gateway",
+    "license": "Apache-2.0",
     "private": true,
     "type": "module",
     "packageManager": "pnpm@12.6.0",

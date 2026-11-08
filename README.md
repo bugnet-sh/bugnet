@@ -546,6 +546,4 @@ Report security problems privately, as [SECURITY.md](SECURITY.md) says.
 
 ## License
 
-<!-- Waits on founder decision 18, which picks the license -->
-
-License: to be announced.
+Bugnet is licensed under the [Apache License 2.0](LICENSE).

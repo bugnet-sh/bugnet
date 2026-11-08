@@ -350,6 +350,5 @@ by hand: `node_modules/.bin/tsx packages/gateway/scripts/x402-crawl.ts -config c
 
 ## License
 
-Contributions are accepted under the repository's license, which is still to be announced.
-
-<!-- PENDING: waits on founder decision 18, which picks the license and whether contributors sign anything -->
+Contributions are accepted under the repository's license, the [Apache License 2.0](LICENSE). As
+its section 5 says, what you submit is licensed under the same terms, so there is nothing to sign.

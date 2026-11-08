@@ -2,6 +2,7 @@
     "name": "bugnet",
     "displayName": "Bugnet",
     "version": "0.1.0",
+    "license": "Apache-2.0",
     "description": "Run untrusted or heavy software in disposable cloud Linux sandboxes instead of on your machine, paid per run in USDC on Solana",
     "author": { "name": "Bugnet" },
     "keywords": ["sandbox", "untrusted-code", "ai-models", "gpu", "x402", "solana"]
