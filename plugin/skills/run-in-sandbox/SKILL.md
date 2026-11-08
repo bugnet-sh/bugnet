@@ -69,8 +69,8 @@ such separation.
    $1.003 now, including Bugnet's one-time $0.003 fee. Unspent money of $0.01 or more comes back
    when the sandbox ends." Before start, add the package price. Suggest $1.00 unless the user
    asks for another amount.
-3. Before start, pass the service in `bugnet_start`'s `x402`; after start, call
-   `bugnet_x402_budget`. Pass the service line, and the total you named as `confirmPriceUsd`.
+3. Before start, pass the service in `bugnet_start`'s `x402`, from a quote with
+   `needs: ["secrets"]`; after start, call `bugnet_x402_budget`. Pass the service line, and the total you named as `confirmPriceUsd`.
 4. If the result says this is the wallet's first x402 allowance, show the user its sentence in
    your next message.
 5. Run the code with the env lines on every command. Edits in the sandbox are fine. No git commit
