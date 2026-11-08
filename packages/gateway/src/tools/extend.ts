@@ -32,7 +32,7 @@ import {
     claimAsked,
     claimInput,
     allowanceOrderError,
-    paidRetry,
+    memoRetry,
     paymentRequiredResult,
     refusalError,
     retryCall,
@@ -233,7 +233,8 @@ export const registerExtendTool: Register = (server, deps) => {
         async (args, ctx) => {
             try {
                 const payment = ctx.mcpReq._meta?.["x402/payment"] ?? args.payment;
-                const retried = paidRetry(args, payment, deps.config.x402.enabled);
+                const retried = memoRetry(args, payment, deps.config.x402.enabled);
+                const sentId = retried?.orderId ?? args.orderId;
                 const key = toolUseId(ctx);
                 const budget = new Budget(deps);
                 let request: OrderRequest;
@@ -324,7 +325,7 @@ export const registerExtendTool: Register = (server, deps) => {
                     } catch (e) {
                         throw (
                             orderCallLost("extend", "bugnet_extend", {
-                                orderId: args.orderId,
+                                orderId: sentId,
                                 claim: byClaim ? (args.claim as string) : null,
                                 retried: retried !== null,
                                 payment,
@@ -347,14 +348,14 @@ export const registerExtendTool: Register = (server, deps) => {
                 if (order.status === "payment_required") {
                     return paymentRequiredResult(order, {
                         tool: "bugnet_extend",
-                        ...(args.orderId ? { sentOrderId: args.orderId } : {}),
+                        ...(sentId ? { sentOrderId: sentId } : {}),
                         ...(args.claim ? { sentClaim: args.claim } : {}),
                         withHandle: true,
                     });
                 }
                 if (order.status === "refused") {
                     throw refusalError(order, "extend", "bugnet_extend", {
-                        ...(args.orderId ? { sentOrderId: args.orderId } : {}),
+                        ...(sentId ? { sentOrderId: sentId } : {}),
                         ...(args.claim ? { sentClaim: args.claim } : {}),
                         paymentSent: payment !== undefined,
                     });

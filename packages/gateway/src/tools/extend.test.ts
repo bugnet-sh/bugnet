@@ -692,6 +692,44 @@ describe("bugnet_extend", () => {
         expect(payments.abandoned).toEqual([]);
     });
 
+    // The first extension moved the deadline, so the same check may refuse a resend of its payment
+    it("answers an extension payment resent after it settled from the stored order", async () => {
+        let lifetimeLeft = true;
+        const payments = testPayments(undefined, { requirePayment: true });
+        const deps = testDeps({
+            config: testConfig("[x402]\nenabled = true\n"),
+            router: fakeRouter({
+                ...checked,
+                checkExtendPlacement: () => {
+                    if (!lifetimeLeft) {
+                        throw routerError(Code.FailedPrecondition, "EXCEEDS_LIFETIME");
+                    }
+                    return { placement: placement(), package: more };
+                },
+                extendPlacement: () => ({ placement: extended }),
+            }),
+            payments,
+        });
+        const client = await connectTools(deps);
+        const step = await callTool<{ orderId: string }>(client, "bugnet_extend", args());
+        const orderId = step.structured.orderId;
+        const payment = { x402Version: 2, accepted: { extra: { memo: orderId } } };
+        const key = { toolUseId: "toolu_resend_extend1" };
+        const first = await callTool(client, "bugnet_extend", { ...args(), payment }, key);
+        expect(first.isError).toBe(false);
+        lifetimeLeft = false;
+        const again = await callTool(client, "bugnet_extend", { ...args(), payment }, key);
+        expect(again.isError).toBe(false);
+        expect(again.structured).toEqual(expect.objectContaining({ orderId }));
+        const retry = {
+            orderId,
+            payment,
+            handleSha256: handleHash(testHandle),
+            idempotencyKey: key.toolUseId,
+        };
+        expect(payments.orders.slice(1)).toEqual([retry, retry]);
+    });
+
     it("refuses a paid order that starts a sandbox or is for another one", async () => {
         let applied = 0;
         const router = () =>
