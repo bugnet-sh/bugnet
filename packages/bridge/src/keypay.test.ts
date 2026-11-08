@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import {
     address,
     generateKeyPairSigner,
@@ -128,17 +128,34 @@ describe("key payment transaction", () => {
     });
 });
 
-// The live source, from BUGNET_PAYMENTS_DIR or a Payments checkout next to this repo, so a change
-// there fails here
-const paymentsBuild = resolve(
-    process.env.BUGNET_PAYMENTS_DIR ?? resolve(import.meta.dirname, "../../../../bugnet-payments"),
-    "src/x402/build.ts",
-);
+// Vitest hides console output of a passing file, so the reason a comparison skips goes to stderr
+const skipping = (why: string) =>
+    void process.stderr.write(`Payments builder comparison skipped, ${why}\n`);
 
-describe.skipIf(!existsSync(paymentsBuild))("key payment against Payments' own builder", () => {
+// Runs Payments' live builder when a checkout is found, so a change there fails here
+function findPaymentsBuild(): string | undefined {
+    const env = process.env.BUGNET_PAYMENTS_DIR;
+    if (env !== undefined) {
+        const build = resolve(env, "src/x402/build.ts");
+        if (existsSync(build)) return build;
+        skipping(`${build} from BUGNET_PAYMENTS_DIR does not exist`);
+        return undefined;
+    }
+    for (let d = import.meta.dirname; ; d = dirname(d)) {
+        const build = join(d, "bugnet-payments", "src/x402/build.ts");
+        if (existsSync(build)) return build;
+        if (dirname(d) === d) break;
+    }
+    skipping(`no bugnet-payments folder above ${import.meta.dirname} and no BUGNET_PAYMENTS_DIR`);
+    return undefined;
+}
+
+const paymentsBuild = findPaymentsBuild();
+
+describe.skipIf(paymentsBuild === undefined)("key payment against Payments' own builder", () => {
     it("builds the same message bytes as buildPaymentTransaction", async () => {
         type Build = (req: Offer, payer: string) => Promise<{ messageBytes: Uint8Array }>;
-        const mod = (await import(/* @vite-ignore */ paymentsBuild)) as {
+        const mod = (await import(/* @vite-ignore */ paymentsBuild!)) as {
             buildPaymentTransaction: Build;
         };
         const payer = address("So11111111111111111111111111111111111111112");
