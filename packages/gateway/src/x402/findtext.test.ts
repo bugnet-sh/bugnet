@@ -246,7 +246,7 @@ describe("askLine", () => {
     const tail =
         "A service not reviewed by Bugnet needs the user's explicit yes to that, and allowUnlisted true.";
     const pass =
-        "Pass the service line to bugnet_start (x402.services) or bugnet_x402_budget, and that total as confirmPriceUsd. ";
+        'Pass the service line to bugnet_start (x402.services, from a quote with needs ["secrets"]) or bugnet_x402_budget, and that total as confirmPriceUsd. ';
     const ask = (over: Partial<Parameters<typeof askLine>[0]>) =>
         askLine({
             keyName: "OPENAI_API_KEY",

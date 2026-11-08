@@ -567,12 +567,15 @@ export function quoteInput() {
 
 export function quoteDescription(deps: Deps): string {
     const ttl = Math.round(deps.config.limits.quote_ttl / 60_000);
+    const x402 = deps.config.x402.enabled
+        ? 'Pay-per-call x402 APIs in the sandbox need needs ["secrets"] too. '
+        : "";
     return (
         "Free price quote for a Bugnet cloud sandbox. Bugnet sizes the work from source, " +
         "workload, entryCommand, expectedMinutes and needs (ssh, preview, secrets, gpu), and " +
         "returns each package's price and fit, the recommended one with its reasons, warnings " +
-        `and a quoteId for bugnet_start, valid ${ttl} minutes. Tokens never go in source or ` +
-        "entryCommand, bugnet_secret_link adds secrets once the sandbox runs. The user hears " +
+        `and a quoteId for bugnet_start, valid ${ttl} minutes. ${x402}Tokens never go in source ` +
+        "or entryCommand, bugnet_secret_link adds secrets once the sandbox runs. The user hears " +
         "the price before bugnet_start."
     );
 }

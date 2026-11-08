@@ -140,7 +140,7 @@ export function askLine(input: {
     }
     parts.push(
         t.startWithX402
-            ? "Pass the service line to bugnet_start (x402.services) or bugnet_x402_budget, and that total as confirmPriceUsd."
+            ? 'Pass the service line to bugnet_start (x402.services, from a quote with needs ["secrets"]) or bugnet_x402_budget, and that total as confirmPriceUsd.'
             : "Start the sandbox without x402 first, then pass the service line to bugnet_x402_budget with the handle, and the allowance total as confirmPriceUsd.",
     );
     parts.push(

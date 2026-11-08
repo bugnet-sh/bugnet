@@ -203,7 +203,9 @@ function startInput(x402: boolean) {
     const field = z
         .object({
             allowanceUsd: x402
-                ? usdText.describe("Allowance for x402 services, 0.10 to 5.00")
+                ? usdText.describe(
+                      'Allowance for x402 services, 0.10 to 5.00, from a quote with needs ["secrets"]',
+                  )
                 : usdText,
             services: z.array(serviceLine).max(5).optional(),
             allowUnlisted: z.boolean().optional(),

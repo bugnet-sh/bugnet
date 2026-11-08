@@ -914,7 +914,7 @@ describe("bugnet_start with x402", () => {
             "Only when a missing key is already known and the user agreed to the allowance, each service and the total. confirmPriceUsd then includes the package, the allowance and a one-time $0.003 fee",
         );
         expect(props.x402?.properties?.allowanceUsd?.description).toBe(
-            "Allowance for x402 services, 0.10 to 5.00",
+            'Allowance for x402 services, 0.10 to 5.00, from a quote with needs ["secrets"]',
         );
     });
 
