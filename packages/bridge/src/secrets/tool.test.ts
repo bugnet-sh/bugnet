@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +7,7 @@ import { PlacementState } from "@bugnet/gateway/gen";
 import { packageOption, placement, routerError, type RouterImpl } from "@bugnet/gateway/testing";
 import { toBase64Url } from "@bugnet/seal";
 import type { ElicitResult } from "@modelcontextprotocol/client";
+import { getBase58Decoder } from "@solana/kit";
 import { isInputRequiredResult, type ServerContext } from "@modelcontextprotocol/server";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -229,6 +231,23 @@ describe.each(["legacy", "modern"] as const)("bugnet_secret_from_env, %s client"
         const res = await call(r, hf());
         expect(res.text).toMatch(/did not confirm/);
         expect(r.grants).toBe(0);
+    });
+});
+
+describe("a wallet key", () => {
+    it("is refused even after the user accepts, and never echoed", async () => {
+        const jwk = generateKeyPairSync("ed25519").privateKey.export({ format: "jwk" });
+        const key = new Uint8Array(64);
+        key.set(Buffer.from(jwk.d as string, "base64url"));
+        key.set(Buffer.from(jwk.x as string, "base64url"), 32);
+        const encoded = getBase58Decoder().decode(key);
+        const r = await rig({ era: "modern", elicit: accept }, startRouter, { HF_TOKEN: encoded });
+        await startSandbox(r);
+        const res = await call(r, hf());
+        expect(res.isError).toBe(true);
+        expect(res.text).toMatch(/^secret: refused_wallet_key:/);
+        expect(res.raw).not.toContain(encoded);
+        expect(r.route.opened).toEqual([]);
     });
 });
 

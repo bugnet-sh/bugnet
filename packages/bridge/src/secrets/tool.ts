@@ -38,6 +38,7 @@ import {
     type CheckedSource,
     type SourceDeps,
 } from "./sources.ts";
+import { looksLikeKeyName, looksLikeSolanaKey, walletKeyRefusal } from "./keyguard.ts";
 
 export const secretFromEnvName = "bugnet_secret_from_env";
 export const putGrantToolName = "bugnet_secret_put_grant";
@@ -391,6 +392,16 @@ export async function secretFromEnv(
         if (e instanceof CanonicalError || e instanceof SourceError) return failure(e.message);
         throw e;
     }
+    const sourceName =
+        args.source.type === "env"
+            ? args.source.variable
+            : args.source.type === "dotenv"
+              ? args.source.key
+              : "";
+    if (looksLikeKeyName(spec.name) || looksLikeKeyName(sourceName)) {
+        deps.log.warn("secret refused", { handle: handleTag(args.handle), reason: "wallet_key" });
+        return failure(walletKeyRefusal);
+    }
     const shown = JSON.stringify([args.handle, spec, checked.label]);
     if (canElicit(deps.clientCapabilities(ctx))) {
         const answer = inputResponse(ctx.mcpReq.inputResponses, "confirm");
@@ -418,6 +429,13 @@ export async function secretFromEnv(
     const signal = ctx.mcpReq.signal;
     try {
         const value = await readSource(checked, deps.sources, signal);
+        if (looksLikeSolanaKey(value)) {
+            deps.log.warn("secret refused", {
+                handle: handleTag(args.handle),
+                reason: "wallet_key",
+            });
+            return failure(walletKeyRefusal);
+        }
         if (sealedBytes(spec, value) > maxBoxBytes) {
             throw new Refusal(
                 `${spec.name} is too large once sealed, because quotes, backslashes and ` +
