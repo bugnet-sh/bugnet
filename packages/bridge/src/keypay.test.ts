@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -123,6 +124,24 @@ describe("key payment transaction", () => {
             address("So11111111111111111111111111111111111111112"),
         );
         expect(Buffer.from(tx.messageBytes).toString("hex")).toBe(golden);
+    });
+});
+
+// The live source, when a Payments checkout sits next to this repo, so a change there fails here
+const paymentsBuild = "/Users/oynozan/Desktop/Projects/Bugnet/bugnet-payments/src/x402/build.ts";
+
+describe.skipIf(!existsSync(paymentsBuild))("key payment against Payments' own builder", () => {
+    it("builds the same message bytes as buildPaymentTransaction", async () => {
+        type Build = (req: Offer, payer: string) => Promise<{ messageBytes: Uint8Array }>;
+        const mod = (await import(/* @vite-ignore */ paymentsBuild)) as {
+            buildPaymentTransaction: Build;
+        };
+        const payer = address("So11111111111111111111111111111111111111112");
+        const theirs = await mod.buildPaymentTransaction(offer(), payer);
+        const ours = await buildKeyPayment(offer(), payer);
+        expect(Buffer.from(ours.messageBytes).toString("hex")).toBe(
+            Buffer.from(theirs.messageBytes).toString("hex"),
+        );
     });
 });
 
