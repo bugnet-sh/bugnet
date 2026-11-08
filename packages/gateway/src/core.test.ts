@@ -289,4 +289,12 @@ describe("recommend", () => {
     it("picks the most memory for inference", () => {
         expect(recommend(pkgs, "inference", undefined)?.pkg.id).toBe("l30");
     });
+
+    it("gives the length as the reason when every long enough package has the same memory", () => {
+        const same = [pkg("a1", 10, 1, 1024), pkg("a10", 50, 10, 1024)];
+        expect(recommend(same, "build", 5)).toEqual({
+            pkg: same[1],
+            why: "cheapest package that lasts 5 min",
+        });
+    });
 });

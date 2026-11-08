@@ -155,7 +155,8 @@ export function recommend(
     const byPrice = [...pkgs].sort((a, b) => a.priceMicros - b.priceMicros);
     const longEnough = byPrice.filter((p) => p.minutes >= minutes);
     const pool = longEnough.length > 0 ? longEnough : byPrice;
-    if (heavy) {
+    // Memory is a reason only when the packages that last long enough differ in it
+    if (heavy && new Set(pool.map((p) => p.memoryMib)).size > 1) {
         const biggest = Math.max(...pool.map((p) => p.memoryMib));
         const pkg = pool.find((p) => p.memoryMib === biggest) as QuotedPackage;
         return { pkg, why: `${workload} work wants the most memory on offer` };
