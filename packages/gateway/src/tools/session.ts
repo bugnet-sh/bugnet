@@ -26,6 +26,17 @@ export function paidLine(amountMicros: number | undefined, orderId: string, more
     );
 }
 
+// Why a sandbox ended, for the ended line only
+const causeWords: Record<string, string> = {
+    deadline: "it reached its deadline",
+    abuse: "it was ended for a terms violation",
+    control_lost: "Bugnet lost contact with it",
+    provider_failed: "its host failed",
+    sandbox_exited: "it stopped from inside, for example by a shutdown or a crash",
+    wallet_blocked: "the paying wallet is blocked",
+    operator: "a Bugnet operator ended it",
+};
+
 export interface EndedAnswer {
     lines: string[];
     fields: Record<string, unknown>;
@@ -37,15 +48,19 @@ export function endedAnswer(
     handle: string,
     p: Placement | undefined,
     used: number | undefined,
-    reasonWords: string | null,
+    reason: string,
 ): EndedAnswer | null {
     if (!p?.endedAt || p.state !== PlacementState.TERMINATED || used === undefined) return null;
     const at = timestampDate(p.endedAt);
     const paid = paidOf(p);
     const total = paid > 0n ? ` It cost ${usd(paid)} USDC in total.` : "";
-    const lead =
-        reasonWords === null ? "The sandbox is stopped." : `The sandbox has ended, ${reasonWords}.`;
-    const tell = reasonWords === null ? "it is stopped" : "it has ended";
+    const stopped = reason === "" || reason === "stop";
+    const lead = stopped
+        ? "The sandbox is stopped."
+        : Object.hasOwn(causeWords, reason)
+          ? `The sandbox has ended because ${causeWords[reason]}.`
+          : "The sandbox has ended.";
+    const tell = stopped ? "it is stopped" : "it has ended";
     const url = sessionLink(deps, p.sessionUrl, handle);
     return {
         lines: [

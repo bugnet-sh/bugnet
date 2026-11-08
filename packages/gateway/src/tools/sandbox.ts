@@ -932,15 +932,7 @@ export const registerSandboxTools: Register = (server, deps) => {
                               budget,
                           })
                         : { lines: [], view: null };
-                const done = endedAnswer(
-                    deps,
-                    args.handle,
-                    p,
-                    used,
-                    p?.terminationReason && p.terminationReason !== "stop"
-                        ? terminationText(p.terminationReason)
-                        : null,
-                );
+                const done = endedAnswer(deps, args.handle, p, used, p?.terminationReason ?? "");
                 const paid = p && !ended(p.state) ? paidOf(p) : 0n;
                 const text = [
                     ...(done
@@ -1013,7 +1005,7 @@ export const registerSandboxTools: Register = (server, deps) => {
                     ...placementView(p, deps.now()),
                     ...(used !== undefined ? { usedSeconds: used } : {}),
                 };
-                const done = endedAnswer(deps, args.handle, p, used, null);
+                const done = endedAnswer(deps, args.handle, p, used, "stop");
                 const text = [
                     ...(done ? done.lines : [`Sandbox ${view.state}${usedText(used)}.`]),
                     money,

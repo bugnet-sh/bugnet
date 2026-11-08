@@ -112,13 +112,37 @@ describe("bugnet_status", () => {
             handle: testHandle,
         });
         expect(r.structured.message).toBe(
-            `The sandbox has ended, ended at its deadline. It ended at ${whenText} after 1 min 30 s of use, and everything in it was deleted. It cost $1.50 USDC in total. Tell the user it has ended.\n` +
+            `The sandbox has ended because it reached its deadline. It ended at ${whenText} after 1 min 30 s of use, and everything in it was deleted. It cost $1.50 USDC in total. Tell the user it has ended.\n` +
                 `Summary and logs: ${url} (until ${until}). Show this link to the user.`,
         );
         expect(r.structured).toEqual(
             expect.objectContaining({ usedSeconds: 90, paidUsd: "$1.50", sessionUrl: url }),
         );
     });
+
+    const causes: [string, string][] = [
+        ["deadline", " because it reached its deadline"],
+        ["abuse", " because it was ended for a terms violation"],
+        ["control_lost", " because Bugnet lost contact with it"],
+        ["provider_failed", " because its host failed"],
+        ["sandbox_exited", " because it stopped from inside, for example by a shutdown or a crash"],
+        ["wallet_blocked", " because the paying wallet is blocked"],
+        ["operator", " because a Bugnet operator ended it"],
+        ["something_new", ""],
+    ];
+    for (const [reason, cause] of causes) {
+        it(`words the cause of reason ${reason}`, async () => {
+            const client = await connect({
+                getPlacement: () => ({
+                    placement: ended({ terminationReason: reason, sessionUrl: "" }),
+                }),
+            });
+            const r = await callTool(client, "bugnet_status", { handle: testHandle });
+            expect(r.text).toBe(
+                `The sandbox has ended${cause}. It ended at ${whenText} after 1 min 30 s of use, and everything in it was deleted. Tell the user it has ended.`,
+            );
+        });
+    }
 
     it("uses the stop line for a stopped sandbox", async () => {
         const client = await connect({
