@@ -379,7 +379,9 @@ describe("tracing on", () => {
         const f = await traced({ getPlacement: placing }, { toml: "sample_ratio = 0.5" });
         const client = await connectTools(f.deps);
         for (const v of vectors) await callTool(client, "bugnet_status", { handle: v.handle });
-        const sent = f.router.calls.map((c) => parsedTraceparent(c.header.get("traceparent")));
+        const sent = f.router.calls
+            .filter((c) => c.method === "GetPlacement")
+            .map((c) => parsedTraceparent(c.header.get("traceparent")));
         expect(sent.map((s) => [s.traceId, s.sampled])).toEqual([
             [vectors[0].traceId, false],
             [vectors[1].traceId, true],

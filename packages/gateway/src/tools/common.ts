@@ -96,16 +96,21 @@ export function homePath(path: string): string {
     return path.startsWith("~/") ? path.slice(2) || "." : path;
 }
 
+// The error kind of each failed answer, kept off the result the client sees
+export const failedKinds = new WeakMap<object, string>();
+
 export function failure(err: unknown, what: string): CallToolResult {
     const e = err instanceof GatewayError ? err : fromRouter(err, what);
     const retry =
         e.retryAfterMs !== null ? ` Retry after ${Math.ceil(e.retryAfterMs / 1000)} s.` : "";
     const text = `${e.message}.${retry}`;
-    return {
+    const result: CallToolResult = {
         content: [{ type: "text", text }],
         isError: true,
         ...(e.fields ? { structuredContent: { message: text, ...e.fields } } : {}),
     };
+    failedKinds.set(result, e.kind);
+    return result;
 }
 
 // A bare NotFound is a missing thing on a live sandbox, or an unknown handle on older routers

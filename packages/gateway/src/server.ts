@@ -2,12 +2,18 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 import { hostHeaderValidation, toNodeHandler } from "@modelcontextprotocol/node";
-import { McpServer, createMcpHandler, type ServerContext } from "@modelcontextprotocol/server";
+import {
+    McpServer,
+    createMcpHandler,
+    type CallToolResult,
+    type ServerContext,
+} from "@modelcontextprotocol/server";
 import { allowedHosts } from "./config.ts";
 import { instructions } from "./instructions.ts";
 import { DevPayments } from "./payments/dev.ts";
 import { peerAddress, withClientAddress, withToolCall } from "./request.ts";
 import { setProviderNames } from "./router.ts";
+import { recordToolCall } from "./sessionevents.ts";
 import { registerAssessTool } from "./tools/assess.ts";
 import type { Deps, Register } from "./tools/common.ts";
 import { registerExtendTool } from "./tools/extend.ts";
@@ -63,7 +69,19 @@ function scopeToolCalls(server: McpServer, deps: Deps): void {
                 deps.config.limits.tool_budget,
             );
             const signal = AbortSignal.any([ctx.mcpReq.signal, limit.signal]);
-            return Promise.resolve(withToolCall(signal, traced)).finally(() => clearTimeout(timer));
+            const started = deps.now();
+            return Promise.resolve(withToolCall(signal, traced))
+                .then(
+                    (result) => {
+                        recordToolCall(deps, name, args, started, result as CallToolResult);
+                        return result;
+                    },
+                    (e: unknown) => {
+                        recordToolCall(deps, name, args, started, undefined);
+                        throw e;
+                    },
+                )
+                .finally(() => clearTimeout(timer));
         });
     server.registerTool = scoped as typeof server.registerTool;
 }
