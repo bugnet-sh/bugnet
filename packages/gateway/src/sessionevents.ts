@@ -7,14 +7,24 @@ import { failedKinds, handleTag, type Deps } from "./tools/common.ts";
 const outcomeShape = /^[a-z][a-z0-9_]{0,31}$/;
 const sendMs = 2_000;
 
-// The sandbox a call is about: its handle argument, or the handle a start or redeem made
+// The sandbox a call is about: the one a start or redeem made, else its handle argument
 function handleOf(name: string, args: unknown, result: CallToolResult | undefined): string | null {
+    if ((name === "bugnet_start" || name === "bugnet_redeem") && !result?.isError) {
+        const made = (result?.structuredContent as { handle?: unknown } | undefined)?.handle;
+        if (typeof made === "string" && made !== "") return made;
+    }
     const given = (args as { handle?: unknown } | undefined)?.handle;
-    if (typeof given === "string" && given !== "") return given;
-    if (name !== "bugnet_start" && name !== "bugnet_redeem") return null;
-    const made = (result?.structuredContent as { handle?: unknown } | undefined)?.handle;
-    return typeof made === "string" && made !== "" ? made : null;
+    return typeof given === "string" && given !== "" ? given : null;
 }
+
+// Answers about the handle itself, which any client can cause, so they are no fault to log
+const quiet = new Set([
+    Code.Unimplemented,
+    Code.NotFound,
+    Code.FailedPrecondition,
+    Code.PermissionDenied,
+    Code.InvalidArgument,
+]);
 
 function outcomeOf(result: CallToolResult | undefined): string {
     if (result === undefined) return "internal";
@@ -49,8 +59,7 @@ export function recordToolCall(
             }
         })
         .catch((e: unknown) => {
-            // A router without session records answers Unimplemented, which is no fault
-            if (e instanceof ConnectError && e.code === Code.Unimplemented) return;
+            if (e instanceof ConnectError && quiet.has(e.code)) return;
             deps.log.warn("session event failed", {
                 handle: handleTag(handle),
                 tool: name,

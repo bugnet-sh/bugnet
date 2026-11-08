@@ -70,7 +70,8 @@ function scopeToolCalls(server: McpServer, deps: Deps): void {
             );
             const signal = AbortSignal.any([ctx.mcpReq.signal, limit.signal]);
             const started = deps.now();
-            return Promise.resolve(withToolCall(signal, traced))
+            // The executor turns a handler's synchronous throw into a rejection it can record
+            return new Promise((resolve) => resolve(withToolCall(signal, traced)))
                 .then(
                     (result) => {
                         recordToolCall(deps, name, args, started, result as CallToolResult);
