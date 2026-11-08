@@ -82,6 +82,23 @@ describe("bugnet_stop", () => {
         expect(r.structured).not.toHaveProperty("paidUsd");
     });
 
+    it("measures use from ready to the end, as the founder's 4 s run", async () => {
+        const client = await connect({
+            stopPlacement: () => ({
+                placement: ended({
+                    readyAt: timestampFromMs(testNow - 10_000 - 3_920),
+                    createdAt: timestampFromMs(testNow - 10_000 - 9_000),
+                    sessionUrl: "",
+                }),
+            }),
+        });
+        const r = await callTool<Record<string, unknown>>(client, "bugnet_stop", {
+            handle: testHandle,
+        });
+        expect(r.text).toContain("after 4 s of use");
+        expect(r.structured.usedSeconds).toBe(4);
+    });
+
     it("counts a sandbox that never became ready as 0 s", async () => {
         const client = await connect({
             stopPlacement: () => ({ placement: ended({ readyAt: undefined, sessionUrl: "" }) }),
