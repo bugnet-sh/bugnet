@@ -29,6 +29,9 @@ const keyFields = /^(?:secret|private)_?key$/i;
 
 // Ed25519 PKCS#8 DER in base64: v1 (seed only) and v2 (seed and public key)
 const ed25519Der = /^(?:MC4CAQAwBQYDK2Vw|MFECAQEwBQYDK2Vw)/;
+// The same DER in hex, with or without 0x
+const ed25519DerHex =
+    /^(?:0x)?(?:302e020100300506032b657004220420|3051020101300506032b6570)[0-9a-f]*$/i;
 const pkcs8Seed = Buffer.from("302e020100300506032b657004220420", "hex");
 
 // A Solana keypair is a seed followed by its own public key; 64 random bytes are not
@@ -95,8 +98,8 @@ function refusedBytes(bytes: Uint8Array | undefined, seedName: boolean): boolean
 
 function pemBody(v: string, label: string): string | undefined {
     const m = new RegExp(`-----BEGIN ${label}-----([\\s\\S]*?)-----END ${label}-----`).exec(v);
-    // A .env value often carries the line breaks as \n
-    return m ? (m[1] as string).replace(/\\n|\s/g, "") : undefined;
+    // A .env value often carries the line breaks as \n, or \r\n when pasted from Windows
+    return m ? (m[1] as string).replace(/\\[rn]|\s/g, "") : undefined;
 }
 
 // Only Ed25519 private keys; RSA and EC keys, certificates and public keys go through
@@ -146,7 +149,8 @@ function jsonKey(v: string, seedName: boolean, depth: number, budget: { nodes: n
 
 function refused(value: string, seedName: boolean, depth: number, budget: { nodes: number }) {
     const v = value.trim();
-    if (ed25519Pem(v) || ed25519Der.test(v) || seedPhrase(v.toLowerCase())) return true;
+    if (ed25519Pem(v) || ed25519Der.test(v) || ed25519DerHex.test(v)) return true;
+    if (seedPhrase(v.toLowerCase())) return true;
     if (jsonKey(v, seedName, depth, budget)) return true;
     return [hexBytes(v), arrayBytes(v), base58Bytes(v), base64Bytes(v)].some((b) =>
         refusedBytes(b, seedName),

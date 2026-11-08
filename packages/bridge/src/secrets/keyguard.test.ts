@@ -83,7 +83,21 @@ it("refuses Ed25519 private keys as PEM, PKCS#8 and OpenSSH, and lets other keys
     const ed = generateKeyPairSync("ed25519");
     const pem = ed.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
     const der = ed.privateKey.export({ format: "der", type: "pkcs8" }).toString("base64");
-    for (const v of [pem, pem.replace(/\n/g, "\\n"), der, openssh("ssh-ed25519")]) {
+    const derHex = ed.privateKey.export({ format: "der", type: "pkcs8" }).toString("hex");
+    for (const v of [
+        pem,
+        pem.replace(/\n/g, "\\n"),
+        pem.replace(/\n/g, "\\r\\n"),
+        pem.replace(/\n/g, "\r\n"),
+        der,
+        derHex,
+        "0x" + derHex,
+        "0X" + derHex.toUpperCase(),
+        // v2 with the public key, as some tools write it
+        "3051020101300506032b6570042204" + "20" + "ab".repeat(32) + "8121" + "00" + "cd".repeat(32),
+        openssh("ssh-ed25519"),
+        openssh("ssh-ed25519").replace(/\n/g, "\\r\\n"),
+    ]) {
         expect(looksLikeSolanaKey(v, ["API_URL"]), v.slice(0, 40)).toBe(true);
     }
     const rsa = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -101,6 +115,9 @@ it("refuses Ed25519 private keys as PEM, PKCS#8 and OpenSSH, and lets other keys
         ed.publicKey.export({ format: "pem", type: "spki" }).toString(),
         openssh("ssh-rsa"),
         cert,
+        rsa.privateKey.export({ format: "der", type: "pkcs8" }).toString("hex"),
+        ec.privateKey.export({ format: "der", type: "pkcs8" }).toString("hex"),
+        ed.publicKey.export({ format: "der", type: "spki" }).toString("hex"),
     ]) {
         expect(looksLikeSolanaKey(v, ["GITHUB_APP_PRIVATE_KEY"]), v.slice(0, 40)).toBe(false);
     }
