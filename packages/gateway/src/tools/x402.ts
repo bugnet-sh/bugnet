@@ -113,7 +113,7 @@ export const findInput = z.object({
     method: z.enum(["GET", "POST"]).optional().describe("The method for url, POST by default"),
 });
 
-const unreachable = () =>
+const searchUnreachable = () =>
     new GatewayError(
         "unavailable",
         "x402: Bugnet could not reach its payment service, so nothing was searched. " +
@@ -606,7 +606,7 @@ export const registerX402Tools: Register = (server, deps) => {
                 }
                 const budget = new Budget(deps);
                 const terms = await readTerms(deps, budget.signal(3_000));
-                if (terms === null) throw unreachable();
+                if (terms === null) throw searchUnreachable();
                 const given = args.maxPriceUsd !== undefined ? toMicros(args.maxPriceUsd) : null;
                 const wanted = given ?? toMicros(deps.config.x402.default_max_price_usd) ?? 0;
                 const query: FindQuery = {
@@ -651,7 +651,7 @@ export const registerX402Tools: Register = (server, deps) => {
                         }
                         throw x402RouterError(check.reason, "x402", [], terms.maxServices);
                     }
-                    if (account.status === "rejected") throw unreachable();
+                    if (account.status === "rejected") throw searchUnreachable();
                     feeDue = account.value.feeDue;
                 }
                 const outcome = await findServices(deps, query, terms, budget);

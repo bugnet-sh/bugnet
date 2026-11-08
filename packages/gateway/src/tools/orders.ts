@@ -21,7 +21,7 @@ export type PaidRetry =
     | { orderId: string; claim: string; payment?: undefined }
     | { orderId: string; payment: unknown; claim?: undefined };
 
-// A payment wins over a claim, and Payments before port v3 needs the terms beside a payment, so widened follows x402
+// A payment wins over a claim, and before port v3 a payment needs terms, so widened follows x402
 export function paidRetry(
     args: { orderId?: string | undefined; claim?: string | undefined },
     payment: unknown,

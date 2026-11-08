@@ -43,7 +43,7 @@ function fetchTerms(deps: TermsDeps, state: TermsState) {
     return read;
 }
 
-// A copy younger than termsMaxAgeMs, else one read shared by every caller in flight, null on failure
+// A copy younger than termsMaxAgeMs, else one read shared by all callers in flight, null on failure
 export function readTerms(deps: TermsDeps, signal: AbortSignal): Promise<X402Terms | null> {
     const state = stateOf(deps);
     if (state.copy && deps.now() - state.copy.at < termsMaxAgeMs) {

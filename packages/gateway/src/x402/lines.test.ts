@@ -102,7 +102,7 @@ describe("service lines", () => {
     });
     it("refuses a copied line with stray spaces, a line break, a non-breaking space or quotes", () => {
         const l = line(chat);
-        for (const v of [`${l} `, `${l}\n`, l.replace(" max=", " max="), `"${l}"`]) {
+        for (const v of [`${l} `, `${l}\n`, l.replace(" max=", "\u00a0max="), `"${l}"`]) {
             expect(serviceLine.safeParse(v).error?.issues[0]?.message).toBe(
                 "a service line from bugnet_x402_find or bugnet_status; to re-price, change only max=",
             );
