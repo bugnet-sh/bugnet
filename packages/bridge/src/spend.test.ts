@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { constants } from "node:fs";
 import {
     mkdir,
     mkdtemp,
@@ -18,6 +19,32 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SpendLedger } from "./spend.ts";
 
+// A write that fails partway, and unlinks that fail as if the process had died there
+const faults = vi.hoisted(() => ({ write: false, dead: new Set<string>() }));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+    const fs = await importOriginal<typeof import("node:fs/promises")>();
+    const open: typeof fs.open = async (path, flags, mode) => {
+        const fh = await fs.open(path, flags, mode);
+        if (!faults.write || typeof flags !== "number" || (flags & constants.O_EXCL) === 0) {
+            return fh;
+        }
+        faults.write = false;
+        faults.dead.add(String(path));
+        const write = fh.writeFile.bind(fh);
+        fh.writeFile = async (data) => {
+            await write(String(data).slice(0, 10));
+            throw Object.assign(new Error("no space"), { code: "ENOSPC" });
+        };
+        return fh;
+    };
+    const unlink: typeof fs.unlink = async (path) => {
+        if (faults.dead.has(String(path))) throw Object.assign(new Error("dead"), { code: "EIO" });
+        return fs.unlink(path);
+    };
+    return { ...fs, open, unlink, default: { ...fs, open, unlink } };
+});
+
 let dir = "";
 let spend = "";
 const today = () => new Date().toISOString().slice(0, 10);
@@ -29,6 +56,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+    faults.write = false;
+    faults.dead.clear();
     await rm(dir, { recursive: true, force: true });
 });
 
@@ -244,6 +273,29 @@ it("counts a file it cannot read at the per-payment ceiling, and skips other nam
     expect(await ledger.spentToday()).toBe(10 + 5 * 1_000 + 7);
     expect(await ledger.claim("ord_b", 1, 5_000)).toBe("over_cap");
     await expect(ledger.claim("ord_c", 1_001, 1_000_000)).rejects.toThrow(RangeError);
+});
+
+it("leaves no reservation behind when its write fails partway", async () => {
+    const ledger = new SpendLedger({ dir: spend, unreadableMicros: 1_000 });
+    faults.write = true;
+    await expect(ledger.claim("ord_a", 10, 5_000_000)).rejects.toThrow("ledger_io");
+    expect(faults.dead.size).toBe(1);
+    const names = await readdir(join(spend, today()));
+    expect(names.filter((n) => /^[0-9a-f]{64}$/.test(n))).toEqual([]);
+    expect(await ledger.spentToday()).toBe(0);
+    expect(await ledger.claim("ord_a", 10, 5_000_000)).toBe("reserved");
+    expect(await ledger.spentToday()).toBe(10);
+});
+
+it("counts a file over the size limit at the per-payment ceiling", async () => {
+    const ledger = new SpendLedger({ dir: spend, unreadableMicros: 1_000 });
+    expect(await ledger.claim("ord_a", 10, 5_000_000)).toBe("reserved");
+    const body = JSON.stringify({ orderId: "ord_big", micros: 7, state: "spent", at: 0 });
+    const folder = join(spend, today());
+    await writeFile(join(folder, hash("ord_big")), body.padEnd(4096, " "));
+    expect(await ledger.spentToday()).toBe(10 + 7);
+    await writeFile(join(folder, hash("ord_big")), body.padEnd(4097, " "));
+    expect(await ledger.spentToday()).toBe(10 + 1_000);
 });
 
 it("refuses a day folder that is a symlink or open to others", async () => {
