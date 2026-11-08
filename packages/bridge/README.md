@@ -197,6 +197,10 @@ counted against the daily cap unless Payments refuses it before broadcasting (`p
 `payment_malformed`, `payment_order_mismatch`, `too_many_attempts` or a `payer_` refusal); any other
 answer, a timeout included, counts as spent.
 
+Earlier versions kept the daily total in `~/.config/bugnet/spend.json` and `spend.json.lock`.
+Neither is used any more, and both can be deleted. On the day you upgrade, spend recorded in the
+old file is not counted against that day's cap.
+
 With `pay_signer = "key"`, every payment uses the `pay_origin` in `~/.config/bugnet/mcp.toml`
 (default `https://pay.bugnet.sh`); a `pay_origin` from `--config` is ignored and logged. For a local
 stack, put `pay_origin` in that file. `bugnet_secret_from_env` refuses a Solana keypair under any name: 64 bytes whose second half is
