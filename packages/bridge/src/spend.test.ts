@@ -62,6 +62,19 @@ it("starts a new UTC day from nothing and frees a reservation that moved no mone
     expect(await readdir(join(spend, "2026-11-09"))).toEqual([]);
 });
 
+it("refuses an orderId that is not a plain name", async () => {
+    const ledger = new SpendLedger({ dir: spend });
+    const bad = ["__proto__", "../x", "", "a".repeat(65), "a/b", ".x", "-x", "ord a", "ord\n"];
+    for (const orderId of bad) {
+        await expect(ledger.claim(orderId, 1, 5_000_000), orderId).rejects.toThrow("ledger_order");
+        await expect(ledger.settle(orderId, true), orderId).rejects.toThrow("ledger_order");
+    }
+    expect(await ledger.claim("a".repeat(64), 1, 5_000_000)).toBe("reserved");
+    expect(await ledger.claim("ord_A-1", 1, 5_000_000)).toBe("reserved");
+    expect(await ledger.spentToday()).toBe(2);
+    expect(await readdir(dir)).toEqual(["spend"]);
+});
+
 it("keeps one 0600 file per reservation in a 0700 folder per day, and no lock", async () => {
     // A spend.json from before is neither read nor removed
     await writeFile(join(dir, "spend.json"), '{"day":"x","entries":{}}');
