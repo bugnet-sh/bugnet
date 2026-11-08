@@ -1,13 +1,44 @@
 import { homedir } from "node:os";
+import { join } from "node:path";
 import { pinnedKeys } from "@bugnet/seal";
+import type { KeyPairSigner } from "@solana/kit";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { buildBridgeServer, version } from "./bridge.ts";
-import { ConfigError, loadCommand, usage } from "./config.ts";
-import { stderrLog } from "./log.ts";
+import { type Command, ConfigError, loadCommand, usage } from "./config.ts";
+import { bugnetDir, loadWallet, runKeyCommand } from "./keyfile.ts";
+import { KeyPayer } from "./keypay.ts";
+import { type Log, stderrLog } from "./log.ts";
 import { orderStatus, PaidOrders } from "./orders.ts";
-import { PayCli } from "./pay.ts";
+import { type OrderPayer, PayCli } from "./pay.ts";
 import { RemoteGateway } from "./remote.ts";
 import { runSecurity } from "./secrets/sources.ts";
+import { SpendLedger } from "./spend.ts";
+
+type Serve = Extract<Command, { kind: "serve" }>;
+
+// The pay CLI by default; the wallet file only when the fixed settings file says pay_signer = "key"
+function choosePayer(command: Serve, log: Log): OrderPayer | null {
+    const s = command.settings;
+    if (command.signer.paySigner === "key") {
+        const home = process.env.HOME;
+        let wallet: Promise<KeyPairSigner> | undefined;
+        return new KeyPayer({
+            origin: s.pay_origin,
+            settings: command.signer,
+            signer: () => {
+                wallet ??= loadWallet(home, process.cwd()).catch((e: unknown) => {
+                    wallet = undefined;
+                    throw e;
+                });
+                return wallet;
+            },
+            ledger: new SpendLedger({ path: join(bugnetDir(home), "spend.json") }),
+            log,
+        });
+    }
+    if (!s.pay_command) return null;
+    return new PayCli({ command: s.pay_command, origin: s.pay_origin, env: process.env, log });
+}
 
 async function main(): Promise<number> {
     let command;
@@ -26,6 +57,12 @@ async function main(): Promise<number> {
         process.stdout.write(`${version}\n`);
         return 0;
     }
+    if (command.kind === "key-new" || command.kind === "key-import") {
+        const out = await runKeyCommand(command, process.env.HOME, process.cwd());
+        process.stdout.write(out.stdout);
+        process.stderr.write(out.stderr);
+        return out.code;
+    }
     const s = command.settings;
     const log = stderrLog();
     const remote = new RemoteGateway({
@@ -36,6 +73,7 @@ async function main(): Promise<number> {
         log,
     });
     const started = new Set<string>();
+    const payer = choosePayer(command, log);
     // Outlives one server, so a paid order is still held when the client reconnects
     const orders = new PaidOrders(Date.now);
     // The instructions come from the gateway, so the bridge connects before it answers anything
@@ -60,14 +98,7 @@ async function main(): Promise<number> {
                 started,
                 pay: {
                     origin: s.pay_origin,
-                    payer: s.pay_command
-                        ? new PayCli({
-                              command: s.pay_command,
-                              origin: s.pay_origin,
-                              env: process.env,
-                              log,
-                          })
-                        : null,
+                    payer,
                     orders,
                     status: (id, signal) => orderStatus(s.pay_origin, id, signal),
                 },

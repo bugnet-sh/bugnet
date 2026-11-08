@@ -1,11 +1,18 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ConfigError, defaultConfigPath, loadCommand, parseSettings } from "./config.ts";
+import {
+    ConfigError,
+    defaultConfigPath,
+    loadCommand,
+    loadSignerSettings,
+    parseSettings,
+} from "./config.ts";
 
 let dir = "";
 const env = () => ({ XDG_CONFIG_HOME: join(dir, "xdg") });
+const pin = "Bhhc3XNdjtCNr3pj2aZwhCt8pHwsU8wRL7dqJNDZEExw";
 
 beforeAll(async () => {
     dir = await mkdtemp(join(tmpdir(), "bugnet-bridge-config-"));
@@ -137,5 +144,40 @@ describe("command line", () => {
     it("answers --help and --version", () => {
         expect(loadCommand(["--help"], env())).toEqual({ kind: "help" });
         expect(loadCommand(["--version"], env())).toEqual({ kind: "version" });
+    });
+});
+
+describe("signer settings", () => {
+    const fixed = () => join(dir, "home", ".config", "bugnet", "mcp.toml");
+    const write = async (text: string, mode = 0o600) => {
+        await mkdir(join(dir, "home", ".config", "bugnet"), { recursive: true });
+        await writeFile(fixed(), text);
+        await chmod(fixed(), mode);
+    };
+
+    it("reads the key signer and its pins only from the fixed file, defaulting to pay", async () => {
+        expect(loadSignerSettings(join(dir, "nohome")).paySigner).toBe("pay");
+        await write('pay_signer = "key"\nmax_payment_usd = 0.5\npay_to = ["' + pin + '"]\n');
+        expect(loadSignerSettings(join(dir, "home"))).toEqual({
+            paySigner: "key",
+            maxPaymentMicros: 500_000,
+            dailyMicros: 5_000_000,
+            payTo: [pin],
+            feePayer: [],
+        });
+        const cmd = loadCommand(["--config", fixed()], { HOME: join(dir, "home") });
+        expect(cmd.kind === "serve" && cmd.signer.paySigner).toBe("key");
+    });
+
+    it("refuses a group-writable file, a raised ceiling and signer keys in --config", async () => {
+        await write('pay_signer = "key"\n', 0o620);
+        expect(() => loadSignerSettings(join(dir, "home"))).toThrow(/not writable by group/);
+        await write("max_payment_usd = 21\n");
+        expect(() => loadSignerSettings(join(dir, "home"))).toThrow(/max_payment_usd/);
+        const other = join(dir, "other.toml");
+        await writeFile(other, 'pay_signer = "key"\n');
+        expect(() => loadCommand(["--config", other], { HOME: join(dir, "home") })).toThrow(
+            /pay_signer is read only from/,
+        );
     });
 });
