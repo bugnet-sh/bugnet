@@ -613,6 +613,15 @@ describe("unavailableSummary", () => {
         expect(s).not.toMatch(/can run/);
     });
 
+    it("says no package offers the work's needs yet, never to try again soon", () => {
+        const s = unavailableSummary(
+            { ...assessment, needs: { ...assessment.needs, gpu: false } },
+            true,
+        );
+        expect(s).toMatch(/No Bugnet package offers what it needs yet\.$/);
+        expect(s).not.toMatch(/try again/);
+    });
+
     it("drops the summary's sandbox sentence once no sandbox can start", () => {
         const s = unavailableSummary({
             ...assessment,

@@ -383,12 +383,17 @@ function listed(words: readonly string[]): string {
     return `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`;
 }
 
-function headline(available: number, views: PackageView[], wants: readonly NeedName[]): string {
-    if (available > 0) return "Bugnet packages, paid per run in USDC on Solana:";
-    if (
+// Every package is closed only because a need is not open yet
+export function needsNotOpen(views: readonly PackageView[]): boolean {
+    return (
         views.length > 0 &&
         views.every((v) => v.unavailable === unavailableWords("feature_unavailable"))
-    ) {
+    );
+}
+
+function headline(available: number, views: PackageView[], wants: readonly NeedName[]): string {
+    if (available > 0) return "Bugnet packages, paid per run in USDC on Solana:";
+    if (needsNotOpen(views)) {
         if (wants.length === 0)
             return "No package can start with these needs, they are not open yet.";
         const one = wants.length === 1;
