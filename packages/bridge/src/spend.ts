@@ -1,4 +1,5 @@
 // What the key signer spent today (UTC), shared by every bridge process through one lockfile
+import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { open, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 
@@ -31,6 +32,10 @@ export interface SpendLedgerOptions {
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+async function readLock(lock: string): Promise<string | null> {
+    return readFile(lock, "utf8").catch(() => null);
+}
+
 function isEntry(v: unknown): v is Entry {
     const e = v as Entry;
     return (
@@ -59,37 +64,62 @@ export class SpendLedger {
         return new Date(this.now()).toISOString().slice(0, 10);
     }
 
+    // The lock holds its owner's pid and a random nonce, so a holder only ever removes its own
     private async withLock<T>(work: () => Promise<T>): Promise<T> {
         const lock = `${this.path}.lock`;
+        const nonce = `${process.pid} ${randomUUID()}`;
         const started = Date.now();
         for (;;) {
-            try {
-                const fh = await open(
-                    lock,
-                    constants.O_WRONLY |
-                        constants.O_CREAT |
-                        constants.O_EXCL |
-                        constants.O_NOFOLLOW,
-                    0o600,
-                );
-                await fh.close();
-                break;
-            } catch (e) {
-                if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
-            }
-            const st = await stat(lock).catch(() => null);
-            if (st !== null && Date.now() - st.mtimeMs > this.staleLockMs) {
-                await unlink(lock).catch(() => {});
-                continue;
-            }
+            if (await this.tryCreate(lock, nonce)) break;
+            if (await this.takeOverStale(lock, nonce)) break;
             if (Date.now() - started > this.lockWaitMs) throw new LedgerError("ledger_busy");
             await wait(10 + Math.random() * 20);
         }
         try {
             return await work();
         } finally {
-            await unlink(lock).catch(() => {});
+            if ((await readLock(lock)) === nonce) await unlink(lock).catch(() => {});
         }
+    }
+
+    private async tryCreate(lock: string, nonce: string): Promise<boolean> {
+        let fh;
+        try {
+            fh = await open(
+                lock,
+                constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+                0o600,
+            );
+        } catch (e) {
+            if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+            return false;
+        }
+        try {
+            await fh.writeFile(nonce);
+        } finally {
+            await fh.close();
+        }
+        return true;
+    }
+
+    // A lock older than staleLockMs is replaced whole by a rename, and is ours only if it then
+    // holds our nonce; a second waiter that renamed after us wins instead
+    private async takeOverStale(lock: string, nonce: string): Promise<boolean> {
+        const seen = await readLock(lock);
+        const st = await stat(lock).catch(() => null);
+        if (seen === null || st === null || Date.now() - st.mtimeMs <= this.staleLockMs) {
+            return false;
+        }
+        const tmp = `${lock}.${randomUUID()}.tmp`;
+        await writeFile(tmp, nonce, { mode: 0o600, flag: "wx" });
+        try {
+            // Someone else took it over while the temp file was written
+            if ((await readLock(lock)) !== seen) return false;
+            await rename(tmp, lock);
+        } finally {
+            await unlink(tmp).catch(() => {});
+        }
+        return (await readLock(lock)) === nonce;
     }
 
     private async read(): Promise<Doc> {
