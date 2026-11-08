@@ -144,6 +144,38 @@ same sandbox, instead of paying again. Without `pay`, or with `pay_command = ""`
 link in your client when the client can open links, waits up to 10 minutes for you to pay in the
 browser, and goes on. Other clients get the pay link to show you.
 
+### Paying from a local wallet file
+
+Instead of `pay`, the bridge can sign Bugnet orders itself from a wallet file, with no prompt:
+
+1. Run `bugnet-mcp key new` in your own terminal. It creates `~/.config/bugnet/wallet.json`
+   (mode 0600, in a 0700 folder) and prints only its address. To move a key you already have,
+   run `bugnet-mcp key import --from ./.env --var NAME`, then delete that line as it tells you.
+2. Send that address a small amount of USDC on Solana. It needs no SOL: Bugnet pays the fee.
+3. Turn it on in `~/.config/bugnet/mcp.toml`. The bridge reads these keys only from that exact
+   file, which must be yours and not writable by group or others, never from `--config` or
+   `XDG_CONFIG_HOME`:
+
+```toml
+pay_signer = "key"           # "pay" (the default) keeps using the pay CLI
+max_payment_usd = 1          # per payment, default 1, at most 20
+daily_usd = 5                # per UTC day across all bridges, default 5, at most 100
+# Bugnet's wallets the bridge may pay and let pay the fee; without them it signs nothing
+pay_to = ["Bhhc3XNdjtCNr3pj2aZwhCt8pHwsU8wRL7dqJNDZEExw", "9gw8RJhnpnYgrfhj1UWAFbQvDVfYGYVk8ndb6bLUmzDo"]
+fee_payer = ["73iCm2eWpXsEqTpYkNHe4VoiR4Eq7nyCLv9wYZzEnFM9"]
+```
+
+Before signing, the bridge fetches the order's payment request itself and checks that it is
+`pay_origin`'s `/o/` link for this order, USDC on Solana mainnet, with the order as memo, paid to a
+`pay_to` wallet with a `fee_payer` wallet as fee payer, and within the price you approved, the
+per-payment cap and what is left of the daily cap (kept in `~/.config/bugnet/spend.json`). It
+builds the transfer itself and never signs bytes it was sent. A payment that fails a check is not
+signed: you get the pay link or the payment step back. `bugnet_secret_from_env` refuses any value
+that looks like a wallet key, and names such as `PRIVATE_KEY`, `SECRET_KEY`, `KEYPAIR`, `MNEMONIC`
+or `SEED`.
+
+Keep a small balance: any process running as you can read the file.
+
 ## Secrets from your machine
 
 Never paste a token into the chat. Ask your agent to add it with `bugnet_secret_from_env`
