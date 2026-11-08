@@ -300,11 +300,11 @@ describe("bugnet_start", () => {
             "Payment required for order ord_2. Next: show the user this link to pay in their " +
             "browser with a Solana wallet holding USDC: https://pay.bugnet.sh/o/ord_2. Then, in " +
             "the same turn and without waiting for the user, call bugnet_redeem with orderId and " +
-            `claim (orderId "ord_2", claim "${claim}", quoteId "${id}"). It waits for the payment ` +
-            "and goes on once it lands; if it answers that the order is not paid yet, call it " +
-            "again, for up to 10 minutes. Calling bugnet_start again without this orderId opens a " +
-            "new order the user would pay again. The x402 maxTimeoutSeconds limits a wallet's signed " +
-            "payment, not the user's time to pay.";
+            `claim (orderId "ord_2", claim "${claim}", quoteId "${id}"). It waits for the ` +
+            "payment and goes on once it lands; if it answers that the order is not paid yet, " +
+            "call it again, for up to 10 minutes. Calling bugnet_start again without this " +
+            "orderId opens a new order the user would pay again. The x402 maxTimeoutSeconds " +
+            "limits a wallet's signed payment, not the user's time to pay.";
         expect(r.structured).toEqual({
             ...required,
             message: guide,

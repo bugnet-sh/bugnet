@@ -380,13 +380,15 @@ describe("bugnet_redeem while the order waits for its payment", () => {
             expect(r.isError).toBe(true);
             expect(r.text.split("\n")[1]).toBe(
                 `Order ${orderId} is not paid yet, and a payment can take a few seconds to ` +
-                    "confirm. Next: show the user this link to pay in their browser with a Solana " +
-                    `wallet holding USDC: http://127.0.0.1:8787/o/${orderId}. Then, in the same ` +
-                    "turn and without waiting for the user, call bugnet_redeem with orderId and " +
-                    `claim ${named}. It waits for the payment and goes on once it lands; if it ` +
-                    "answers that the order is not paid yet, call it again, for up to 10 minutes. " +
-                    "The x402 maxTimeoutSeconds limits a wallet's signed payment, not the user's " +
-                    "time to pay. Call bugnet_redeem again with the same arguments to keep waiting.",
+                    "confirm. Next: show the user this link to pay in their browser with a " +
+                    "Solana wallet holding USDC: " +
+                    `http://127.0.0.1:8787/o/${orderId}. Then, in the same turn and without ` +
+                    "waiting for the user, call bugnet_redeem with orderId and claim " +
+                    `${named}. It waits for the payment and goes on once it lands; if it answers ` +
+                    "that the order is not paid yet, call it again, for up to 10 minutes. The " +
+                    "x402 maxTimeoutSeconds limits a wallet's signed payment, not the user's " +
+                    "time to pay. Call bugnet_redeem again with the same arguments to keep " +
+                    "waiting.",
             );
             // A sandbox start keeps 12 s and an extension 20 s, each after a 5 s look
             expect(sleeps).toEqual(Array(pauses).fill(5_000));
