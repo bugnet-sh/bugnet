@@ -1,5 +1,15 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readdir, readFile, rm, unlink, utimes, writeFile } from "node:fs/promises";
+import {
+    mkdir,
+    mkdtemp,
+    readdir,
+    readFile,
+    rename,
+    rm,
+    unlink,
+    utimes,
+    writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -54,17 +64,58 @@ function deadPid(): number {
 
 const old = () => new Date(Date.now() - 60_000);
 
-it("never takes a live holder's lock, however old", async () => {
+it("takes a lock older than staleLockMs whatever pid it names", async () => {
     const path = join(dir, "spend.json");
     const lock = `${path}.lock`;
-    const a = new SpendLedger({ path, staleLockMs: 10 }) as unknown as Locking;
-    const b = new SpendLedger({ path, staleLockMs: 10, lockWaitMs: 300 });
-    await a.withLock(async () => {
-        const held = await readFile(lock, "utf8");
-        await utimes(lock, old(), old());
-        await expect(b.reserve("ord_b", 1, 5_000_000)).rejects.toThrow("ledger_busy");
-        expect(await readFile(lock, "utf8")).toBe(held);
+    const ledger = new SpendLedger({ path, staleLockMs: 1_000, lockWaitMs: 300 });
+    // A long-lived process stands for a crashed holder's pid reused by another program
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1e9)"]);
+    try {
+        const pids = [child.pid as number, process.pid, 1, 4_294_967_296, 9_999_999_999];
+        for (const [i, pid] of pids.entries()) {
+            await writeFile(lock, `${pid} ${"a".repeat(36)}`);
+            await utimes(lock, old(), old());
+            expect(await ledger.reserve(`ord_${i}`, 1, 5_000_000), String(pid)).toBe(true);
+        }
+    } finally {
+        child.kill();
+    }
+    expect((await readdir(dir)).sort()).toEqual(["spend.json"]);
+});
+
+it("waits on a young lock unless its pid is surely dead", async () => {
+    const path = join(dir, "spend.json");
+    const lock = `${path}.lock`;
+    const ledger = new SpendLedger({ path, staleLockMs: 10_000, lockWaitMs: 200 });
+    // Live, another user's (EPERM), out of range, unreadable
+    for (const text of [`${process.pid} x`, "1 x", "4294967296 x", "9999999999 x", "x"]) {
+        await writeFile(lock, text);
+        await expect(ledger.reserve("ord_a", 1, 5_000_000), text).rejects.toThrow("ledger_busy");
+        expect(await readFile(lock, "utf8")).toBe(text);
+    }
+});
+
+it("runs the work again under a new lock when its lock moved away before the write", async () => {
+    const path = join(dir, "spend.json");
+    const lock = `${path}.lock`;
+    const ledger = new SpendLedger({ path });
+    const locking = ledger as unknown as Locking & {
+        write(d: unknown, m: () => Promise<boolean>): Promise<void>;
+    };
+    let runs = 0;
+    const result = await locking.withLock(async (mine) => {
+        runs += 1;
+        // Another process judged this lock stale and moved it
+        if (runs === 1) await rename(lock, `${lock}.moved`);
+        await locking.write({ day: "x", entries: { [`run_${runs}`]: {} } }, mine);
+        return runs;
     });
+    expect(result).toBe(2);
+    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({
+        day: "x",
+        entries: { run_2: {} },
+    });
+    expect((await readdir(dir)).sort()).toEqual(["spend.json", "spend.json.lock.moved"]);
 });
 
 it("takes a lock whose pid is dead at once, and one naming no pid once it is old", async () => {
@@ -106,9 +157,10 @@ it("neither writes nor removes a lock that is no longer its own", async () => {
         "ledger_busy",
     );
     expect(await readFile(path, "utf8")).toBe(before);
+    expect((await readdir(dir)).sort()).toEqual(["spend.json", "spend.json.lock"]);
 });
 
-// Six bridge processes race over a lock left by a dead one, each reserving 3 USD of a 5 USD cap
+// Six bridge processes race over a lock a crash left behind, each reserving 3 USD of a 5 USD cap
 it("grants one of six processes racing over a stale lock, trial after trial", async () => {
     const child = fileURLToPath(new URL("./testing/spend-child.ts", import.meta.url));
     const procs = Array.from({ length: 6 }, () =>
@@ -129,8 +181,10 @@ it("grants one of six processes racing over a stale lock, trial after trial", as
             const path = join(dir, `t${t}`, "spend.json");
             await mkdir(join(dir, `t${t}`));
             const lock = `${path}.lock`;
-            // Alternate a lock naming a dead pid with an old one a crash left empty
-            await writeFile(lock, t % 2 === 0 ? `${dead} ${"d".repeat(36)}` : "");
+            // A lock naming a dead pid, an old one a crash left empty, and an old one whose pid
+            // now belongs to a live process
+            const left = [`${dead} ${"d".repeat(36)}`, "", `${process.pid} ${"l".repeat(36)}`];
+            await writeFile(lock, left[t % 3]!);
             await utimes(lock, old(), old());
             const answers = procs.map((_, i) => next(i));
             procs.forEach((p, i) => p.stdin!.write(`go ${path} ord_${t}_${i}\n`));

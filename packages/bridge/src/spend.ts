@@ -1,7 +1,7 @@
 // What the key signer spent today (UTC), shared by every bridge process through one lockfile
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { link, open, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { open, readFile, rename, unlink, writeFile } from "node:fs/promises";
 
 export class LedgerError extends Error {
     readonly code: "ledger_busy" | "ledger_corrupt";
@@ -25,9 +25,16 @@ interface Doc {
 export interface SpendLedgerOptions {
     path: string;
     now?: () => number;
-    // A lock this old whose holder's pid cannot be read is taken as left by a crash
+    // A lock is held for milliseconds, so one this old is taken as left by a crash whatever its pid
     staleLockMs?: number;
     lockWaitMs?: number;
+}
+
+// The lock moved away before a write, so nothing was written and the work may run again
+class LostLock extends LedgerError {
+    constructor() {
+        super("ledger_busy");
+    }
 }
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -60,19 +67,20 @@ async function inspect(path: string): Promise<LockFile | null> {
     }
 }
 
-const sameFile = (a: LockFile, b: { dev: number; ino: number }) =>
-    a.dev === b.dev && a.ino === b.ino;
+const maxPid = 2 ** 31 - 1;
 
-// ESRCH is the only proof of death; EPERM means a live process of another user
+// ESRCH is the only proof of death and EPERM the only proof of life (another user's process);
+// any other answer or a pid out of range leaves the lock to the age rule
 function holder(text: string): "alive" | "dead" | "unknown" {
     const m = /^(\d{1,10}) /.exec(text);
     const pid = m ? Number(m[1]) : 0;
-    if (pid <= 0) return "unknown";
+    if (pid < 1 || pid > maxPid) return "unknown";
     try {
         process.kill(pid, 0);
         return "alive";
     } catch (e) {
-        return (e as NodeJS.ErrnoException).code === "ESRCH" ? "dead" : "alive";
+        const code = (e as NodeJS.ErrnoException).code;
+        return code === "ESRCH" ? "dead" : code === "EPERM" ? "alive" : "unknown";
     }
 }
 
@@ -105,23 +113,31 @@ export class SpendLedger {
     }
 
     // The lock is only ever made through O_EXCL and holds its owner's pid and a random nonce, so
-    // a holder only removes its own. work gets a check that the lock is still ours, to run before
-    // it writes
+    // a holder only removes its own. work gets a check that the lock is still ours, which write
+    // runs just before its rename; a lock lost before that runs the work again under a new one
     private async withLock<T>(work: (mine: () => Promise<boolean>) => Promise<T>): Promise<T> {
         const lock = `${this.path}.lock`;
-        const nonce = `${process.pid} ${randomUUID()}`;
         const started = Date.now();
         for (;;) {
-            if (await this.tryCreate(lock, nonce)) break;
-            await this.clearStale(lock, nonce);
-            if (await this.tryCreate(lock, nonce)) break;
+            const nonce = `${process.pid} ${randomUUID()}`;
+            await this.acquire(lock, nonce, started);
+            try {
+                return await work(async () => (await readLock(lock)) === nonce);
+            } catch (e) {
+                if (!(e instanceof LostLock)) throw e;
+                if (Date.now() - started > this.lockWaitMs) throw new LedgerError("ledger_busy");
+            } finally {
+                if ((await readLock(lock)) === nonce) await unlink(lock).catch(() => {});
+            }
+        }
+    }
+
+    private async acquire(lock: string, nonce: string, started: number): Promise<void> {
+        for (;;) {
+            if (await this.tryCreate(lock, nonce)) return;
+            if ((await this.clearStale(lock)) && (await this.tryCreate(lock, nonce))) return;
             if (Date.now() - started > this.lockWaitMs) throw new LedgerError("ledger_busy");
             await wait(10 + Math.random() * 20);
-        }
-        try {
-            return await work(async () => (await readLock(lock)) === nonce);
-        } finally {
-            if ((await readLock(lock)) === nonce) await unlink(lock).catch(() => {});
         }
     }
 
@@ -145,49 +161,34 @@ export class SpendLedger {
         return true;
     }
 
-    // Stale: its pid is dead, or it is older than staleLockMs and names no pid
+    // Stale: older than staleLockMs, or younger with a pid that is surely dead
     private isStale(l: LockFile): boolean {
-        const who = holder(l.text);
-        return who === "dead" || (who === "unknown" && Date.now() - l.mtimeMs > this.staleLockMs);
+        if (Math.abs(Date.now() - l.mtimeMs) > this.staleLockMs) return true;
+        return holder(l.text) === "dead";
     }
 
-    // Only the holder of the breaker lock clears a stale lock, so between its look and its move
-    // nothing else can put a new lock in that place: a live holder never removes a lock not its
-    // own. The stale file is moved whole to a tombstone of our own and checked to be the one
-    // judged stale; anything else that moved is linked back. The caller then takes the lock
-    // through O_EXCL like any waiter
-    private async clearStale(lock: string, nonce: string): Promise<void> {
+    // The stale lock is moved whole to a tombstone of our own, then removed. True when the
+    // tombstone is the file judged stale. Otherwise a fresh lock was moved: it is never put back,
+    // its holder's check before writing fails and it runs again, and we wait before taking the
+    // lock so a write already past that check lands first
+    private async clearStale(lock: string): Promise<boolean> {
         const seen = await inspect(lock);
-        if (seen === null || !this.isStale(seen)) return;
-        const breaker = `${lock}.break`;
-        if (!(await this.tryCreate(breaker, nonce))) {
-            const held = await inspect(breaker);
-            if (held !== null && this.isStale(held)) await this.bury(breaker, held);
-            return;
-        }
+        if (seen === null || !this.isStale(seen)) return false;
+        const tomb = `${lock}.dead.${randomUUID()}`;
         try {
-            const now = await inspect(lock);
-            if (now !== null && sameFile(now, seen) && this.isStale(now)) {
-                await this.bury(lock, now);
-            }
-        } finally {
-            if ((await readLock(breaker)) === nonce) await unlink(breaker).catch(() => {});
-        }
-    }
-
-    private async bury(path: string, seen: LockFile): Promise<void> {
-        const tomb = `${path}.dead.${randomUUID()}`;
-        try {
-            await rename(path, tomb);
+            await rename(lock, tomb);
         } catch (e) {
-            if ((e as NodeJS.ErrnoException).code === "ENOENT") return;
+            if ((e as NodeJS.ErrnoException).code === "ENOENT") return false;
             throw e;
         }
         const moved = await inspect(tomb);
-        if (moved === null || !sameFile(moved, seen) || moved.text !== seen.text) {
-            await link(tomb, path).catch(() => {});
-        }
         await unlink(tomb).catch(() => {});
+        return (
+            moved !== null &&
+            moved.dev === seen.dev &&
+            moved.ino === seen.ino &&
+            moved.text === seen.text
+        );
     }
 
     private async read(): Promise<Doc> {
@@ -221,11 +222,15 @@ export class SpendLedger {
         return d.day === this.day() ? d : { day: this.day(), entries: {} };
     }
 
-    // Written only while the lock is still ours, so a lost lock never overwrites another's work
+    // Renamed into place only while the lock is still ours, so a lost lock never overwrites
+    // another's work; the check runs after the temp file is written to keep that gap short
     private async write(doc: Doc, mine: () => Promise<boolean>): Promise<void> {
-        if (!(await mine())) throw new LedgerError("ledger_busy");
         const tmp = `${this.path}.${randomUUID()}.tmp`;
         await writeFile(tmp, JSON.stringify(doc), { mode: 0o600 });
+        if (!(await mine())) {
+            await unlink(tmp).catch(() => {});
+            throw new LostLock();
+        }
         await rename(tmp, this.path);
     }
 
