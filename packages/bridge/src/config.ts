@@ -115,7 +115,7 @@ const signerSchema = z
         pay_to: pinned,
         fee_payer: pinned,
         // The allowance wallet later pays sellers the agent picked, so it needs Touch ID by default
-        key_pays_allowances: z.boolean().default(false),
+        key_pays_allowances: z.boolean().default(true),
         allowance_pay_to: pinned,
     })
     .refine((s) => !s.pay_to.some((a) => s.allowance_pay_to.includes(a)), {

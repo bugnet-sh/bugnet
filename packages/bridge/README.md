@@ -167,15 +167,20 @@ pay_to = ["Bhhc3XNdjtCNr3pj2aZwhCt8pHwsU8wRL7dqJNDZEExw"]
 fee_payer = ["73iCm2eWpXsEqTpYkNHe4VoiR4Eq7nyCLv9wYZzEnFM9"]
 # Bugnet's x402 allowance wallet, never one of the pay_to wallets
 allowance_pay_to = ["9gw8RJhnpnYgrfhj1UWAFbQvDVfYGYVk8ndb6bLUmzDo"]
-key_pays_allowances = false  # true lets the key pay x402 allowances too, with no prompt
+key_pays_allowances = true   # the default; false sends x402 allowances to pay with Touch ID
 ```
 
-The key always pays sandbox time. An x402 allowance (`bugnet_x402_budget`, or `bugnet_start` with
-an allowance) goes to `pay` with Touch ID, or to the pay link, unless `key_pays_allowances = true`.
+Setting `pay_signer = "key"` is your approval for the agent to spend from this wallet, within the
+caps and with no prompt: it pays sandbox time, and by default x402 allowances too
+(`bugnet_x402_budget`, or `bugnet_start` with an allowance). With `key_pays_allowances = false` an
+allowance goes to `pay` instead (Touch ID on macOS, its in-client prompt elsewhere), or to the pay
+link. This works the same on macOS and Linux; on Windows the wallet file cannot be loaded yet, so
+every payment goes to `pay` or the pay link.
 The bridge tells an allowance first by the order's own `kind` and `allowanceMicros`, which Payments
 sends on the payment step, and falls back to a payment to an `allowance_pay_to` wallet.
-Turn that on with care: the allowance wallet later pays sellers the agent picked, so without
-Touch ID an injected agent could send up to `daily_usd` a day to an x402 host of its own.
+The default trades a prompt for speed: the allowance wallet later pays sellers the agent picked, so
+without Touch ID an injected agent could send up to `daily_usd` a day to an x402 host of its own.
+Keep `daily_usd` low, or set `key_pays_allowances = false`.
 
 Before signing, the bridge fetches the order's payment request itself and checks that it is
 `pay_origin`'s `/o/` link for this order, USDC on Solana mainnet, with the order as memo, paid to a

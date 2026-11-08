@@ -164,7 +164,7 @@ describe("signer settings", () => {
             dailyMicros: 5_000_000,
             payTo: [pin],
             feePayer: [],
-            keyPaysAllowances: false,
+            keyPaysAllowances: true,
             allowancePayTo: [],
         });
         const cmd = loadCommand(["--config", fixed()], { HOME: join(dir, "home") });
@@ -183,12 +183,12 @@ describe("signer settings", () => {
         );
     });
 
-    it("reads key_pays_allowances off by default, and refuses an allowance pin that repeats pay_to", async () => {
+    it("reads key_pays_allowances on by default, and refuses an allowance pin that repeats pay_to", async () => {
         await write(
-            'pay_signer = "key"\nkey_pays_allowances = true\nallowance_pay_to = ["' + pin + '"]\n',
+            'pay_signer = "key"\nkey_pays_allowances = false\nallowance_pay_to = ["' + pin + '"]\n',
         );
         expect(loadSignerSettings(join(dir, "home"))).toMatchObject({
-            keyPaysAllowances: true,
+            keyPaysAllowances: false,
             allowancePayTo: [pin],
         });
         await write('pay_to = ["' + pin + '"]\nallowance_pay_to = ["' + pin + '"]\n');

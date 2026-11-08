@@ -209,7 +209,7 @@ function isAllowanceStep(step: PaymentStep): boolean {
     return step.allowance === true || step.tool === "bugnet_x402_budget";
 }
 
-// Allowance orders go to the key only when key_pays_allowances is set, otherwise to today's path:
+// Allowance orders go to the key unless key_pays_allowances = false, then to today's path:
 // the pay CLI with Touch ID, or the pay link when there is none
 export function routeAllowances(
     key: OrderPayer,

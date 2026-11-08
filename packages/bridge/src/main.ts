@@ -17,7 +17,7 @@ import { SpendLedger } from "./spend.ts";
 type Serve = Extract<Command, { kind: "serve" }>;
 
 // The pay CLI by default; the wallet file only when the fixed settings file says pay_signer = "key",
-// and then for x402 allowances only when it also says key_pays_allowances = true
+// and then for x402 allowances too unless it says key_pays_allowances = false
 function choosePayer(command: Serve, log: Log): OrderPayer | null {
     const s = command.settings;
     const cli = s.pay_command
