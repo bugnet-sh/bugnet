@@ -1,9 +1,10 @@
 // What the key signer spent today (UTC), shared by every bridge process with no lock: a folder per
-// day holds one file per reservation, made through O_EXCL, and a claim that then finds the day over
-// its cap takes its own file back. Two claims at the cap can both back off; none goes over it
+// day holds one file per reservation, written whole then linked in place (link fails if it exists),
+// and a claim that then finds the day over its cap takes its own file back. Two claims at the cap
+// can both back off; none goes over it
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, readdir, rename, unlink } from "node:fs/promises";
+import { link, lstat, mkdir, open, readdir, rename, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { paymentCeilingUsd } from "./config.ts";
 
@@ -197,12 +198,18 @@ export class SpendLedger {
         dailyCapMicros: number,
     ): Promise<Reservation> {
         const file = join(folder, nameOf(orderId));
+        // Written whole under a temp name, then linked: a crash leaves at worst an uncounted temp
+        // file, never an empty reservation that would hold the ceiling until the next day
+        const tmp = `${file}.${randomUUID()}.tmp`;
         try {
-            await create(file, this.body(orderId, micros, "reserved"));
+            await create(tmp, this.body(orderId, micros, "reserved"));
+            await link(tmp, file);
         } catch (e) {
+            await unlink(tmp).catch(() => {});
             if ((e as NodeJS.ErrnoException).code === "EEXIST") return "already_reserved";
             throw new LedgerError("ledger_io");
         }
+        await unlink(tmp).catch(() => {});
         let used: number;
         try {
             used = await this.total(folder);
