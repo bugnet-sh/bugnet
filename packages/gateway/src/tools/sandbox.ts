@@ -190,40 +190,53 @@ function sshLine(alias: string | undefined): string {
     );
 }
 
-const startInput = z
-    .object({
-        quoteId: z.string().max(200).describe("quoteId from bugnet_quote or bugnet_assess"),
-        packageId: z.string().max(100),
-        confirmPriceUsd: z
-            .string()
-            .max(20)
-            .describe(
-                "The package price you told the user, such as 0.05, shown in the approval prompt",
-            ),
-        orderId: z.string().max(200).optional().describe("orderId from an earlier payment step"),
-        claim: claimInput.optional().describe("claim from the payment step, sent with its orderId"),
-        payment: z
-            .unknown()
-            .optional()
-            .describe("x402 PaymentPayload for this order if your wallet tool produced one"),
-        x402: z
-            .object({
-                allowanceUsd: usdText.describe("Allowance for x402 services, 0.10 to 5.00"),
-                services: z.array(serviceLine).max(5).optional(),
-                allowUnlisted: z.boolean().optional(),
-                spendPerMinuteUsd: usdText.optional(),
-            })
-            .optional()
-            .describe(
-                "Only when a missing key is already known and the user agreed to the allowance, each service and the total. confirmPriceUsd then includes the package, the allowance and a one-time $0.003 fee",
-            ),
-    })
-    .refine((a) => a.claim === undefined || a.orderId !== undefined, {
-        message: "claim goes with the orderId of its payment step",
-        path: ["claim"],
-    });
+// With [x402] off the field is still taken, and refused, but the model reads nothing about it
+function startInput(x402: boolean) {
+    const field = z
+        .object({
+            allowanceUsd: x402
+                ? usdText.describe("Allowance for x402 services, 0.10 to 5.00")
+                : usdText,
+            services: z.array(serviceLine).max(5).optional(),
+            allowUnlisted: z.boolean().optional(),
+            spendPerMinuteUsd: usdText.optional(),
+        })
+        .optional();
+    return z
+        .object({
+            quoteId: z.string().max(200).describe("quoteId from bugnet_quote or bugnet_assess"),
+            packageId: z.string().max(100),
+            confirmPriceUsd: z
+                .string()
+                .max(20)
+                .describe(
+                    "The package price you told the user, such as 0.05, shown in the approval prompt",
+                ),
+            orderId: z
+                .string()
+                .max(200)
+                .optional()
+                .describe("orderId from an earlier payment step"),
+            claim: claimInput
+                .optional()
+                .describe("claim from the payment step, sent with its orderId"),
+            payment: z
+                .unknown()
+                .optional()
+                .describe("x402 PaymentPayload for this order if your wallet tool produced one"),
+            x402: x402
+                ? field.describe(
+                      "Only when a missing key is already known and the user agreed to the allowance, each service and the total. confirmPriceUsd then includes the package, the allowance and a one-time $0.003 fee",
+                  )
+                : field,
+        })
+        .refine((a) => a.claim === undefined || a.orderId !== undefined, {
+            message: "claim goes with the orderId of its payment step",
+            path: ["claim"],
+        });
+}
 
-type StartArgs = z.infer<typeof startInput>;
+type StartArgs = z.infer<ReturnType<typeof startInput>>;
 type StartX402Args = NonNullable<StartArgs["x402"]>;
 
 const startTool = "bugnet_start";
@@ -664,11 +677,13 @@ export const registerSandboxTools: Register = (server, deps) => {
                 "Starts a cloud sandbox from a quote and charges the package price in USDC. " +
                 "Only call it after the user agreed to the price. Returns the sandbox handle, " +
                 "the only key to the sandbox, or a payment step to complete first. When the " +
-                "quote named a GitHub repo, the result says where the repo is or how to get it. " +
-                "With x402, the price the user approves includes the allowance and a one-time " +
-                "$0.003 fee, and services listed there are enabled as soon as the sandbox is " +
-                "ready.",
-            inputSchema: startInput,
+                "quote named a GitHub repo, the result says where the repo is or how to get it." +
+                (deps.config.x402.enabled
+                    ? " With x402, the price the user approves includes the allowance and a " +
+                      "one-time $0.003 fee, and services listed there are enabled as soon as " +
+                      "the sandbox is ready."
+                    : ""),
+            inputSchema: startInput(deps.config.x402.enabled),
             annotations: {
                 readOnlyHint: false,
                 destructiveHint: true,

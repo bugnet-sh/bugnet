@@ -915,6 +915,24 @@ describe("bugnet_start with x402", () => {
         );
     });
 
+    it("keeps Plan A's start description and leaves the x402 field unexplained while [x402] is off", async () => {
+        const { client } = await x402Setup({ off: true });
+        const start = (await client.listTools()).tools.find((t) => t.name === "bugnet_start");
+        expect(start?.description).toBe(
+            "Starts a cloud sandbox from a quote and charges the package price in USDC. Only call it after the user agreed to the price. Returns the sandbox handle, the only key to the sandbox, or a payment step to complete first. When the quote named a GitHub repo, the result says where the repo is or how to get it.",
+        );
+        const props = start?.inputSchema.properties as Record<
+            string,
+            { description?: string; properties?: Record<string, { description?: string }> }
+        >;
+        expect(props.x402).toBeDefined();
+        expect(props.x402?.description).toBeUndefined();
+        expect(props.x402?.properties?.allowanceUsd?.description).toBeUndefined();
+        expect(JSON.stringify(start?.inputSchema)).not.toMatch(
+            /"description":"[^"]*(allowance|0\.003)/i,
+        );
+    });
+
     it("refuses x402 while [x402] is off, before any charge", async () => {
         const { client, deps, payments, seen } = await x402Setup({ off: true });
         const r = await callTool(client, "bugnet_start", x402Args(withSecrets(deps)));
