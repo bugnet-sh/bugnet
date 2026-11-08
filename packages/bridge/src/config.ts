@@ -1,8 +1,8 @@
 // Decoded strictly so a misspelt key is an error naming it, and the bridge holds no secrets
-import { closeSync, constants, fstatSync, openSync, readFileSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readFileSync, realpathSync } from "node:fs";
 import { isIPv4 } from "node:net";
 import { homedir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import { parseArgs } from "node:util";
 import { isAddress } from "@solana/kit";
 import { parse } from "smol-toml";
@@ -80,7 +80,15 @@ function parseToml(text: string, source: string): Record<string, unknown> {
 }
 
 // Read only from the fixed file by loadSignerSettings, so --config can never loosen them
-const signerKeys = ["pay_signer", "max_payment_usd", "daily_usd", "pay_to", "fee_payer"];
+const signerKeys = [
+    "pay_signer",
+    "max_payment_usd",
+    "daily_usd",
+    "pay_to",
+    "fee_payer",
+    "key_pays_allowances",
+    "allowance_pay_to",
+];
 
 function withoutSignerKeys(doc: Record<string, unknown>): Record<string, unknown> {
     return Object.fromEntries(Object.entries(doc).filter(([k]) => !signerKeys.includes(k)));
@@ -106,6 +114,13 @@ const signerSchema = z
         daily_usd: z.number().positive().max(dailyCeilingUsd).default(5),
         pay_to: pinned,
         fee_payer: pinned,
+        // The allowance wallet later pays sellers the agent picked, so it needs Touch ID by default
+        key_pays_allowances: z.boolean().default(false),
+        allowance_pay_to: pinned,
+    })
+    .refine((s) => !s.pay_to.some((a) => s.allowance_pay_to.includes(a)), {
+        path: ["allowance_pay_to"],
+        message: "must not repeat a pay_to wallet",
     })
     .transform((s) => ({
         paySigner: s.pay_signer,
@@ -113,6 +128,8 @@ const signerSchema = z
         dailyMicros: Math.round(s.daily_usd * 1_000_000),
         payTo: s.pay_to,
         feePayer: s.fee_payer,
+        keyPaysAllowances: s.key_pays_allowances,
+        allowancePayTo: s.allowance_pay_to,
     }));
 
 export type SignerSettings = z.infer<typeof signerSchema>;
@@ -123,8 +140,23 @@ export function signerSettingsPath(home: string): string {
     return join(home, ".config", "bugnet", "mcp.toml");
 }
 
-// Only $HOME/.config/bugnet/mcp.toml, owned by the user and not writable by group or others
-export function loadSignerSettings(home: string | undefined): SignerSettings {
+// A file in the folder the agent works in is a file the agent can write
+function insideFolder(path: string, cwd: string): boolean {
+    let rel: string;
+    try {
+        rel = relative(realpathSync(cwd), realpathSync(dirname(path)));
+    } catch {
+        return false;
+    }
+    return !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+// Only $HOME/.config/bugnet/mcp.toml, owned by the user, not writable by group or others, and
+// outside the working folder
+export function loadSignerSettings(
+    home: string | undefined,
+    cwd: string = process.cwd(),
+): SignerSettings {
     if (home === undefined || !isAbsolute(home)) return defaultSignerSettings;
     const path = signerSettingsPath(home);
     let fd: number;
@@ -136,6 +168,9 @@ export function loadSignerSettings(home: string | undefined): SignerSettings {
     }
     let text: string;
     try {
+        if (insideFolder(path, cwd)) {
+            throw new ConfigError(`${path}: must not be inside the working folder`);
+        }
         const st = fstatSync(fd);
         if (!st.isFile() || st.uid !== process.getuid?.() || (st.mode & 0o022) !== 0) {
             throw new ConfigError(
@@ -202,7 +237,11 @@ function keyCommand(argv: string[]): KeyCommand {
 }
 
 // The default file is optional, a file named with --config must exist
-export function loadCommand(argv: string[], env: NodeJS.ProcessEnv = process.env): Command {
+export function loadCommand(
+    argv: string[],
+    env: NodeJS.ProcessEnv = process.env,
+    cwd: string = process.cwd(),
+): Command {
     if (argv[0] === "key") return keyCommand(argv.slice(1));
     let values;
     try {
@@ -243,6 +282,6 @@ export function loadCommand(argv: string[], env: NodeJS.ProcessEnv = process.env
     return {
         kind: "serve",
         settings: decode(doc, text ? path : "settings"),
-        signer: loadSignerSettings(env.HOME),
+        signer: loadSignerSettings(env.HOME, cwd),
     };
 }

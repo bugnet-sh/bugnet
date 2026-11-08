@@ -39,6 +39,7 @@ import {
     type PublicOrderState,
 } from "./orders.ts";
 import {
+    isAllowanceOrder,
     isPaidTool,
     maxPaymentMicros,
     paymentStep,
@@ -47,6 +48,7 @@ import {
     type OrderPayer,
     type PayOutcome,
     type PaymentStep,
+    type PayPins,
 } from "./pay.ts";
 import { paymentRequired } from "./payment.ts";
 import type { RemoteResult, RemoteTools } from "./remote.ts";
@@ -65,6 +67,8 @@ export const version: string = pkg.version;
 export interface BridgePay {
     origin: string;
     payer: OrderPayer | null;
+    // From the fixed settings file; a payment step to any other wallet is never paid
+    pins?: PayPins;
     orders: PaidOrders;
     status: (orderId: string, signal: AbortSignal) => Promise<PublicOrderState | null>;
     sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
@@ -488,11 +492,13 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         orders.see(key, paid);
         if (name === "bugnet_start") relayed.add(paid.orderId);
         const confirmed = priceMicros(args.confirmPriceUsd);
+        const pins = pay.pins ?? { payTo: [], allowancePayTo: [] };
         const why = payRefusal(
             paid,
             pay.origin,
             confirmed,
             paymentRequired(result as CallToolResult)!,
+            pins,
         );
         if (why !== null) {
             deps.log.warn("pay link refused", { orderId: paid.orderId, why });
@@ -501,10 +507,15 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         if (orders.tried(paid.orderId)) return linkPath(paid, quoteIdOf(args), ctx, orders);
         if (!pay.payer) return linkPath(paid, quoteIdOf(args), ctx, orders);
         orders.markTried(paid.orderId);
+        const allowance = isAllowanceOrder(name, args, result as CallToolResult, pins);
         // Never raced against the client's signal, since pay may have paid by the time it gives up
         // The outcome is recorded as it lands, even when this call is already gone
         const flight = pay.payer
-            .pay(paid, maxPaymentMicros([confirmed!]), () => progress.note(waitingInPay))
+            .pay(
+                allowance ? { ...paid, allowance: true } : paid,
+                maxPaymentMicros([confirmed!]),
+                () => progress.note(waitingInPay),
+            )
             .catch((): PayOutcome => ({ kind: "unknown" }))
             .then((o) => {
                 record(o);

@@ -4,14 +4,17 @@ import { join } from "node:path";
 import {
     address,
     generateKeyPairSigner,
+    getBase58Decoder,
     getBase64Encoder,
     getTransactionDecoder,
     type KeyPairSigner,
 } from "@solana/kit";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { SignerSettings } from "./config.ts";
+import { generateKeyPairSync } from "node:crypto";
+import { signerFromBytes } from "./keyfile.ts";
 import { buildKeyPayment, KeyPayer, type Offer } from "./keypay.ts";
-import { silentLog } from "./log.ts";
+import { silentLog, stderrLog } from "./log.ts";
 import type { PaymentStep } from "./pay.ts";
 import { SpendLedger } from "./spend.ts";
 
@@ -19,6 +22,7 @@ const origin = "https://pay.bugnet.sh";
 const orderId = "ord_test123";
 const recipient = "Bhhc3XNdjtCNr3pj2aZwhCt8pHwsU8wRL7dqJNDZEExw";
 const feePayer = "73iCm2eWpXsEqTpYkNHe4VoiR4Eq7nyCLv9wYZzEnFM9";
+const allowanceWallet = "9gw8RJhnpnYgrfhj1UWAFbQvDVfYGYVk8ndb6bLUmzDo";
 
 // Computed once from bugnet-payments src/x402/build.ts buildPaymentTransaction with these inputs
 const golden =
@@ -63,6 +67,8 @@ const settings: SignerSettings = {
     dailyMicros: 5_000_000,
     payTo: [recipient],
     feePayer: [feePayer],
+    keyPaysAllowances: false,
+    allowancePayTo: [allowanceWallet],
 };
 
 interface Sent {
@@ -223,5 +229,66 @@ describe("key payer", () => {
             reason: "key_fee_payer",
         });
         expect(sent).toHaveLength(1);
+    });
+
+    it("pays no allowance unless key_pays_allowances is set, and then only to its pinned wallet", async () => {
+        const budget: PaymentStep = { ...step, tool: "bugnet_x402_budget" };
+        const toAllowance = { ...offer(), payTo: allowanceWallet };
+        for (const st of [budget, { ...step, allowance: true } as PaymentStep]) {
+            const { sent, fetcher } = fakePayments(toAllowance);
+            expect(await payer(fetcher).pay(st, 50_000)).toEqual({
+                kind: "unavailable",
+                reason: "key_allowance",
+            });
+            expect(sent).toEqual([]);
+        }
+        // A step that looked like time but whose fresh challenge pays the allowance wallet
+        const { sent, fetcher } = fakePayments(toAllowance);
+        expect(await payer(fetcher).pay(step, 50_000)).toMatchObject({ reason: "key_pay_to" });
+        expect(sent).toHaveLength(1);
+        const allowed = { ...settings, keyPaysAllowances: true };
+        const ok = fakePayments(toAllowance);
+        expect(await payer(ok.fetcher, allowed).pay(budget, 50_000)).toEqual({ kind: "paid" });
+    });
+
+    it("never puts the key or the signed transaction in the log or the outcome", async () => {
+        const jwk = generateKeyPairSync("ed25519").privateKey.export({ format: "jwk" });
+        const bytes = new Uint8Array(64);
+        bytes.set(Buffer.from(jwk.d as string, "base64url"));
+        bytes.set(Buffer.from(jwk.x as string, "base64url"), 32);
+        const forms = [
+            `[${Array.from(bytes).join(",")}]`,
+            Array.from(bytes).join(","),
+            getBase58Decoder().decode(bytes),
+            getBase58Decoder().decode(bytes.subarray(0, 32)),
+            Buffer.from(bytes).toString("hex"),
+            Buffer.from(bytes).toString("base64"),
+        ];
+        key = await signerFromBytes(bytes.slice());
+        const submits = [
+            () => Response.json({ paid: true }),
+            () => Response.json({ refused: "payment_malformed" }, { status: 400 }),
+            () => Response.json({}, { status: 502 }),
+        ];
+        for (const [i, submit] of submits.entries()) {
+            const { sent, fetcher } = fakePayments(offer(), submit);
+            const lines: string[] = [];
+            const p = new KeyPayer({
+                origin,
+                settings,
+                signer: async () => key,
+                ledger: new SpendLedger({ path: join(dir, `spend-${i}.json`) }),
+                log: stderrLog((l) => lines.push(l)),
+                fetch: fetcher,
+            });
+            const out = JSON.stringify(await p.pay(step, 50_000));
+            const header = sent[1]!.headers["PAYMENT-SIGNATURE"] as string;
+            const wire = JSON.parse(Buffer.from(header, "base64").toString()).payload.transaction;
+            const text = lines.join("") + out;
+            expect(lines.length).toBeGreaterThan(0);
+            for (const f of [...forms, wire, wire.slice(0, 40), header.slice(0, 40)]) {
+                expect(text).not.toContain(f);
+            }
+        }
     });
 });

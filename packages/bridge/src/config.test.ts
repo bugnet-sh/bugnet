@@ -164,6 +164,8 @@ describe("signer settings", () => {
             dailyMicros: 5_000_000,
             payTo: [pin],
             feePayer: [],
+            keyPaysAllowances: false,
+            allowancePayTo: [],
         });
         const cmd = loadCommand(["--config", fixed()], { HOME: join(dir, "home") });
         expect(cmd.kind === "serve" && cmd.signer.paySigner).toBe("key");
@@ -179,5 +181,33 @@ describe("signer settings", () => {
         expect(() => loadCommand(["--config", other], { HOME: join(dir, "home") })).toThrow(
             /pay_signer is read only from/,
         );
+    });
+
+    it("reads key_pays_allowances off by default, and refuses an allowance pin that repeats pay_to", async () => {
+        await write(
+            'pay_signer = "key"\nkey_pays_allowances = true\nallowance_pay_to = ["' + pin + '"]\n',
+        );
+        expect(loadSignerSettings(join(dir, "home"))).toMatchObject({
+            keyPaysAllowances: true,
+            allowancePayTo: [pin],
+        });
+        await write('pay_to = ["' + pin + '"]\nallowance_pay_to = ["' + pin + '"]\n');
+        expect(() => loadSignerSettings(join(dir, "home"))).toThrow(/repeat a pay_to/);
+        const other = join(dir, "other.toml");
+        await writeFile(other, "key_pays_allowances = true\n");
+        expect(() => loadCommand(["--config", other], { HOME: join(dir, "home") })).toThrow(
+            /key_pays_allowances is read only from/,
+        );
+    });
+
+    it("refuses the fixed file when it sits inside the working folder", async () => {
+        await write('pay_signer = "key"\n');
+        for (const cwd of [dir, join(dir, "home"), join(dir, "home", ".config", "bugnet")]) {
+            expect(() => loadSignerSettings(join(dir, "home"), cwd), cwd).toThrow(
+                /inside the working folder/,
+            );
+        }
+        await mkdir(join(dir, "elsewhere"), { recursive: true });
+        expect(loadSignerSettings(join(dir, "home"), join(dir, "elsewhere")).paySigner).toBe("key");
     });
 });

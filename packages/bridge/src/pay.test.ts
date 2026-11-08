@@ -192,7 +192,15 @@ describe("pay helpers", () => {
             ...required,
             accepts: [{ amount: "50000", network: solanaMainnet, asset: usdcMint }],
         };
-        expect(payRefusal(step, origin, 50_000, noMemo)).toBeNull();
+        expect(payRefusal(step, origin, 50_000, noMemo)).toBe("memo");
+        const pins = { payTo: ["Recipient1"], allowancePayTo: ["Allowance1"] };
+        const to = (payTo: string) => ({
+            ...required,
+            accepts: [{ ...(required.accepts[0] as object), payTo }],
+        });
+        expect(payRefusal(step, origin, 50_000, to("Recipient1"), pins)).toBeNull();
+        expect(payRefusal(step, origin, 50_000, to("Allowance1"), pins)).toBeNull();
+        expect(payRefusal(step, origin, 50_000, to("Attacker1"), pins)).toBe("pay_to");
         expect(payRefusal(step, origin, 49_999, required)).toBe("price");
         expect(payRefusal(step, origin, null, required)).toBe("price");
     });
@@ -202,7 +210,12 @@ describe("pay helpers", () => {
         const origin = "https://pay.bugnet.sh";
         const ask = (accept: Record<string, unknown>) =>
             payRefusal(step, origin, 50_000, { x402Version: 2, accepts: [accept] });
-        const base = { amount: "50000", network: solanaMainnet, asset: usdcMint };
+        const base = {
+            amount: "50000",
+            network: solanaMainnet,
+            asset: usdcMint,
+            extra: { memo: step.orderId },
+        };
         expect(ask(base)).toBeNull();
         expect(ask({ ...base, network: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1" })).toBe(
             "network",
@@ -210,7 +223,7 @@ describe("pay helpers", () => {
         expect(ask({ ...base, asset: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB" })).toBe(
             "network",
         );
-        expect(ask({ amount: "50000" })).toBe("network");
+        expect(ask({ amount: "50000", extra: { memo: step.orderId } })).toBe("network");
     });
 
     it("finds the answer body in pay's curl text", () => {

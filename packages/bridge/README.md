@@ -30,7 +30,7 @@ Use the bridge instead of the URL, not both, or every tool shows up twice.
 
 ## Install
 
-It needs Node 20.3 or newer.
+It needs Node 20.19.3 or newer.
 
 **Claude Code**
 
@@ -126,9 +126,10 @@ link as off its origin and hands the payment step back unpaid.
 When `bugnet_start`, `bugnet_extend` or `bugnet_x402_budget` answers with a payment step, the
 bridge pays it:
 
-1. It checks that the pay link is `pay_origin` followed by `/o/` and the order, that the payment
-   names that order, that it asks for USDC on Solana mainnet, and that the amount is at most the
-   `confirmPriceUsd` you approved.
+1. It checks that the pay link is `pay_origin` followed by `/o/` and the order, that the payment's
+   memo is that order, that it asks for USDC on Solana mainnet, and that the amount is at most the
+   `confirmPriceUsd` you approved. When `~/.config/bugnet/mcp.toml` pins `pay_to` or
+   `allowance_pay_to` wallets, the payment must go to one of them.
 2. It starts `pay mcp --allow-origin https://pay.bugnet.sh --allow-network mainnet
 --max-payment <that price>`, with every `PAY_` variable removed and without letting pay ask
    through your client, so pay asks for Touch ID or pays nothing. pay 0.29.0 refuses every
@@ -160,21 +161,30 @@ Instead of `pay`, the bridge can sign Bugnet orders itself from a wallet file, w
 pay_signer = "key"           # "pay" (the default) keeps using the pay CLI
 max_payment_usd = 1          # per payment, default 1, at most 20
 daily_usd = 5                # per UTC day across all bridges, default 5, at most 100
-# Bugnet's wallets the bridge may pay and let pay the fee; without them it signs nothing
-pay_to = ["Bhhc3XNdjtCNr3pj2aZwhCt8pHwsU8wRL7dqJNDZEExw", "9gw8RJhnpnYgrfhj1UWAFbQvDVfYGYVk8ndb6bLUmzDo"]
+# Bugnet's wallets for sandbox time and its fee payer; without them it signs nothing
+pay_to = ["Bhhc3XNdjtCNr3pj2aZwhCt8pHwsU8wRL7dqJNDZEExw"]
 fee_payer = ["73iCm2eWpXsEqTpYkNHe4VoiR4Eq7nyCLv9wYZzEnFM9"]
+# Bugnet's x402 allowance wallet, never one of the pay_to wallets
+allowance_pay_to = ["9gw8RJhnpnYgrfhj1UWAFbQvDVfYGYVk8ndb6bLUmzDo"]
+key_pays_allowances = false  # true lets the key pay x402 allowances too, with no prompt
 ```
+
+The key always pays sandbox time. An x402 allowance (`bugnet_x402_budget`, or `bugnet_start` with
+an allowance) goes to `pay` with Touch ID, or to the pay link, unless `key_pays_allowances = true`.
+Turn that on with care: the allowance wallet later pays sellers the agent picked, so without
+Touch ID an injected agent could send up to `daily_usd` a day to an x402 host of its own.
 
 Before signing, the bridge fetches the order's payment request itself and checks that it is
 `pay_origin`'s `/o/` link for this order, USDC on Solana mainnet, with the order as memo, paid to a
-`pay_to` wallet with a `fee_payer` wallet as fee payer, and within the price you approved, the
+`pay_to` wallet (or an `allowance_pay_to` one when allowed) with a `fee_payer` wallet as fee payer, and within the price you approved, the
 per-payment cap and what is left of the daily cap (kept in `~/.config/bugnet/spend.json`). It
 builds the transfer itself and never signs bytes it was sent. A payment that fails a check is not
 signed: you get the pay link or the payment step back. `bugnet_secret_from_env` refuses any value
 that looks like a wallet key, and names such as `PRIVATE_KEY`, `SECRET_KEY`, `KEYPAIR`, `MNEMONIC`
 or `SEED`.
 
-Keep a small balance: any process running as you can read the file.
+`mcp.toml` must not sit inside the folder your client starts the bridge in. Keep a small balance:
+any process running as you can read the wallet file.
 
 ## Secrets from your machine
 

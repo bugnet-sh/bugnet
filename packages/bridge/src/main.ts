@@ -6,7 +6,7 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { buildBridgeServer, version } from "./bridge.ts";
 import { type Command, ConfigError, loadCommand, usage } from "./config.ts";
 import { bugnetDir, loadWallet, runKeyCommand } from "./keyfile.ts";
-import { KeyPayer } from "./keypay.ts";
+import { KeyPayer, routeAllowances } from "./keypay.ts";
 import { type Log, stderrLog } from "./log.ts";
 import { orderStatus, PaidOrders } from "./orders.ts";
 import { type OrderPayer, PayCli } from "./pay.ts";
@@ -16,28 +16,30 @@ import { SpendLedger } from "./spend.ts";
 
 type Serve = Extract<Command, { kind: "serve" }>;
 
-// The pay CLI by default; the wallet file only when the fixed settings file says pay_signer = "key"
+// The pay CLI by default; the wallet file only when the fixed settings file says pay_signer = "key",
+// and then for x402 allowances only when it also says key_pays_allowances = true
 function choosePayer(command: Serve, log: Log): OrderPayer | null {
     const s = command.settings;
-    if (command.signer.paySigner === "key") {
-        const home = process.env.HOME;
-        let wallet: Promise<KeyPairSigner> | undefined;
-        return new KeyPayer({
-            origin: s.pay_origin,
-            settings: command.signer,
-            signer: () => {
-                wallet ??= loadWallet(home, process.cwd()).catch((e: unknown) => {
-                    wallet = undefined;
-                    throw e;
-                });
-                return wallet;
-            },
-            ledger: new SpendLedger({ path: join(bugnetDir(home), "spend.json") }),
-            log,
-        });
-    }
-    if (!s.pay_command) return null;
-    return new PayCli({ command: s.pay_command, origin: s.pay_origin, env: process.env, log });
+    const cli = s.pay_command
+        ? new PayCli({ command: s.pay_command, origin: s.pay_origin, env: process.env, log })
+        : null;
+    if (command.signer.paySigner !== "key") return cli;
+    const home = process.env.HOME;
+    let wallet: Promise<KeyPairSigner> | undefined;
+    const key = new KeyPayer({
+        origin: s.pay_origin,
+        settings: command.signer,
+        signer: () => {
+            wallet ??= loadWallet(home, process.cwd()).catch((e: unknown) => {
+                wallet = undefined;
+                throw e;
+            });
+            return wallet;
+        },
+        ledger: new SpendLedger({ path: join(bugnetDir(home), "spend.json") }),
+        log,
+    });
+    return routeAllowances(key, cli, command.signer.keyPaysAllowances);
 }
 
 async function main(): Promise<number> {
@@ -99,6 +101,10 @@ async function main(): Promise<number> {
                 pay: {
                     origin: s.pay_origin,
                     payer,
+                    pins: {
+                        payTo: command.signer.payTo,
+                        allowancePayTo: command.signer.allowancePayTo,
+                    },
                     orders,
                     status: (id, signal) => orderStatus(s.pay_origin, id, signal),
                 },

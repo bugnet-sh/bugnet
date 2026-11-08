@@ -24,6 +24,14 @@ export interface PaymentStep {
     claim: string;
     payUrl: string;
     amountMicros: number;
+    // Set when the order funds an x402 allowance, which the key signer pays only when allowed
+    allowance?: true;
+}
+
+// Bugnet's wallets as the fixed settings file pins them, empty when it pins none
+export interface PayPins {
+    payTo: readonly string[];
+    allowancePayTo: readonly string[];
 }
 
 // The only network and asset the bridge pays, checked here since pay may run without its limits
@@ -98,20 +106,44 @@ export function payEnv(env: NodeJS.ProcessEnv): Record<string, string> {
     return out;
 }
 
-// Returns the first check that fails, in the order origin, path, memo, price
+// Read from the order's own data, never from the tool name alone: a call may name an allowance
+// order by its orderId, and Payments asks an allowance order to pay its allowance wallet
+export function isAllowanceOrder(
+    tool: string,
+    args: Record<string, unknown>,
+    result: CallToolResult,
+    pins: PayPins,
+): boolean {
+    if (tool === "bugnet_x402_budget") return true;
+    const s = (result.structuredContent ?? {}) as Record<string, unknown>;
+    if (s.kind === "allowance") return true;
+    // Anything but a plain 0 counts, so a malformed field never makes an allowance look like time
+    if (s.allowanceMicros !== undefined && s.allowanceMicros !== 0) return true;
+    if (args.x402 !== undefined || args.allowanceUsd !== undefined) return true;
+    const payTo = (paymentRequired(result)?.accepts[0] as { payTo?: unknown } | undefined)?.payTo;
+    return typeof payTo === "string" && pins.allowancePayTo.includes(payTo);
+}
+
+// Returns the first check that fails, in the order origin, path, memo, pay_to, price
 export function payRefusal(
     step: PaymentStep,
     origin: string,
     confirmedMicros: number | null,
     required: X402PaymentRequired,
+    pins: PayPins = { payTo: [], allowancePayTo: [] },
 ): string | null {
     const url = new URL(step.payUrl);
     if (url.origin !== origin || url.username !== "" || url.password !== "") return "origin";
     if (url.pathname !== `/o/${step.orderId}` || url.search !== "" || url.hash !== "") {
         return "path";
     }
-    const memo = (required.accepts[0] as { extra?: { memo?: unknown } } | undefined)?.extra?.memo;
-    if (memo !== undefined && memo !== step.orderId) return "memo";
+    const offer = required.accepts[0] as
+        { extra?: { memo?: unknown }; payTo?: unknown } | undefined;
+    if (offer?.extra?.memo !== step.orderId) return "memo";
+    const pinned = [...pins.payTo, ...pins.allowancePayTo];
+    if (pinned.length > 0 && !(typeof offer.payTo === "string" && pinned.includes(offer.payTo))) {
+        return "pay_to";
+    }
     if (confirmedMicros === null || step.amountMicros > confirmedMicros) return "price";
     const first = required.accepts[0] as { network?: unknown; asset?: unknown } | undefined;
     if (first?.network !== solanaMainnet || first.asset !== usdcMint) return "network";

@@ -163,7 +163,10 @@ export function offerRefusal(
         return declined("network");
     }
     if (typeof extra.memo !== "string" || extra.memo !== step.orderId) return declined("memo");
-    if (typeof offer.payTo !== "string" || !settings.payTo.includes(offer.payTo)) {
+    const payable = settings.keyPaysAllowances
+        ? [...settings.payTo, ...settings.allowancePayTo]
+        : settings.payTo;
+    if (typeof offer.payTo !== "string" || !payable.includes(offer.payTo)) {
         return declined("pay_to");
     }
     if (
@@ -202,6 +205,28 @@ async function reasonOf(res: Response): Promise<string> {
     return field("refused") ?? field("error") ?? `http_${res.status}`;
 }
 
+function isAllowanceStep(step: PaymentStep): boolean {
+    return step.allowance === true || step.tool === "bugnet_x402_budget";
+}
+
+// Allowance orders go to the key only when key_pays_allowances is set, otherwise to today's path:
+// the pay CLI with Touch ID, or the pay link when there is none
+export function routeAllowances(
+    key: OrderPayer,
+    other: OrderPayer | null,
+    keyPaysAllowances: boolean,
+): OrderPayer {
+    return {
+        pay(step, maxMicros, onProgress) {
+            if (keyPaysAllowances || !isAllowanceStep(step)) {
+                return key.pay(step, maxMicros, onProgress);
+            }
+            if (other) return other.pay(step, maxMicros, onProgress);
+            return Promise.resolve({ kind: "unavailable", reason: "key_allowance" });
+        },
+    };
+}
+
 export interface KeyPayerOptions {
     origin: string;
     settings: SignerSettings;
@@ -237,6 +262,7 @@ export class KeyPayer implements OrderPayer {
         const fetcher = this.opts.fetch ?? fetch;
         const early = stepRefusal(step, origin);
         if (early) return early;
+        if (isAllowanceStep(step) && !settings.keyPaysAllowances) return unavailable("allowance");
         if (settings.payTo.length === 0 || settings.feePayer.length === 0) {
             return unavailable("no_pins");
         }

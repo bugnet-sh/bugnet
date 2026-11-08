@@ -18,7 +18,16 @@ import {
 } from "@modelcontextprotocol/client";
 import { Code } from "@connectrpc/connect";
 import { CLIENT_CAPABILITIES_META_KEY, inputRequired } from "@modelcontextprotocol/server";
+import { generateKeyPairSync } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { getBase58Decoder } from "@solana/kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { signerFromBytes } from "./keyfile.ts";
+import { KeyPayer, routeAllowances } from "./keypay.ts";
+import { stderrLog } from "./log.ts";
+import { SpendLedger } from "./spend.ts";
 import { linkState, lostLinkText, paymentStepResult } from "./linkpay.ts";
 import { afterPaymentText, spentOrderText, unpaidText, type PublicOrderState } from "./orders.ts";
 import { solanaMainnet, usdcMint, type PayOutcome, type PaymentStep } from "./pay.ts";
@@ -1926,5 +1935,184 @@ describe("paying by link, the gateway stand-in", () => {
             arguments: { orderId: standInOrder, claim: standInClaim },
         });
         expect(started).toEqual(new Set([mine]));
+    });
+});
+
+describe("x402 allowances and the key signer", () => {
+    const routed = (payments: TestPayments, keyPaysAllowances: boolean, withCli = true) => {
+        const key = payingPayer(payments);
+        const cli = withCli ? payingPayer(payments) : null;
+        return { key, cli, payer: routeAllowances(key, cli, keyPaysAllowances) };
+    };
+
+    it("sends a budget order to the pay CLI, never to the key, unless key_pays_allowances", async () => {
+        const gw = await budgetGateway();
+        const { key, cli, payer } = routed(gw.payments, false);
+        const b = await bridge({ gateway: gw.url, deps: { pay: devPay(gw.payments, payer) } });
+        const r = await b.client.callTool({ name: "bugnet_x402_budget", arguments: budgetArgs });
+        expect(r.isError).toBeFalsy();
+        expect(key.calls).toEqual([]);
+        expect(cli!.calls).toHaveLength(1);
+        expect(cli!.calls[0]!.step).toMatchObject({ allowance: true });
+
+        const on = await budgetGateway();
+        const allowed = routed(on.payments, true);
+        const b2 = await bridge({
+            gateway: on.url,
+            deps: { pay: devPay(on.payments, allowed.payer) },
+        });
+        const r2 = await b2.client.callTool({ name: "bugnet_x402_budget", arguments: budgetArgs });
+        expect(r2.isError).toBeFalsy();
+        expect(allowed.key.calls).toHaveLength(1);
+        expect(allowed.cli!.calls).toEqual([]);
+    });
+
+    it("sends a budget order to the pay link when there is no pay CLI", async () => {
+        const gw = await budgetGateway();
+        const { key, payer } = routed(gw.payments, false, false);
+        const b = await bridge({
+            gateway: gw.url,
+            elicitUrl: () => ({ action: "accept" }),
+            deps: {
+                pay: devPay(gw.payments, payer, {
+                    status: queued(gw.payments, ["unpaid", "paid"]),
+                }),
+            },
+        });
+        const r = await b.client.callTool({ name: "bugnet_x402_budget", arguments: budgetArgs });
+        expect(r.isError).toBeFalsy();
+        expect(key.calls).toEqual([]);
+        expect(b.urls).toHaveLength(1);
+    });
+
+    it("reads an allowance from the order's own data, not the tool name", async () => {
+        const pins = { payTo: ["P"], allowancePayTo: ["A"] };
+        const allowanceAccepts = [
+            {
+                ...(stepResult().structuredContent as { accepts: object[] }).accepts[0],
+                payTo: "A",
+            },
+        ];
+        for (const over of [{ accepts: allowanceAccepts }, { allowanceMicros: 1_000_000 }]) {
+            const remote = fakeRemote((params) =>
+                (params.arguments as { claim?: string }).claim === undefined
+                    ? stepResult(over)
+                    : done,
+            );
+            const { key, cli, payer } = routed(testPayments(), false);
+            const b = await bridge({
+                remote,
+                deps: { pay: devPay(testPayments(), payer, { pins }) },
+            });
+            await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
+            expect(key.calls).toEqual([]);
+            expect(cli!.calls).toHaveLength(1);
+        }
+        // Sandbox time paid to the pinned recipient stays with the key
+        const remote = fakeRemote((params) =>
+            (params.arguments as { claim?: string }).claim === undefined ? stepResult() : done,
+        );
+        const { key, cli, payer } = routed(testPayments(), false);
+        const b = await bridge({ remote, deps: { pay: devPay(testPayments(), payer, { pins }) } });
+        await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
+        expect(key.calls).toHaveLength(1);
+        expect(cli!.calls).toEqual([]);
+    });
+
+    it("never pays a payment step to a wallet the settings file does not pin", async () => {
+        const remote = fakeRemote(() =>
+            stepResult({
+                accepts: [
+                    {
+                        ...(stepResult().structuredContent as { accepts: object[] }).accepts[0],
+                        payTo: "Attacker",
+                    },
+                ],
+            }),
+        );
+        const payer = payingPayer(testPayments());
+        const pins = { payTo: ["P"], allowancePayTo: ["A"] };
+        const b = await bridge({ remote, deps: { pay: devPay(testPayments(), payer, { pins }) } });
+        await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
+        expect(payer.calls).toEqual([]);
+        expect(b.lines.some((l) => JSON.parse(l).why === "pay_to")).toBe(true);
+    });
+
+    it("never puts the wallet key or the signed transaction in a tool result or the log", async () => {
+        const jwk = generateKeyPairSync("ed25519").privateKey.export({ format: "jwk" });
+        const bytes = new Uint8Array(64);
+        bytes.set(Buffer.from(jwk.d as string, "base64url"));
+        bytes.set(Buffer.from(jwk.x as string, "base64url"), 32);
+        const forms = [
+            Array.from(bytes).join(","),
+            getBase58Decoder().decode(bytes),
+            getBase58Decoder().decode(bytes.subarray(0, 32)),
+            Buffer.from(bytes).toString("hex"),
+            Buffer.from(bytes).toString("base64"),
+        ];
+        const signer = await signerFromBytes(bytes.slice());
+        const recipient = "Bhhc3XNdjtCNr3pj2aZwhCt8pHwsU8wRL7dqJNDZEExw";
+        const feePayer = "73iCm2eWpXsEqTpYkNHe4VoiR4Eq7nyCLv9wYZzEnFM9";
+        const pr = {
+            x402Version: 2,
+            resource: { url: `${testPayOrigin}/o/${standInOrder}` },
+            accepts: [
+                {
+                    scheme: "exact",
+                    network: solanaMainnet,
+                    asset: usdcMint,
+                    amount: "50000",
+                    payTo: recipient,
+                    extra: {
+                        feePayer,
+                        memo: standInOrder,
+                        recentBlockhash: "9gw8RJhnpnYgrfhj1UWAFbQvDVfYGYVk8ndb6bLUmzDo",
+                        lastValidBlockHeight: "1",
+                    },
+                },
+            ],
+        };
+        let wire = "";
+        const fetcher = (async (_url: string, init?: RequestInit) => {
+            const sig = (init?.headers as Record<string, string>)["PAYMENT-SIGNATURE"];
+            if (sig === undefined) {
+                return Response.json(pr, {
+                    status: 402,
+                    headers: {
+                        "PAYMENT-REQUIRED": Buffer.from(JSON.stringify(pr)).toString("base64"),
+                    },
+                });
+            }
+            wire = JSON.parse(Buffer.from(sig, "base64").toString()).payload.transaction;
+            return Response.json({ paid: true });
+        }) as typeof fetch;
+        const dir = await mkdtemp(join(tmpdir(), "bugnet-leak-"));
+        open.push(() => rm(dir, { recursive: true, force: true }));
+        const keyLines: string[] = [];
+        const keyPayer = new KeyPayer({
+            origin: testPayOrigin,
+            settings: {
+                paySigner: "key",
+                maxPaymentMicros: 1_000_000,
+                dailyMicros: 5_000_000,
+                payTo: [recipient],
+                feePayer: [feePayer],
+                keyPaysAllowances: false,
+                allowancePayTo: [],
+            },
+            signer: async () => signer,
+            ledger: new SpendLedger({ path: join(dir, "spend.json") }),
+            log: stderrLog((l) => keyLines.push(l)),
+            fetch: fetcher,
+        });
+        const remote = fakeRemote((params) =>
+            (params.arguments as { claim?: string }).claim === undefined ? stepResult() : done,
+        );
+        const b = await bridge({ remote, deps: { pay: devPay(testPayments(), keyPayer) } });
+        const r = await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
+        expect(r.isError).toBeFalsy();
+        expect(wire.length).toBeGreaterThan(100);
+        const text = JSON.stringify(r) + b.lines.join("") + keyLines.join("");
+        for (const f of [...forms, wire, wire.slice(0, 40)]) expect(text).not.toContain(f);
     });
 });
