@@ -644,10 +644,9 @@ export async function startPaid(
     const x402 = account && enabled ? startX402Part(deps, order, account, enabled, failed) : null;
     const summary = startSummary(deps, handle, p);
     const allowance = order.allowanceMicros ?? 0;
-    const fee = order.firstUse === true ? (enabled?.terms?.sessionFeeMicros ?? 0) : 0;
     const paidStart =
         account && allowance > 0 && order.amountMicros > 0
-            ? paidX402Line(order.amountMicros, allowance, fee, order.orderId)
+            ? paidX402Line(order.amountMicros, allowance, order.orderId)
             : paidLine(order.amountMicros, order.orderId, false);
     const text = [
         `Sandbox ${view.state}. handle: ${handle}`,

@@ -3337,10 +3337,65 @@ describe("spend wording with an x402 account", () => {
             toolUseId: "toolu_start_1",
         });
         expect(r.text.split("\n")).toContain(
-            "Paid $1.053 USDC (order toolu_start_1), of which $1.00 is the x402 allowance and " +
-                "$0.003 a one-time fee. Tell the user what it cost.",
+            "Paid $1.053 USDC (order toolu_start_1), including a $1.00 x402 allowance. " +
+                "Tell the user what it cost.",
         );
+        expect(r.text).not.toContain("one-time fee. Tell");
         expect(r.text).not.toContain("for this sandbox (order");
+    });
+
+    const allowanceLine =
+        /Paid \$[0-9.]+ USDC \(order [^)]+\), including a \$1\.00 x402 allowance\. Tell the user what it cost\./;
+
+    it("words a returning payer's start the same, with no fee clause", async () => {
+        const { client, deps } = await x402Setup();
+        const id = withSecrets(deps);
+        await callTool(client, "bugnet_start", x402Args(id), { toolUseId: "toolu_start_1" });
+        const second = await callTool(client, "bugnet_start", x402Args(id), {
+            toolUseId: "toolu_start_2",
+        });
+        expect(second.text).not.toContain("First x402 allowance for this wallet.");
+        expect(second.text).toMatch(allowanceLine);
+        expect(second.text).not.toContain("one-time fee. Tell");
+    });
+
+    it("words the line the same when EnableX402 failed", async () => {
+        const { client, deps } = await x402Setup({
+            impl: {
+                enableX402: () => {
+                    throw routerError(Code.Unavailable);
+                },
+            },
+        });
+        const r = await callTool(client, "bugnet_start", x402Args(withSecrets(deps)), {
+            toolUseId: "toolu_start_3",
+        });
+        expect(r.text).toMatch(allowanceLine);
+        expect(r.text).not.toContain("one-time fee. Tell");
+    });
+
+    it("words the line from the paid order on a paid retry", async () => {
+        const payments = testPayments(undefined, { requirePayment: true });
+        const { client, deps } = await x402Setup({ payments });
+        const id = withSecrets(deps);
+        const first = await callTool<{ orderId: string; claim: string }>(
+            client,
+            "bugnet_start",
+            x402Args(id),
+            { toolUseId: "toolu_first_call_02" },
+        );
+        const { orderId, claim: paidClaim } = first.structured;
+        payments.dev.pay(orderId);
+        const r = await callTool(
+            client,
+            "bugnet_start",
+            x402Args(id, { orderId, claim: paidClaim, confirmPriceUsd: "9.99" }),
+            { toolUseId: "toolu_r2" },
+        );
+        expect(r.text).toContain(
+            `Paid $1.053 USDC (order ${orderId}), including a $1.00 x402 allowance. ` +
+                "Tell the user what it cost.",
+        );
     });
 
     it("keeps the plain start wording while x402 is off", async () => {

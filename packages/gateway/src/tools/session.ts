@@ -37,17 +37,15 @@ const causeWords: Record<string, string> = {
     operator: "a Bugnet operator ended it",
 };
 
-// The start line of an x402 order, which splits the total into the allowance and the one-time fee
+// The start line of an x402 order, which names the allowance inside the total
 export function paidX402Line(
     amountMicros: number,
     allowanceMicros: number,
-    feeMicros: number,
     orderId: string,
 ): string {
-    const fee = feeMicros > 0 ? ` and ${usd(feeMicros)} a one-time fee` : "";
     return (
-        `Paid ${usd(amountMicros)} USDC (order ${orderId}), of which ` +
-        `${usd(allowanceMicros)} is the x402 allowance${fee}. Tell the user what it cost.`
+        `Paid ${usd(amountMicros)} USDC (order ${orderId}), including a ` +
+        `${usd(allowanceMicros)} x402 allowance. Tell the user what it cost.`
     );
 }
 
