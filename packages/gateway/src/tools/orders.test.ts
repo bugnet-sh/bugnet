@@ -58,7 +58,8 @@ const next =
 const waits =
     "It waits for the payment and goes on once it lands; if it answers that the order is not " +
     "paid yet, call it again, for up to 10 minutes.";
-const keepWaiting = "Call bugnet_redeem again with the same arguments to keep waiting.";
+const keepWaiting =
+    "Call bugnet_redeem again with the same arguments to keep waiting, for up to 10 minutes in all.";
 
 describe("claimInput and paidRetry", () => {
     it("takes a claim of 43 base64url characters only", () => {
@@ -165,8 +166,7 @@ describe("paymentRequiredResult", () => {
             type: "text",
             text: [
                 "Order ord_2 is not paid yet, and a payment can take a few seconds to confirm.",
-                `${next} (orderId "ord_2", claim "${claim}").`,
-                waits,
+                `Show the user its pay link only if they have not seen it: ${payUrl}.`,
                 limit,
                 keepWaiting,
             ].join(" "),

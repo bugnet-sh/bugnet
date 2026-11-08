@@ -78,15 +78,21 @@ export function paymentRequiredResult(r: AwaitingPayment, c: PaymentStepContext)
               ? ` (orderId "${id}", claim "${claim}" and this sandbox's handle)`
               : ` (orderId "${id}", claim "${claim}")`
         : ` (orderId "${id}" and the claim from its first payment step)`;
+    // A redeem that waited already follows a shown link, so it does not ask for the link again
+    const waited = c.tool === "bugnet_redeem" && c.sentOrderId === id;
     const guide = [
         c.sentOrderId === id
             ? `Order ${id} is not paid yet, and a payment can take a few seconds to confirm.`
             : `Payment required for order ${id}.`,
-        "Next: show the user this link to pay in their browser with a Solana wallet holding " +
-            `USDC: ${r.payUrl}. Then, in the same turn and without waiting for the user, call ` +
-            `bugnet_redeem with orderId and claim${named}.`,
-        "It waits for the payment and goes on once it lands; if it answers that the order is " +
-            "not paid yet, call it again, for up to 10 minutes.",
+        waited
+            ? `Show the user its pay link only if they have not seen it: ${r.payUrl}.`
+            : "Next: show the user this link to pay in their browser with a Solana wallet " +
+              `holding USDC: ${r.payUrl}. Then, in the same turn and without waiting for the ` +
+              `user, call bugnet_redeem with orderId and claim${named}.`,
+        waited
+            ? ""
+            : "It waits for the payment and goes on once it lands; if it answers that the " +
+              "order is not paid yet, call it again, for up to 10 minutes.",
         c.tool === "bugnet_redeem"
             ? ""
             : `Calling ${c.tool} again without this orderId opens a new order the user would ` +
@@ -94,7 +100,8 @@ export function paymentRequiredResult(r: AwaitingPayment, c: PaymentStepContext)
         // Live runs saw the model tell users they had 60 s to pay
         "The x402 maxTimeoutSeconds limits a wallet's signed payment, not the user's time to pay.",
         c.tool === "bugnet_redeem"
-            ? "Call bugnet_redeem again with the same arguments to keep waiting."
+            ? "Call bugnet_redeem again with the same arguments to keep waiting, for up to " +
+              "10 minutes in all."
             : "",
     ]
         .filter(Boolean)

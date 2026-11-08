@@ -373,22 +373,13 @@ describe("bugnet_redeem while the order waits for its payment", () => {
             const quoteId = quote(deps);
             const extra = kind === "start" ? { quoteId } : { handle: testHandle };
             const r = await callTool(client, "bugnet_redeem", { orderId, claim, ...extra });
-            const named =
-                kind === "start"
-                    ? `(orderId "${orderId}", claim "${claim}", quoteId "${quoteId}")`
-                    : `(orderId "${orderId}", claim "${claim}" and this sandbox's handle)`;
             expect(r.isError).toBe(true);
             expect(r.text.split("\n")[1]).toBe(
                 `Order ${orderId} is not paid yet, and a payment can take a few seconds to ` +
-                    "confirm. Next: show the user this link to pay in their browser with a " +
-                    "Solana wallet holding USDC: " +
-                    `http://127.0.0.1:8787/o/${orderId}. Then, in the same turn and without ` +
-                    "waiting for the user, call bugnet_redeem with orderId and claim " +
-                    `${named}. It waits for the payment and goes on once it lands; if it answers ` +
-                    "that the order is not paid yet, call it again, for up to 10 minutes. The " +
-                    "x402 maxTimeoutSeconds limits a wallet's signed payment, not the user's " +
-                    "time to pay. Call bugnet_redeem again with the same arguments to keep " +
-                    "waiting.",
+                    "confirm. Show the user its pay link only if they have not seen it: " +
+                    `http://127.0.0.1:8787/o/${orderId}. The x402 maxTimeoutSeconds limits a ` +
+                    "wallet's signed payment, not the user's time to pay. Call bugnet_redeem " +
+                    "again with the same arguments to keep waiting, for up to 10 minutes in all.",
             );
             // A sandbox start keeps 12 s and an extension 20 s, each after a 5 s look
             expect(sleeps).toEqual(Array(pauses).fill(5_000));
