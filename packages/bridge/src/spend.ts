@@ -3,8 +3,8 @@
 // and a claim that then finds the day over its cap takes its own file back. Two claims at the cap
 // can both back off; none goes over it
 import { createHash, randomUUID } from "node:crypto";
-import { constants } from "node:fs";
-import { link, lstat, mkdir, open, readdir, rename, unlink } from "node:fs/promises";
+import { constants, type Stats } from "node:fs";
+import { link, lstat, mkdir, open, readdir, rename, rmdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { paymentCeilingUsd } from "./config.ts";
 
@@ -42,6 +42,8 @@ interface Entry {
 const orderIdPattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const fileName = /^[0-9a-f]{64}$/;
 const maxFileBytes = 4096;
+const dayName = /^\d{4}-\d{2}-\d{2}$/;
+const staleTempMs = 10 * 60_000;
 
 const nameOf = (orderId: string) => createHash("sha256").update(orderId).digest("hex");
 
@@ -112,6 +114,16 @@ async function syncFolder(folder: string): Promise<void> {
     }
 }
 
+// Removes the entries of a folder that pick chooses, never following a symlink
+async function sweep(folder: string, pick: (name: string, st: Stats) => boolean): Promise<void> {
+    if (!(await lstat(folder)).isDirectory()) return;
+    for (const name of await readdir(folder)) {
+        const path = join(folder, name);
+        const st = await lstat(path).catch(() => null);
+        if (st !== null && !st.isDirectory() && pick(name, st)) await unlink(path).catch(() => {});
+    }
+}
+
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const isMissing = (e: unknown) => (e as NodeJS.ErrnoException).code === "ENOENT";
@@ -123,6 +135,7 @@ export class SpendLedger {
     private readonly retries: number;
     // This process's own reservations, the only files settle touches
     private readonly mine = new Map<string, { day: string; micros: number }>();
+    private cleaned = "";
 
     constructor(opts: SpendLedgerOptions) {
         this.dir = opts.dir;
@@ -150,6 +163,22 @@ export class SpendLedger {
             throw new LedgerError("ledger_folder");
         }
         return folder;
+    }
+
+    // Yesterday stays for settles and claims across midnight
+    private async cleanup(day: string): Promise<void> {
+        const yesterday = this.day(-1);
+        for (const entry of await readdir(this.dir, { withFileTypes: true })) {
+            if (!entry.isDirectory() || !dayName.test(entry.name) || entry.name >= yesterday) {
+                continue;
+            }
+            const old = join(this.dir, entry.name);
+            await sweep(old, () => true).catch(() => {});
+            await rmdir(old).catch(() => {});
+        }
+        const stale = (name: string, st: Stats) =>
+            st.isFile() && name.endsWith(".tmp") && st.mtimeMs < this.now() - staleTempMs;
+        for (const d of [yesterday, day]) await sweep(join(this.dir, d), stale).catch(() => {});
     }
 
     private body(orderId: string, micros: number, state: State): string {
@@ -207,6 +236,10 @@ export class SpendLedger {
         }
         const day = this.day();
         const folder = await this.folder(day);
+        if (this.cleaned !== day) {
+            this.cleaned = day;
+            await this.cleanup(day).catch(() => {});
+        }
         // An order claimed just before midnight is still held by yesterday's file
         const yesterday = join(this.dir, this.day(-1));
         const before = await this.read(yesterday, nameOf(orderId));

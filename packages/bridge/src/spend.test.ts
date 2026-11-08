@@ -1,6 +1,16 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import {
+    mkdir,
+    mkdtemp,
+    readdir,
+    readFile,
+    rm,
+    stat,
+    symlink,
+    utimes,
+    writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -110,6 +120,57 @@ it("still sees an order claimed just before midnight once the day has turned", a
     // Two days on, the order is new again
     now = Date.parse("2026-11-10T00:00:00.100Z");
     expect(await b.claim("ord_a", 1_000_000, 5_000_000)).toBe("reserved");
+});
+
+it("drops day folders older than yesterday and stale temp files, once a day", async () => {
+    let now = Date.parse("2026-11-08T12:00:00Z");
+    const ledger = new SpendLedger({ dir: spend, now: () => now, unreadableMicros: 1_000 });
+    const old = new Date(now - 11 * 60_000);
+    const put = async (path: string, mtime?: Date) => {
+        await writeFile(path, "x");
+        if (mtime !== undefined) await utimes(path, mtime, mtime);
+    };
+    for (const day of ["2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08"]) {
+        await mkdir(join(spend, day), { recursive: true, mode: 0o700 });
+        await put(join(spend, day, hash(`ord_${day}`)));
+        await put(join(spend, day, `${hash("ord_old")}.1.tmp`), old);
+        await put(join(spend, day, `${hash("ord_new")}.2.tmp`));
+    }
+    await mkdir(join(spend, "notes"));
+    await put(join(spend, "notes", "keep"));
+    await mkdir(join(dir, "outside"));
+    await put(join(dir, "outside", "keep"));
+    await symlink(join(dir, "outside"), join(spend, "2026-11-01"));
+    await symlink(join(dir, "outside"), join(spend, "2026-11-07", "link.tmp"));
+    expect(await ledger.claim("ord_a", 1, 5_000_000)).toBe("reserved");
+    expect((await readdir(spend)).sort()).toEqual([
+        "2026-11-01",
+        "2026-11-07",
+        "2026-11-08",
+        "notes",
+    ]);
+    const kept = (day: string, ...orders: string[]) =>
+        [hash(`ord_${day}`), `${hash("ord_new")}.2.tmp`, ...orders].sort();
+    expect((await readdir(join(spend, "2026-11-07"))).sort()).toEqual(
+        kept("2026-11-07", "link.tmp"),
+    );
+    expect((await readdir(join(spend, "2026-11-08"))).sort()).toEqual(
+        kept("2026-11-08", hash("ord_a")),
+    );
+    expect(await readdir(join(dir, "outside"))).toEqual(["keep"]);
+    expect(await readdir(join(spend, "notes"))).toEqual(["keep"]);
+    // Only the first claim of a day looks
+    await mkdir(join(spend, "2026-11-04"));
+    expect(await ledger.claim("ord_b", 1, 5_000_000)).toBe("reserved");
+    expect(await readdir(spend)).toContain("2026-11-04");
+    now = Date.parse("2026-11-09T00:00:01Z");
+    expect(await ledger.claim("ord_c", 1, 5_000_000)).toBe("reserved");
+    expect((await readdir(spend)).sort()).toEqual([
+        "2026-11-01",
+        "2026-11-08",
+        "2026-11-09",
+        "notes",
+    ]);
 });
 
 it("refuses an orderId that is not a plain name", async () => {
