@@ -30,7 +30,8 @@ describe("the bundle", () => {
             [
                 "Content-Security-Policy",
                 "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; " +
-                    "connect-src 'self'; form-action 'none'; frame-ancestors 'none'; " +
+                    "font-src 'self'; connect-src 'self'; form-action 'none'; " +
+                    "frame-ancestors 'none'; " +
                     "base-uri 'none'",
             ],
         ]);
@@ -48,6 +49,19 @@ describe("the bundle", () => {
         expect(html).not.toMatch(/https?:\/\//);
     });
 
+    it("ships every font with its licence and lists every file it wrote", async () => {
+        const result = await buildPage({ outdir: join(root, "listed"), pinned: [] });
+        expect(result.files).toContain("assets/fonts/manrope-600.woff2");
+        expect(result.files).toContain("assets/fonts/OFL-obel-mono.txt");
+        for (const file of result.files) {
+            expect((await readFile(join(root, "listed", file))).length).toBeGreaterThan(0);
+        }
+        const css = await readFile(join(out, "assets", "page.css"), "utf8");
+        for (const [, name] of css.matchAll(/url\(["']?\/assets\/fonts\/([^"')]+)/g)) {
+            expect(result.files).toContain(`assets/fonts/${name}`);
+        }
+    });
+
     it("pins its script and style by hash", async () => {
         const html = await readFile(join(out, "index.html"), "utf8");
         for (const file of ["page.js", "page.css"]) {
@@ -62,7 +76,7 @@ describe("the bundle", () => {
         expect(js).not.toMatch(/document\.cookie/);
         expect(js).not.toMatch(/localStorage|sessionStorage|indexedDB|sendBeacon/);
         const css = await readFile(join(out, "assets", "page.css"), "utf8");
-        expect(css).not.toMatch(/url\(|@import/);
+        expect(css).not.toMatch(/@import|url\(["']?(?!\/assets\/fonts\/)/);
     });
 });
 

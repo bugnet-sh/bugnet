@@ -256,7 +256,9 @@ describe.runIf(launcher !== null)(`in a headless browser (${launcher?.label ?? "
         const res = await o.page.request.get(`${route.origin}/l/${t}`);
         expect(res.headers()["content-security-policy"]).toBe(
             "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; " +
-                "connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'",
+                "font-src 'self'; connect-src 'self'; form-action 'none'; " +
+                "frame-ancestors 'none'; " +
+                "base-uri 'none'",
         );
         expect(res.headers()["set-cookie"]).toBeUndefined();
         await expectOnlyWasmRefused(o);
