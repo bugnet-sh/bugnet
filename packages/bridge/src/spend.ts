@@ -82,12 +82,34 @@ async function create(path: string, text: string): Promise<void> {
     );
     try {
         await fh.writeFile(text);
+        await fh.sync();
     } catch (e) {
         await fh.close().catch(() => {});
         await unlink(path).catch(() => {});
         throw e;
     }
     await fh.close();
+}
+
+// Some systems cannot sync a folder
+const unsyncable = new Set(["EISDIR", "EINVAL", "EPERM"]);
+
+// Makes a link or rename in the folder survive a power cut
+async function syncFolder(folder: string): Promise<void> {
+    let fh;
+    try {
+        fh = await open(folder, constants.O_RDONLY);
+    } catch (e) {
+        if (unsyncable.has((e as NodeJS.ErrnoException).code ?? "")) return;
+        throw e;
+    }
+    try {
+        await fh.sync();
+    } catch (e) {
+        if (!unsyncable.has((e as NodeJS.ErrnoException).code ?? "")) throw e;
+    } finally {
+        await fh.close();
+    }
 }
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -212,10 +234,11 @@ export class SpendLedger {
         await unlink(tmp).catch(() => {});
         let used: number;
         try {
+            await syncFolder(folder);
             used = await this.total(folder);
         } catch (e) {
             await unlink(file).catch(() => {});
-            throw e;
+            throw e instanceof LedgerError ? e : new LedgerError("ledger_io");
         }
         if (used > dailyCapMicros) {
             await unlink(file).catch(() => {});
@@ -249,6 +272,7 @@ export class SpendLedger {
         try {
             await create(tmp, this.body(orderId, held.micros, "spent"));
             await rename(tmp, file);
+            await syncFolder(folder);
         } catch {
             await unlink(tmp).catch(() => {});
             throw new LedgerError("ledger_io");
