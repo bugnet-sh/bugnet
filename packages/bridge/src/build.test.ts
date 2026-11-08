@@ -25,11 +25,11 @@ describe("the bridge package", () => {
         expect(pkg.bin).toEqual({ "bugnet-mcp": "dist/main.js" });
     });
 
-    // AbortSignal.any came in Node 20.3
-    it("asks for Node 20.3 on npm and in the extension's manifest", async () => {
-        expect((await json("package.json")).engines).toEqual({ node: ">=20.3" });
+    // WebCrypto Ed25519, which the key signer uses, is stable from Node 20.19.3
+    it("asks for Node 20.19.3 on npm and in the extension's manifest", async () => {
+        expect((await json("package.json")).engines).toEqual({ node: ">=20.19.3" });
         expect((await json("mcpb/manifest.json")).compatibility.runtimes).toEqual({
-            node: ">=20.3.0",
+            node: ">=20.19.3",
         });
     });
 });

@@ -70,6 +70,7 @@ describe("key import", () => {
         );
         expect(out.code).toBe(0);
         expect(out.stdout).toContain(`delete WALLET from ${from} now`);
+        expect(out.stderr).toMatch(/may already be exposed.*bugnet-mcp key new/s);
         for (const f of forms(bytes)) expect(out.stdout + out.stderr).not.toContain(f);
         const signer = await loadWallet(home, cwd);
         expect(out.stdout.split("\n")[0]).toBe(signer.address);
@@ -88,6 +89,16 @@ describe("key import", () => {
         expect(out.code).toBe(1);
         expect(out.stderr).toMatch(/var_format/);
         expect(out.stdout + out.stderr).not.toContain(value.slice(0, 20));
+        // A valid key under a name the file lacks, and a JSON array one number short
+        await writeFile(from, `WALLET=[${Array.from(bytes.subarray(0, 63)).join(",")}]\n`);
+        for (const variable of ["WALLET", "OTHER"]) {
+            const bad = await runKeyCommand({ kind: "key-import", from, variable }, home, cwd);
+            expect(bad.code).toBe(1);
+            for (const f of forms(bytes)) expect(bad.stdout + bad.stderr).not.toContain(f);
+            expect(bad.stdout + bad.stderr).not.toContain(
+                Array.from(bytes.subarray(0, 8)).join(","),
+            );
+        }
     });
 });
 
@@ -126,6 +137,8 @@ describe("wallet file", () => {
                 dailyMicros: 5_000_000,
                 payTo: ["Bhhc3XNdjtCNr3pj2aZwhCt8pHwsU8wRL7dqJNDZEExw"],
                 feePayer: ["73iCm2eWpXsEqTpYkNHe4VoiR4Eq7nyCLv9wYZzEnFM9"],
+                keyPaysAllowances: false,
+                allowancePayTo: [],
             },
             signer: () => loadWallet(home, cwd),
             ledger: new SpendLedger({ path: join(dir, "spend.json") }),

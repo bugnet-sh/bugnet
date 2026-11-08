@@ -223,6 +223,11 @@ export async function keyImport(
 export type KeyCommand =
     { kind: "key-new" } | { kind: "key-import"; from: string; variable: string };
 
+export const importWarning =
+    "bugnet-mcp: warning: a key that sat in a project .env may already be exposed (agents can " +
+    "read .env, transcripts keep what they read, and git history may hold it). Prefer " +
+    "bugnet-mcp key new and a fresh wallet.\n";
+
 // What the command prints: the address and a hint, or a fixed error line
 export async function runKeyCommand(
     cmd: KeyCommand,
@@ -242,7 +247,7 @@ export async function runKeyCommand(
         return {
             code: 0,
             stdout: `${address}\ndelete ${cmd.variable} from ${cmd.from} now\n`,
-            stderr: "",
+            stderr: importWarning,
         };
     } catch (e) {
         const text = e instanceof KeyError ? e.message : "key_failed: the key command failed";
