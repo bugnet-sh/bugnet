@@ -3310,3 +3310,113 @@ describe("bugnet_stop with x402", () => {
         );
     });
 });
+
+describe("spend wording with an x402 account", () => {
+    const withPaid = (state: PlacementState, paidMicros: bigint) =>
+        placement(state, {
+            readyAt: timestampFromMs(testNow - 90_000),
+            ...(state === PlacementState.TERMINATED ? { endedAt: timestampFromMs(testNow) } : {}),
+            paidMicros,
+        });
+    const accountPayments = (x402: X402Account | null) =>
+        testPayments(undefined, { x402: { account: async () => ({ x402, feeDue: false }) } });
+    const listed = {
+        listX402: () => ({
+            enabled: true,
+            services: [testServiceInfo(X402ServiceState.ACTIVE)],
+            refusals: [],
+        }),
+    };
+    const stopTotal = (word: string) =>
+        "The sandbox is stopped. It ended at 2026-11-05 12:00 UTC after 1 min 30 s of use, and " +
+        `everything in it was deleted. ${word} $0.09 USDC in total. Tell the user it is stopped.`;
+
+    it("words a start of an x402 order with the allowance and the fee", async () => {
+        const { client, deps } = await x402Setup();
+        const r = await callTool(client, "bugnet_start", x402Args(withSecrets(deps)), {
+            toolUseId: "toolu_start_1",
+        });
+        expect(r.text.split("\n")).toContain(
+            "Paid $1.053 USDC (order toolu_start_1), of which $1.00 is the x402 allowance and " +
+                "$0.003 a one-time fee. Tell the user what it cost.",
+        );
+        expect(r.text).not.toContain("for this sandbox (order");
+    });
+
+    it("keeps the plain start wording while x402 is off", async () => {
+        const { client, deps } = await x402Setup({ off: true });
+        const r = await callTool(client, "bugnet_start", startArgs(await quoteId(client)), {
+            toolUseId: "toolu_plain",
+        });
+        expect(deps.config.x402.enabled).toBe(false);
+        expect(r.text).toContain(
+            "Paid $0.05 USDC for this sandbox (order toolu_plain). Tell the user what it cost.",
+        );
+    });
+
+    it("says sandbox time on stop when the sandbox has an account", async () => {
+        const { client } = await setupX402(
+            {
+                ...listed,
+                exec: () => ({ state: JobState.EXITED }),
+                stopPlacement: () => ({ placement: withPaid(PlacementState.TERMINATED, 90_000n) }),
+            },
+            accountPayments(testAccount({ state: "closing" })),
+        );
+        const r = await callTool(client, "bugnet_stop", { handle: testHandle });
+        expect(r.text.split("\n")[0]).toBe(stopTotal("Sandbox time cost"));
+    });
+
+    it("keeps the plain total on stop without an account or with x402 off", async () => {
+        const none = await setupX402(
+            {
+                ...listed,
+                exec: () => ({ state: JobState.EXITED }),
+                stopPlacement: () => ({ placement: withPaid(PlacementState.TERMINATED, 90_000n) }),
+            },
+            accountPayments(null),
+        );
+        const a = await callTool(none.client, "bugnet_stop", { handle: testHandle });
+        expect(a.text.split("\n")[0]).toBe(stopTotal("It cost"));
+        const off = await setup({
+            stopPlacement: () => ({ placement: withPaid(PlacementState.TERMINATED, 90_000n) }),
+        });
+        const b = await callTool(off.client, "bugnet_stop", { handle: testHandle });
+        expect(b.text).toBe(stopTotal("It cost"));
+    });
+
+    it("says sandbox time on an ended status with an account, and not without", async () => {
+        const impl = {
+            ...listed,
+            getPlacement: () => ({ placement: withPaid(PlacementState.TERMINATED, 90_000n) }),
+        };
+        const yes = await setupX402(
+            impl,
+            accountPayments(
+                testAccount({
+                    state: "closed",
+                    refund: { state: "sent", amountMicros: 980_000, keptMicros: 0, txs: [] },
+                }),
+            ),
+        );
+        const a = await callTool(yes.client, "bugnet_status", { handle: testHandle });
+        expect(a.text.split("\n")[0]).toBe(stopTotal("Sandbox time cost"));
+        const no = await setupX402(impl, accountPayments(null));
+        const b = await callTool(no.client, "bugnet_status", { handle: testHandle });
+        expect(b.text.split("\n")[0]).toBe(stopTotal("It cost"));
+    });
+
+    it("says sandbox time paid so far on a running status with an account", async () => {
+        const impl = {
+            ...listed,
+            getPlacement: () => ({ placement: withPaid(PlacementState.READY, 250_000n) }),
+        };
+        const yes = await setupX402(impl, accountPayments(testAccount()));
+        const a = await callTool(yes.client, "bugnet_status", { handle: testHandle });
+        expect(a.text.split("\n")).toContain("Sandbox time paid so far: $0.25 USDC.");
+        expect(a.text).not.toContain("\nPaid so far");
+        const no = await setupX402(impl, accountPayments(null));
+        const b = await callTool(no.client, "bugnet_status", { handle: testHandle });
+        expect(b.text.split("\n")).toContain("Paid so far: $0.25 USDC.");
+    });
+});

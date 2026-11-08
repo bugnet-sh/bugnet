@@ -266,6 +266,34 @@ describe("the link shape check", () => {
         ],
         ["an extra fragment part", `https://sessions.bugnet.sh/s/${id}#k=${key}&x=1`],
         ["a text with spaces", `see ${url}`],
+        ["an upper-case host", `https://SESSIONS.BUGNET.SH/s/${id}#k=${key}`],
+        ["an upper-case scheme", `HTTPS://sessions.bugnet.sh/s/${id}#k=${key}`],
+        ["an empty query", `https://sessions.bugnet.sh/s/${id}?#k=${key}`],
+        ["an empty user part", `https://@sessions.bugnet.sh/s/${id}#k=${key}`],
+        ["an empty user and password", `https://:@sessions.bugnet.sh/s/${id}#k=${key}`],
+        ["the default port", `https://sessions.bugnet.sh:443/s/${id}#k=${key}`],
+        ["an empty port", `https://sessions.bugnet.sh:/s/${id}#k=${key}`],
+        ["dot segments", `https://sessions.bugnet.sh/x/../s/${id}#k=${key}`],
+        ["encoded dot segments", `https://sessions.bugnet.sh/x/%2e%2e/s/${id}#k=${key}`],
+        ["backslashes", `https://sessions.bugnet.sh\\s\\${id}#k=${key}`],
+        ["a triple slash", `https:///sessions.bugnet.sh/s/${id}#k=${key}`],
+        ["a tab in the id", `https://sessions.bugnet.sh/s/abcdefgh\tijklmnop#k=${key}`],
+        ["a CR in the id", `https://sessions.bugnet.sh/s/abcd\refghijklmnop#k=${key}`],
+        [
+            "a newline in the key",
+            `https://sessions.bugnet.sh/s/${id}#k=bnk_${"A".repeat(20)}\n${"A".repeat(23)}`,
+        ],
+        ["a trailing space", `${url} `],
+        ["a trailing newline", `${url}\n`],
+        ["a leading space", ` ${url}`],
+        ["an IDN host", `https://\u017fessions.bugnet.sh/s/${id}#k=${key}`],
+        ["a full-width host", `https://\uff53essions.bugnet.sh/s/${id}#k=${key}`],
+        ["a percent-encoded host", `https://sessions%2Ebugnet.sh/s/${id}#k=${key}`],
+        ["a trailing dot host", `https://sessions.bugnet.sh./s/${id}#k=${key}`],
+        ["a trailing slash", `https://sessions.bugnet.sh/s/${id}/#k=${key}`],
+        ["an encoded fragment", `https://sessions.bugnet.sh/s/${id}#k%3D${key}`],
+        ["a percent-encoded id", `https://sessions.bugnet.sh/s/%61bcdefghijklmnop#k=${key}`],
+        ["a second fragment", `https://sessions.bugnet.sh/s/${id}#k=${key}#x`],
     ] as const;
 
     for (const [name, raw] of bad) {
@@ -351,6 +379,12 @@ describe("bugnet_start", () => {
         const r = await start(PlacementState.FAILED, { sessionUrl: url, refundable: true });
         expect(r.text).toContain("Paid $0.05 USDC for this sandbox");
         expect(r.text).not.toContain("sessions.");
+        expect(r.structured).not.toHaveProperty("sessionUrl");
+    });
+
+    it("shows no link line for a start that comes back ended", async () => {
+        const r = await start(PlacementState.TERMINATED, { sessionUrl: url });
+        expect(r.text).not.toContain("After this sandbox ends");
         expect(r.structured).not.toHaveProperty("sessionUrl");
     });
 

@@ -37,6 +37,20 @@ const causeWords: Record<string, string> = {
     operator: "a Bugnet operator ended it",
 };
 
+// The start line of an x402 order, which splits the total into the allowance and the one-time fee
+export function paidX402Line(
+    amountMicros: number,
+    allowanceMicros: number,
+    feeMicros: number,
+    orderId: string,
+): string {
+    const fee = feeMicros > 0 ? ` and ${usd(feeMicros)} a one-time fee` : "";
+    return (
+        `Paid ${usd(amountMicros)} USDC (order ${orderId}), of which ` +
+        `${usd(allowanceMicros)} is the x402 allowance${fee}. Tell the user what it cost.`
+    );
+}
+
 export interface EndedAnswer {
     lines: string[];
     fields: Record<string, unknown>;
@@ -49,11 +63,15 @@ export function endedAnswer(
     p: Placement | undefined,
     used: number | undefined,
     reason: string,
+    sandboxTime = false,
 ): EndedAnswer | null {
     if (!p?.endedAt || p.state !== PlacementState.TERMINATED || used === undefined) return null;
     const at = timestampDate(p.endedAt);
     const paid = paidOf(p);
-    const total = paid > 0n ? ` It cost ${usd(paid)} USDC in total.` : "";
+    const total =
+        paid > 0n
+            ? ` ${sandboxTime ? "Sandbox time cost" : "It cost"} ${usd(paid)} USDC in total.`
+            : "";
     const stopped = reason === "" || reason === "stop";
     const lead = stopped
         ? "The sandbox is stopped."
@@ -86,7 +104,8 @@ export function startSummary(
     handle: string,
     p: Placement | undefined,
 ): { line: string; fields: Record<string, unknown> } {
-    if (!p || p.state === PlacementState.FAILED) return { line: "", fields: {} };
+    const live = p?.state === PlacementState.READY || p?.state === PlacementState.PLACING;
+    if (!p || !live) return { line: "", fields: {} };
     const url = sessionLink(deps, p.sessionUrl, handle);
     if (!url) return { line: "", fields: {} };
     return {

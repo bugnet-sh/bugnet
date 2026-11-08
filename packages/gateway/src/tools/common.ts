@@ -148,7 +148,7 @@ export async function sandboxFailure(
                     "expired",
                     `${what}: this sandbox has ended and everything in it was deleted. Quote and ` +
                         "start a new one" +
-                        (url ? `. ${summaryLine(url, at).replace(/\.$/, "")}` : ""),
+                        (url ? `. ${summaryLine(url, at, false)}` : ""),
                     null,
                     null,
                     url ? { sessionUrl: url } : null,
@@ -213,7 +213,7 @@ export function underDomain(deps: Deps, host: string): boolean {
     return host === domain || host.endsWith(`.${domain}`);
 }
 
-export type LinkKind = "preview" | "transfer" | "secrets" | "sessions";
+export type LinkKind = "preview" | "transfer" | "secrets";
 
 // Data-plane 8.2.1, 8.3.1 and 10.3 give each link one host, so a preview never serves a secret link
 function linkHost(deps: Deps, kind: LinkKind, host: string): boolean {
@@ -223,18 +223,15 @@ function linkHost(deps: Deps, kind: LinkKind, host: string): boolean {
     return host.endsWith(suffix) && /^[a-z2-7]{16}$/.test(host.slice(0, -suffix.length));
 }
 
-const sessionPath = /^\/s\/[a-z2-7]{16}$/;
-const sessionFragment = /^#k=bnk_[A-Za-z0-9_-]{43}$/;
 // A session summary lives this long after the sandbox ends
 export const sessionKeepMs = 48 * 3_600_000;
 
-// The summary link in the contract's shape, or null and a fault naming only the handle's tag
+// The summary link only in the contract's exact shape, else null and a fault naming the handle's tag
 export function sessionLink(deps: Deps, raw: string, handle: string): string | null {
     if (raw === "") return null;
-    const link = raw.startsWith("https://")
-        ? routerLink(deps, raw, "sessions", sessionPath, "", sessionFragment)
-        : null;
-    if (link) return link.href;
+    const host = deps.config.router.links_domain.replaceAll(".", "\\.");
+    const shape = new RegExp(`^https://sessions\\.${host}/s/[a-z2-7]{16}#k=bnk_[A-Za-z0-9_-]{43}$`);
+    if (shape.test(raw)) return raw;
     deps.log.warn("session link contract fault", { handle: handleTag(handle) });
     return null;
 }
@@ -244,12 +241,12 @@ export function whenText(d: Date): string {
     return `${d.toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }
 
-// The line that sends the user to the summary of a sandbox that ended
-export function summaryLine(url: string, endedAt: Date | undefined): string {
+// The summary line, where full false drops the last full stop for a sentence that adds one
+export function summaryLine(url: string, endedAt: Date | undefined, full = true): string {
     const until = endedAt
         ? ` (until ${whenText(new Date(endedAt.getTime() + sessionKeepMs))})`
         : "";
-    return `Summary and logs: ${url}${until}. Show this link to the user.`;
+    return `Summary and logs: ${url}${until}. Show this link to the user${full ? "." : ""}`;
 }
 
 // Router links reach the user's shell only in the shape the contract gives them
@@ -259,7 +256,6 @@ export function routerLink(
     kind: LinkKind,
     path: RegExp,
     query = "",
-    fragment?: RegExp,
 ): URL | null {
     const href = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`;
     let url: URL;
@@ -272,7 +268,7 @@ export function routerLink(
         url.protocol === "https:" &&
         !url.username &&
         !url.password &&
-        (fragment ? fragment.test(url.hash) && url.port === "" : url.hash === "") &&
+        url.hash === "" &&
         (url.search === "" || (query !== "" && url.search === query));
     return plain && linkHost(deps, kind, url.hostname) && path.test(url.pathname) ? url : null;
 }

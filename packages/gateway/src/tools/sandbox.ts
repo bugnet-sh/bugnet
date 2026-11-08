@@ -50,6 +50,7 @@ import {
     paymentUnconfirmed,
     paymentsRefusal,
     servicesApplyingText,
+    totalsUnavailable,
     startNeedsSecretsText,
     stopFilesLine,
     startTotalText,
@@ -95,7 +96,7 @@ import {
     retryCall,
     type PaidRetry,
 } from "./orders.ts";
-import { endedAnswer, paidLine, paidOf, startSummary } from "./session.ts";
+import { endedAnswer, paidLine, paidOf, paidX402Line, startSummary } from "./session.ts";
 import { describeSize, limitQuotes, quoted, unavailableWords } from "./quote.ts";
 import { fetchAfterStart, sentence, sourceView, unplacedNote, type SourceView } from "./source.ts";
 
@@ -642,6 +643,12 @@ export async function startPaid(
     const failed = p?.state === PlacementState.FAILED;
     const x402 = account && enabled ? startX402Part(deps, order, account, enabled, failed) : null;
     const summary = startSummary(deps, handle, p);
+    const allowance = order.allowanceMicros ?? 0;
+    const fee = order.firstUse === true ? (enabled?.terms?.sessionFeeMicros ?? 0) : 0;
+    const paidStart =
+        account && allowance > 0 && order.amountMicros > 0
+            ? paidX402Line(order.amountMicros, allowance, fee, order.orderId)
+            : paidLine(order.amountMicros, order.orderId, false);
     const text = [
         `Sandbox ${view.state}. handle: ${handle}`,
         ready ? `Time left: ${view.timeLeft} (deadline ${view.deadline}).` : "",
@@ -651,7 +658,7 @@ export async function startPaid(
         p?.state === PlacementState.FAILED
             ? `It failed to start${p.refundable ? ", the payment will be refunded" : ""}.`
             : "",
-        paidLine(order.amountMicros, order.orderId, false),
+        paidStart,
         summary.line,
         view.source ? sentence(view.source.note) : "",
         sshLine(view.sshAlias),
@@ -932,7 +939,14 @@ export const registerSandboxTools: Register = (server, deps) => {
                               budget,
                           })
                         : { lines: [], view: null };
-                const done = endedAnswer(deps, args.handle, p, used, p?.terminationReason ?? "");
+                const done = endedAnswer(
+                    deps,
+                    args.handle,
+                    p,
+                    used,
+                    p?.terminationReason ?? "",
+                    part.view !== null,
+                );
                 const paid = p && !ended(p.state) ? paidOf(p) : 0n;
                 const text = [
                     ...(done
@@ -945,7 +959,9 @@ export const registerSandboxTools: Register = (server, deps) => {
                                   ".",
                           ]),
                     !done && view.terminationReason ? sentence(view.terminationReason) : "",
-                    !done && paid > 0n ? `Paid so far: ${usd(paid)} USDC.` : "",
+                    !done && paid > 0n
+                        ? `${part.view ? "Sandbox time paid" : "Paid"} so far: ${usd(paid)} USDC.`
+                        : "",
                     view.source && !(p && ended(p.state)) ? sentence(view.source.note) : "",
                     ready ? sshLine(view.sshAlias) : "",
                     offer.length > 0
@@ -1005,7 +1021,14 @@ export const registerSandboxTools: Register = (server, deps) => {
                     ...placementView(p, deps.now()),
                     ...(used !== undefined ? { usedSeconds: used } : {}),
                 };
-                const done = endedAnswer(deps, args.handle, p, used, "stop");
+                const done = endedAnswer(
+                    deps,
+                    args.handle,
+                    p,
+                    used,
+                    "stop",
+                    money !== "" && money !== totalsUnavailable,
+                );
                 const text = [
                     ...(done ? done.lines : [`Sandbox ${view.state}${usedText(used)}.`]),
                     money,
