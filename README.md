@@ -303,7 +303,8 @@ with its default is in
 
 ## Tools
 
-Only two tools cost money: `bugnet_start` and `bugnet_extend`. Everything else is free to call.
+Only three tools cost money: `bugnet_start`, `bugnet_extend` and `bugnet_x402_budget`. Everything
+else is free to call.
 Paid tools ask you first, and so does moving a file between your computer and a sandbox.
 
 | Tool                      | What it does                                                            | Cost           |
@@ -348,8 +349,8 @@ account to create and no API key to keep. You pay per run in USDC on Solana.
    approval.
 
 **Paying by link.** The agent shows you the pay link. Open it and pay with a browser wallet, or
-scan its Solana Pay QR code with your phone, then tell your agent you paid. This works in every
-client, claude.ai included.
+scan its QR code to open the page in Phantom on your phone. The agent waits for the payment and
+goes on by itself. This works in every client, claude.ai included.
 
 **Paying from the `pay` wallet.** With the `bugnet-wallet` plugin, the bridge or the Claude
 Desktop extension, the bridge pays the order with [`pay`](https://pay.sh) on your computer, and
