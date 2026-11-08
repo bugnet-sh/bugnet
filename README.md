@@ -65,7 +65,7 @@ anywhere.
 In Claude Code:
 
 ```sh
-claude mcp add --transport http bugnet https://mcp.bugnet.sh/mcp
+claude mcp add --scope user --transport http bugnet https://mcp.bugnet.sh/mcp
 ```
 
 Then ask your agent something like:
@@ -105,12 +105,12 @@ commands, or `BUGNET_HINTS=off` to turn hints off.
 ### Claude Code: just the MCP server
 
 ```sh
-claude mcp add --transport http bugnet https://mcp.bugnet.sh/mcp
+claude mcp add --scope user --transport http bugnet https://mcp.bugnet.sh/mcp
 ```
 
-That adds Bugnet to the current project for you only. Add `--scope user` to have it in every
-project, or `--scope project` to share it with your team through `.mcp.json`. Check it with
-`claude mcp list`, which should show `bugnet: https://mcp.bugnet.sh/mcp (HTTP) - ✔ Connected`.
+That adds Bugnet to every project, for you only. Use `--scope project` instead to share it with
+your team through `.mcp.json`. Without `--scope`, it works only in the folder where you ran it.
+Check it with `claude mcp list`, which should show `bugnet: https://mcp.bugnet.sh/mcp (HTTP) - ✔ Connected`.
 
 ### claude.ai
 
@@ -289,7 +289,7 @@ newer.
 
 | Client      | Setup                                                                                  |
 | ----------- | -------------------------------------------------------------------------------------- |
-| Claude Code | `claude mcp add --transport stdio bugnet -- npx -y @bugnet/mcp@0.1.0`                  |
+| Claude Code | `claude mcp add --scope user --transport stdio bugnet -- npx -y @bugnet/mcp@0.1.0`     |
 | Codex CLI   | `codex mcp add bugnet -- npx -y @bugnet/mcp@0.1.0`                                     |
 | Cursor      | `"bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.0"] }`                  |
 | Devin       | `"bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.0"] }`                  |

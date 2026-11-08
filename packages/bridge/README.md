@@ -35,7 +35,7 @@ It needs Node 20.3 or newer.
 **Claude Code**
 
 ```sh
-claude mcp add --transport stdio bugnet -- npx -y @bugnet/mcp@0.1.0
+claude mcp add --scope user --transport stdio bugnet -- npx -y @bugnet/mcp@0.1.0
 ```
 
 or `claude plugin install bugnet-wallet@bugnet` from the `bugnet-sh/bugnet` marketplace, which also adds the skill and hint hooks. Start Claude Code as plain `claude`, never `pay claude`, which loads only pay's own server and hides Bugnet.
