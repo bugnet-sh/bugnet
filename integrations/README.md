@@ -7,8 +7,6 @@ the same guidance as rules they do read. The Claude Code plugin does not need th
 How to add the server itself to each client is in the README's [Install](../README.md#install)
 section. These files add only the guidance.
 
-<!-- PENDING: the public server at mcp.bugnet.sh is not deployed yet -->
-
 | Client                           | Add the server                                                  | Add the guidance                                                                              |
 | -------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | Cursor                           | `.cursor/mcp.json`, see [Cursor](../README.md#cursor)           | Copy [`cursor/bugnet.mdc`](cursor/bugnet.mdc) to `.cursor/rules/bugnet.mdc`                   |

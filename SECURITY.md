@@ -13,8 +13,6 @@ Report it privately in one of these two ways:
 - Use GitHub's private reporting: the **Report a vulnerability** button under this repository's
   [Security tab](https://github.com/bugnet-sh/bugnet/security/advisories/new).
 
-<!-- PENDING: private vulnerability reporting must be turned on in the repository settings -->
-
 Please include:
 
 - what the problem is and what someone could do with it;

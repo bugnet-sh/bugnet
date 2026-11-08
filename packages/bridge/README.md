@@ -4,8 +4,6 @@ The local bridge to [Bugnet](https://github.com/bugnet-sh/bugnet): your AI codin
 heavy code in a throwaway cloud Linux sandbox instead of on your computer, and pays for it per
 run.
 
-<!-- PENDING: @bugnet/mcp is not published on npm yet, and the public server at mcp.bugnet.sh is not deployed yet -->
-
 ```sh
 npx -y @bugnet/mcp@0.1.0
 ```
@@ -175,8 +173,6 @@ What happens next:
 3. Inside the sandbox, the variable holds a placeholder. When code there makes an HTTPS request to
    one of your hosts, the proxy swaps in the real value. No other host ever gets it. The proxy
    decrypts all traffic to those hosts, request bodies included.
-
-<!-- PENDING: the proxy's public key is built in at launch and the proxy is still being built, until then the bridge refuses to seal -->
 
 If your client cannot ask you, the bridge decides alone and takes only what is plainly yours: a
 well-known token sent to its usual hosts, such as `HF_TOKEN` to `huggingface.co`, read from a

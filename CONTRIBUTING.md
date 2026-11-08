@@ -268,8 +268,6 @@ base64url without padding, then a new bridge and page ship. A rotation adds the 
 keeps the old one until its sandboxes have ended, and ships before the router lists the new key.
 The development key in `src/testing` never goes there.
 
-<!-- PENDING: bugnet-egress, its box-key command and the router's secrets.box_public_keys are still being built -->
-
 `pnpm --filter @bugnet/seal interop` checks with Go that the router side opens what the bridge
 and the page seal.
 

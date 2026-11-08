@@ -3,7 +3,7 @@
 Your AI coding agent runs risky or heavy code in a throwaway cloud Linux sandbox instead of on
 your computer, and pays for it per run.
 
-<!-- PENDING: .github/workflows/ci.yml is built on another branch, and @bugnet/mcp is not on npm yet -->
+**Not launched yet.** The public server and the npm package go live at launch.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/bugnet-sh/bugnet/ci.yml?branch=main&label=CI)](https://github.com/bugnet-sh/bugnet/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@bugnet/mcp)](https://www.npmjs.com/package/@bugnet/mcp)
@@ -62,8 +62,6 @@ anywhere.
 
 ## Quick start
 
-<!-- PENDING: the public server at mcp.bugnet.sh is not deployed yet -->
-
 In Claude Code:
 
 ```sh
@@ -81,8 +79,6 @@ spends anything. Other clients are below.
 
 Bugnet is one MCP server at `https://mcp.bugnet.sh/mcp`. It speaks Streamable HTTP and needs no
 sign-in, header or API key. Pick your client.
-
-<!-- PENDING: the public server at mcp.bugnet.sh is not deployed yet, so these steps were run against a local server -->
 
 ### Claude Code: the plugin (recommended)
 
@@ -134,8 +130,6 @@ secrets with the secret page instead.
 It pays by link: the agent shows you the order's pay link, you pay in your browser, and the agent finishes the order with `bugnet_redeem`.
 
 ### Claude Desktop
-
-<!-- PENDING: no release carries bugnet.mcpb yet -->
 
 Download `bugnet.mcpb` from the [latest release](https://github.com/bugnet-sh/bugnet/releases/latest) and open it with Claude Desktop, which asks you to confirm the install. It runs the [bridge](#the-bridge-npx-bugnetmcp), so it pays from the `pay` wallet on this computer when you have one, and by link otherwise.
 
@@ -259,7 +253,6 @@ entry in the file that Cascade's **Open MCP config file** opens.
 | Stdio     | `npx -y @bugnet/mcp@0.1.0`, needs Node 20.3 |
 
 Most clients take one of these two shapes. The second runs the [bridge](#the-bridge-npx-bugnetmcp).
-<!-- PENDING: @bugnet/mcp is not published on npm yet -->
 
 ```json
 {
@@ -281,8 +274,6 @@ If your agent reads `AGENTS.md`, paste
 [`integrations/agents-md/AGENTS.snippet.md`](integrations/agents-md/AGENTS.snippet.md) into it.
 
 ### The bridge: `npx @bugnet/mcp`
-
-<!-- PENDING: @bugnet/mcp is not published on npm yet -->
 
 The bridge is a small program that runs on your computer. Your client talks to it over stdio, and
 it passes every call on to Bugnet's server unchanged, except that it pays or opens the pay link for a payment step. You only need it for these:
@@ -315,8 +306,6 @@ with its default is in
 Only two tools cost money: `bugnet_start` and `bugnet_extend`. Everything else is free to call.
 Paid tools ask you first, and so does moving a file between your computer and a sandbox.
 
-<!-- PENDING: bugnet_fetch_source, bugnet_preview, bugnet_transfer, bugnet_ssh, bugnet_ssh_remove, bugnet_secret_link, bugnet_secrets, bugnet_secret_delete and bugnet_secret_put_grant answer "not available yet" until Bugnet's backend builds them -->
-
 | Tool                      | What it does                                                            | Cost           |
 | ------------------------- | ----------------------------------------------------------------------- | -------------- |
 | `bugnet_assess`           | Checks a repo, model or script and says if a sandbox fits, and why      | Free           |
@@ -347,8 +336,6 @@ from your machine after you confirm it.
 
 ## Paying
 
-<!-- PENDING: payments run only in a local test mode today, the payment service is still being built -->
-
 Bugnet uses [x402](https://www.x402.org), an open standard for paying over HTTP. There is no
 account to create and no API key to keep. You pay per run in USDC on Solana.
 
@@ -378,8 +365,6 @@ paid order that starts no sandbox within 30 minutes is refunded.
 in USDC. `bugnet_assess` and `bugnet_quote` show the prices for free before anything is paid, and
 `bugnet_status` shows what more time costs. Stopping early does not refund the unused time. A
 small sandbox for ten minutes costs a few cents.
-<!-- PENDING: the launch price list is not set, the local test list charges $0.05 for 1 vCPU, 1 GiB and 10 minutes -->
-
 **The approval click.** `bugnet_start` and `bugnet_extend` are marked as tools a person must
 approve. Claude Code asks you before every call, even in modes that skip other prompts, and
 refuses the call when there is no person to ask. The call carries `confirmPriceUsd`, the price
@@ -415,8 +400,6 @@ read.
 
 ### Secrets
 
-<!-- PENDING: the secret page's service and the backend's secret calls are still being built -->
-
 Never paste a token into the chat. Bugnet has two ways to get one into a sandbox, and neither
 lets the value pass through the chat or your agent.
 
@@ -433,12 +416,12 @@ lets the value pass through the chat or your agent.
 
 "Sealed" means encrypted with a public key built into the page and the bridge, so only Bugnet's
 outgoing proxy can open it. Neither will seal to any other key, so no server can swap in a key of
-its own. <!-- PENDING: the proxy's key is added at launch, until then both refuse to seal -->
+its own.
 
 Inside the sandbox, the variable holds a placeholder, not the token. When code in the sandbox
 makes an HTTPS request to one of the hosts you allowed, Bugnet's outgoing proxy swaps the
 placeholder for the real token. Requests to any other host never get it. Secrets are deleted when
-the sandbox ends. <!-- PENDING: the outgoing proxy is still being built -->
+the sandbox ends.
 
 ### What Bugnet can and cannot see
 
@@ -451,8 +434,6 @@ Bugnet can see:
 - web preview, file transfer and SSH traffic, which passes through Bugnet's servers;
 - a secret's value inside the outgoing proxy, and all traffic to the hosts you allowed for it,
   request bodies included.
-
-<!-- PENDING: previews, transfers, SSH and the outgoing proxy are still being built -->
 
 Bugnet cannot see:
 
@@ -469,15 +450,12 @@ Two honest limits. First, a secret page is only as safe as the code the page run
 serves. The bridge does not have that weakness, because it is a package on your computer. Second,
 someone who broke into Bugnet's backend could make the proxy use a secret against the hosts you
 allowed, but could not read it or send it anywhere else.
-<!-- PENDING: the outgoing proxy is still being built -->
 
 ### What Bugnet will not run
 
 Crypto miners, floods and DDoS tools, mass scanning, scans of local networks, credential stuffing
 and mass messaging. Bugnet tells agents never to offer a sandbox for these, not even to inspect
 them as a test. A sandbox used for them is ended.
-<!-- PENDING: Bugnet's own abuse checks are still being built -->
-
 Found a security problem? See [SECURITY.md](SECURITY.md).
 
 ## Limits
@@ -486,20 +464,17 @@ Found a security problem? See [SECURITY.md](SECURITY.md).
 - SSH, web previews, secrets and a GPU have to be asked for when the agent gets the quote. A
   running sandbox cannot add them later.
 - GPU sandboxes are offered only when available.
-  <!-- PENDING: the launch size list has no GPU sizes yet -->
 - Every tool call answers within 45 seconds. Longer commands keep running, and your agent follows
   them with `bugnet_job`.
 - Each call returns the last 8 KiB of a command's output and of its errors. Read whole files with
   `bugnet_read_file`.
 - `bugnet_read_file` and `bugnet_write_file` move up to 256 KiB per call. For bigger files,
   `bugnet_transfer` gives a one-use `curl` link.
-  <!-- PENDING: transfers are still being built -->
 - A quote is valid for 10 minutes, and so is a secret page link.
 - `bugnet_assess` and `bugnet_quote` together allow 12 calls a minute per IP address, in bursts
   of up to 10.
 - Everything is deleted at the deadline. Unused time is not refunded when you stop early.
 - A private GitHub repo needs a GitHub token, added through the secret page or the bridge.
-  <!-- PENDING: fetching a repo and adding secrets are still being built -->
 
 ## FAQ
 
@@ -521,14 +496,14 @@ no.
 
 **How do I get files out?** Your agent reads small files with `bugnet_read_file`. For big ones,
 `bugnet_transfer` gives a `curl` link. Downloads go to `./bugnet-downloads/` unless you name
-another file. <!-- PENDING: transfers are still being built -->
+another file.
 
 **Can I open a web app running in the sandbox?** Yes, if the agent asked for previews in the
 quote. `bugnet_preview` gives an HTTPS link. Anyone with that link can reach the app until the
-deadline, so share it with care. <!-- PENDING: previews are still being built -->
+deadline, so share it with care.
 
 **Can I SSH in?** Yes, if the agent asked for SSH in the quote. `bugnet_ssh` adds your public key
-and gives you the command. <!-- PENDING: SSH is still being built -->
+and gives you the command.
 
 **Can I run it in CI?** Free tools, yes. In Claude Code, paid tools need a person to approve
 them, so an unattended run cannot start a sandbox.
