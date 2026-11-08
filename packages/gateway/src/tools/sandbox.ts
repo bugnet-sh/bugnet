@@ -89,6 +89,7 @@ import {
     claimAsked,
     claimInput,
     allowanceOrderError,
+    memoRetry,
     paidRetry,
     paymentRequiredResult,
     refusalError,
@@ -477,7 +478,7 @@ function orderLost(
 ): unknown {
     // With [x402] off an orderId beside a payment makes a first call for that order
     const lost = orderCallLost("start", startTool, {
-        orderId: args.orderId,
+        orderId: retried?.orderId ?? args.orderId,
         claim: byClaim ? (args.claim as string) : null,
         retried: retried !== null,
         payment,
@@ -695,7 +696,12 @@ export const registerSandboxTools: Register = (server, deps) => {
         async (args, ctx) => {
             try {
                 const payment = ctx.mcpReq._meta?.["x402/payment"] ?? args.payment;
-                const retried = paidRetry(args, payment, deps.config.x402.enabled);
+                const retried = (args.x402 ? memoRetry : paidRetry)(
+                    args,
+                    payment,
+                    deps.config.x402.enabled,
+                );
+                const sentId = retried?.orderId ?? args.orderId;
                 const key = toolUseId(ctx);
                 let claims: QuoteClaims;
                 try {
@@ -704,8 +710,8 @@ export const registerSandboxTools: Register = (server, deps) => {
                     });
                 } catch (e) {
                     if (!(e instanceof QuoteError)) throw e;
-                    const keep = args.orderId
-                        ? `. Keep orderId "${args.orderId}" ` +
+                    const keep = sentId
+                        ? `. Keep orderId "${sentId}" ` +
                           (args.claim ? `and claim "${args.claim}" ` : "") +
                           "on the next bugnet_start, so the order is not paid twice"
                         : "";
@@ -812,7 +818,7 @@ export const registerSandboxTools: Register = (server, deps) => {
                 if (order.status === "payment_required") {
                     return paymentRequiredResult(order, {
                         tool: "bugnet_start",
-                        ...(args.orderId ? { sentOrderId: args.orderId } : {}),
+                        ...(sentId ? { sentOrderId: sentId } : {}),
                         ...(args.claim ? { sentClaim: args.claim } : {}),
                         quoteId: args.quoteId,
                     });
@@ -821,8 +827,15 @@ export const registerSandboxTools: Register = (server, deps) => {
                     if (plan) throw startRefusal(order, plan, args, payment);
                     const paid = retried ? paidOrderRefusal(order, "start", retried.orderId) : null;
                     if (paid) throw paid;
+                    if (retried?.payment !== undefined && order.reason === "router_unavailable") {
+                        throw paymentUnconfirmed(
+                            "start",
+                            startTool,
+                            order.orderId ?? retried.orderId,
+                        );
+                    }
                     throw refusalError(order, "start", "bugnet_start", {
-                        ...(args.orderId ? { sentOrderId: args.orderId } : {}),
+                        ...(sentId ? { sentOrderId: sentId } : {}),
                         paymentSent: payment !== undefined,
                     });
                 }

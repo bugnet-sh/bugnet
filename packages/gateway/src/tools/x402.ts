@@ -74,7 +74,7 @@ import {
 import {
     claimAsked,
     claimInput,
-    paidRetry,
+    memoRetry,
     paymentRequiredResult,
     type PaidRetry,
     type RetryWith,
@@ -478,7 +478,7 @@ async function runBudget(
     ctx: ServerContext,
 ): Promise<CallToolResult> {
     const payment = ctx.mcpReq._meta?.["x402/payment"] ?? args.payment;
-    const retry = paidRetry(args, payment, deps.config.x402.enabled);
+    const retry = memoRetry(args, payment, deps.config.x402.enabled);
     // A paid retry finishes an order the user paid, so the quote bucket never holds it back
     if (retry === null) limitQuotes(deps, "x402");
     const c: BudgetCall = {

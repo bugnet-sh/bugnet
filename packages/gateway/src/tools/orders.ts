@@ -3,6 +3,7 @@ import type { CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
     claimPattern,
+    paymentMemo,
     type AwaitingPayment,
     type OrderResult,
     type PaidAllowanceOrder,
@@ -31,6 +32,16 @@ export function paidRetry(
     if (payment !== undefined) return { orderId: args.orderId, payment };
     if (args.claim !== undefined) return { orderId: args.orderId, claim: args.claim };
     return null;
+}
+
+// A payment whose memo names an order retries it, so a resend after it settled sends no terms
+export function memoRetry(
+    args: { orderId?: string | undefined; claim?: string | undefined },
+    payment: unknown,
+    widened: boolean,
+): PaidRetry | null {
+    const orderId = args.orderId ?? paymentMemo(payment) ?? undefined;
+    return paidRetry({ ...args, orderId }, payment, widened);
 }
 
 // A claim sent beside a payment is held back, so a paid order that asks for it gets it next

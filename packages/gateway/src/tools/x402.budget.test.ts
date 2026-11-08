@@ -385,6 +385,46 @@ describe("bugnet_x402_budget", () => {
         expect(payments.orders).toHaveLength(2);
     });
 
+    // The first payment changed the account, so a resend must not be checked or built from it
+    it.each([
+        ["1.00", "1.003"],
+        ["3.00", "3.003"],
+    ])(
+        "answers a %s payment resent after it settled from the stored order",
+        async (amount, total) => {
+            const { client, payments, seen } = await setup({
+                payments: testPayments(undefined, { requirePayment: true }),
+            });
+            const a = args({ amountUsd: amount, confirmPriceUsd: total });
+            const step = await callTool<{ orderId: string }>(client, budget, a);
+            const id = step.structured.orderId;
+            const payment = { x402Version: 2, accepted: { extra: { memo: id } } };
+            const key = { toolUseId: "toolu_resend_first01" };
+            const first = await callTool<{ orderId: string }>(
+                client,
+                budget,
+                { ...a, payment },
+                key,
+            );
+            expect(first.isError).toBe(false);
+            const urls = seen.urls.length;
+            const checks = seen.checks.length;
+            const again = await callTool<{ orderId: string }>(
+                client,
+                budget,
+                { ...a, payment },
+                key,
+            );
+            expect(again.isError).toBe(false);
+            expect(again.text).toBe(first.text);
+            expect(again.structured.orderId).toBe(id);
+            const retry = { orderId: id, payment, handleSha256: h, idempotencyKey: key.toolUseId };
+            expect(payments.orders.slice(1)).toEqual([retry, retry]);
+            expect(seen.urls).toHaveLength(urls);
+            expect(seen.checks).toHaveLength(checks);
+        },
+    );
+
     it("passes the payment step through with the claim and the budget sentence", async () => {
         const { client } = await setup({
             payments: testPayments(undefined, { requirePayment: true }),
@@ -591,34 +631,27 @@ describe("bugnet_x402_budget", () => {
     });
 
     // A carried payment may be a resend of one Payments already settled
-    it("names the order when a call carrying a payment answers slowly or finds x402 off", async () => {
-        const paidText = (id: string) =>
-            `x402: order ${id} is paid, but Bugnet could not reach its payment service to apply it. Call bugnet_x402_budget with orderId "${id}" and the claim from its payment step in a minute.`;
-        const rows: [unknown, string, string | null][] = [
-            [memoPayment, paidText(memoId), memoId],
-            [{ x402Version: 2 }, unconfirmedText, null],
-        ];
-        for (const [payment, text, orderId] of rows) {
-            const slow = await setup({
-                router: {
-                    checkX402: () => {
-                        slow.clock.now += 30_000;
-                        return {};
-                    },
+    it("never says nothing was charged when a call carrying a payment answers slowly or finds x402 off", async () => {
+        const payment = { x402Version: 2 };
+        const slow = await setup({
+            router: {
+                checkX402: () => {
+                    slow.clock.now += 30_000;
+                    return {};
                 },
-            });
-            const r = await callTool(slow.client, budget, args({ payment }));
-            expect(r.text).toBe(text);
-            expect(r.structured).toEqual(orderId ? { message: r.text, orderId } : {});
-            expect(slow.payments.orders).toEqual([]);
-            const off = await setup({
-                payments: testPayments(undefined, { terms: { enabled: false } }),
-            });
-            const o = await callTool(off.client, budget, args({ payment }));
-            expect(o.text).toBe(text);
-            expect(o.structured).toEqual(orderId ? { message: o.text, orderId } : {});
-            expect(off.payments.orders).toEqual([]);
-        }
+            },
+        });
+        const r = await callTool(slow.client, budget, args({ payment }));
+        expect(r.text).toBe(unconfirmedText);
+        expect(r.structured).toEqual({});
+        expect(slow.payments.orders).toEqual([]);
+        const off = await setup({
+            payments: testPayments(undefined, { terms: { enabled: false } }),
+        });
+        const o = await callTool(off.client, budget, args({ payment }));
+        expect(o.text).toBe(unconfirmedText);
+        expect(o.structured).toEqual({});
+        expect(off.payments.orders).toEqual([]);
         const plain = await setup({
             router: {
                 checkX402: () => {
@@ -634,6 +667,20 @@ describe("bugnet_x402_budget", () => {
 
     // A carried payment may be a resend of one Payments already settled
     it.each([
+        [
+            "terms off",
+            () => ({ payments: testPayments(undefined, { terms: { enabled: false } }) }),
+            {},
+        ],
+        [
+            "an account that cannot be read",
+            () => ({
+                payments: testPayments(undefined, {
+                    x402: { account: () => Promise.reject(new Error("down")) },
+                }),
+            }),
+            {},
+        ],
         [
             "too many new services",
             () => ({ payments: testPayments(undefined, { terms: { maxNewServicesPerOrder: 0 } }) }),
@@ -700,11 +747,20 @@ describe("bugnet_x402_budget", () => {
                 return r;
             };
             expect((await call({})).text).toMatch(/othing was charged/);
-            const r = await call({ payment: memoPayment });
-            expect(r.text).toBe(
-                `x402: order ${memoId} is paid, but Bugnet could not reach its payment service to apply it. Call bugnet_x402_budget with orderId "${memoId}" and the claim from its payment step in a minute.`,
-            );
-            expect(r.structured).toEqual({ message: r.text, orderId: memoId });
+            const r = await call({ payment: { x402Version: 2 } });
+            expect(r.text).toBe(unconfirmedText);
+            expect(r.structured).toEqual({});
+            // A payment whose memo names an order skips every local check for Payments' answer
+            const s = await setup(over());
+            const m = await callTool(s.client, budget, args({ ...extra, payment: memoPayment }));
+            expect(s.payments.orders).toEqual([
+                { orderId: memoId, payment: memoPayment, handleSha256: h },
+            ]);
+            expect(s.payments.configures).toEqual([]);
+            expect(s.seen.checks).toEqual([]);
+            expect(s.seen.urls).toEqual([]);
+            expect(m.text).toContain(`order ${memoId}`);
+            expect(m.structured).toEqual(expect.objectContaining({ orderId: memoId }));
         },
     );
 
@@ -734,13 +790,19 @@ describe("bugnet_x402_budget", () => {
         expect(
             (await callTool(termsDown.client, budget, args({ payment: { x402Version: 2 } }))).text,
         ).toBe(unconfirmedText);
+        const r = await callTool(termsDown.client, budget, args({ payment: memoPayment }));
+        expect(r.text).toBe(
+            `x402: order ${memoId} is paid, but Bugnet could not reach its payment service to apply it. Call bugnet_x402_budget with orderId "${memoId}" and the claim from its payment step in a minute.`,
+        );
+        expect(r.structured).toEqual({ message: r.text, orderId: memoId });
         const accountDown = await setup({
             payments: testPayments(undefined, {
                 x402: { account: () => Promise.reject(new Error("down")) },
             }),
         });
-        const r = await callTool(accountDown.client, budget, args({ payment: memoPayment }));
-        expect(r.text).toContain(`x402: order ${memoId} is paid`);
+        const a = await callTool(accountDown.client, budget, args({ payment: { x402Version: 2 } }));
+        expect(a.text).toBe(unconfirmedText);
+        expect(termsDown.payments.orders).toEqual([]);
         expect(accountDown.payments.orders).toEqual([]);
     });
 

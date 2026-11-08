@@ -975,9 +975,9 @@ describe("bugnet_start with x402", () => {
         expect((await callTool(off.client, "bugnet_start", x402Args(id))).text).toBe(startOff);
         // The carried payment may be a resend of one Payments already settled
         const paying = await callTool(off.client, "bugnet_start", x402Args(id), {
-            meta: { "x402/payment": memoPayment },
+            meta: { "x402/payment": { x402Version: 2 } },
         });
-        expect(paying.text).toBe(paidUnreachable(memoId, fromStep(memoId)));
+        expect(paying.text).toBe(startUnconfirmed);
         expect(off.payments.orders).toEqual([]);
         const down = await x402Setup({
             payments: testPayments(undefined, {
@@ -997,14 +997,6 @@ describe("bugnet_start with x402", () => {
                     x402: { terms: () => Promise.reject(new Error("down")) },
                 }),
             });
-        const named = await down();
-        const r = await callTool(
-            named.client,
-            "bugnet_start",
-            x402Args(withSecrets(named.deps), { payment: memoPayment }),
-        );
-        expect(r.text).toBe(paidUnreachable(memoId, fromStep(memoId)));
-        expect(r.structured).toEqual(expect.objectContaining({ orderId: memoId }));
         const bare = await down();
         const b = await callTool(
             bare.client,
@@ -1440,6 +1432,42 @@ describe("bugnet_start with x402", () => {
         expect(seen.enables).toHaveLength(1);
     });
 
+    // After the payment the quote expired and the seller asks more, which only the order may outlast
+    it.each([
+        ["1.00", "1.053"],
+        ["3.00", "3.053"],
+    ])(
+        "answers a start with a %s allowance resent after it settled from the stored order",
+        async (allowance, total) => {
+            const payments = testPayments(undefined, { requirePayment: true });
+            const prices = { [testChatUrl]: { payTo: testPayTo, amountMicros: 10_000 } };
+            const { client, deps, clock, seen } = await x402Setup({ payments, prices });
+            const a = x402Args(withSecrets(deps), {
+                confirmPriceUsd: total,
+                x402: { allowanceUsd: allowance, services: [testChatLine] },
+            });
+            const step = await callTool<{ orderId: string }>(client, "bugnet_start", a);
+            const orderId = step.structured.orderId;
+            const payment = { x402Version: 2, accepted: { extra: { memo: orderId } } };
+            const key = { toolUseId: "toolu_resend_start01" };
+            const first = await callTool(client, "bugnet_start", { ...a, payment }, key);
+            expect(first.isError).toBe(false);
+            clock.now += 6 * 60_000;
+            (prices[testChatUrl] as SellerPrice).amountMicros = 20_000;
+            const urls = seen.urls.length;
+            const checks = seen.checks.length;
+            const again = await callTool(client, "bugnet_start", { ...a, payment }, key);
+            expect(again.isError).toBe(false);
+            expect(again.structured).toEqual(
+                expect.objectContaining({ handle: testHandle, orderId }),
+            );
+            const retry = { orderId, payment, idempotencyKey: key.toolUseId };
+            expect(payments.orders.slice(1)).toEqual([retry, retry]);
+            expect(seen.urls).toHaveLength(urls);
+            expect(seen.checks).toHaveLength(checks);
+        },
+    );
+
     it("abandons a paid x402 start that the router refuses outright", async () => {
         const { client, deps, payments, seen } = await x402Setup({
             impl: {
@@ -1728,44 +1756,73 @@ describe("bugnet_start with x402", () => {
 
     // A carried payment may be a resend of one Payments already settled
     it.each([
-        ["[x402] off", { off: true }, true],
-        ["terms off", { payments: testPayments(undefined, { terms: { enabled: false } }) }, true],
+        ["[x402] off", () => ({ off: true }), true],
         [
-            "no start with x402",
-            { payments: testPayments(undefined, { terms: { startWithX402: false } }) },
+            "terms off",
+            () => ({ payments: testPayments(undefined, { terms: { enabled: false } }) }),
             true,
         ],
-        ["a quote without secrets", {}, false],
+        [
+            "terms that cannot be read",
+            () => ({
+                payments: testPayments(undefined, {
+                    x402: { terms: () => Promise.reject(new Error("down")) },
+                }),
+            }),
+            true,
+        ],
+        [
+            "no start with x402",
+            () => ({ payments: testPayments(undefined, { terms: { startWithX402: false } }) }),
+            true,
+        ],
+        ["a quote without secrets", () => ({}), false],
         [
             "too many new services",
-            { payments: testPayments(undefined, { terms: { maxNewServicesPerOrder: 0 } }) },
+            () => ({ payments: testPayments(undefined, { terms: { maxNewServicesPerOrder: 0 } }) }),
             true,
         ],
         [
             "a CheckX402 refusal",
-            {
+            () => ({
                 impl: {
                     checkX402: () => {
                         throw routerError(Code.InvalidArgument, "HOST_REFUSED");
                     },
                 },
-            },
+            }),
             true,
         ],
     ] as const)(
         "never says nothing was charged beside a carried payment: %s",
-        async (_name, o, secrets) => {
+        async (name, o, secrets) => {
             const call = async (meta: Record<string, unknown>) => {
-                const s = await x402Setup(o);
+                const s = await x402Setup(o());
                 const quote = secrets ? withSecrets(s.deps) : signed(s.deps);
                 const r = await callTool(s.client, "bugnet_start", x402Args(quote), { meta });
-                expect(s.payments.orders).toEqual([]);
-                return r;
+                return { r, s };
             };
-            expect((await call({})).text).toMatch(/othing was charged/);
-            const r = await call({ "x402/payment": memoPayment });
-            expect(r.text).toBe(paidUnreachable(memoId, fromStep(memoId)));
-            expect(r.structured).toEqual({ message: r.text, orderId: memoId });
+            const plain = await call({});
+            expect(plain.r.text).toMatch(/othing was charged/);
+            expect(plain.s.payments.orders).toEqual([]);
+            const bare = await call({ "x402/payment": { x402Version: 2 } });
+            expect(bare.r.text).toBe(startUnconfirmed);
+            expect(bare.r.structured).toEqual({});
+            expect(bare.s.payments.orders).toEqual([]);
+            const memo = await call({ "x402/payment": memoPayment });
+            if (name === "[x402] off") {
+                // With [x402] off Payments still needs the terms, so the memo makes no paid retry
+                expect(memo.r.text).toBe(paidUnreachable(memoId, fromStep(memoId)));
+                expect(memo.r.structured).toEqual({ message: memo.r.text, orderId: memoId });
+                expect(memo.s.payments.orders).toEqual([]);
+                return;
+            }
+            // A payment whose memo names an order skips every local check for Payments' answer
+            expect(memo.s.payments.orders).toEqual([{ orderId: memoId, payment: memoPayment }]);
+            expect(memo.s.seen.checks).toEqual([]);
+            expect(memo.s.seen.urls).toEqual([]);
+            expect(memo.r.text).toContain(`order ${memoId}`);
+            expect(memo.r.structured).toEqual(expect.objectContaining({ orderId: memoId }));
         },
     );
 
