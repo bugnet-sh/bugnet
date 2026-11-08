@@ -114,9 +114,11 @@ export function paymentStepResult(step: PaymentStep, quoteId?: string): CallTool
           : ` (orderId "${id}", claim "${step.claim}")`;
     const guide = [
         `Payment required for order ${id}.`,
-        `Next: pay at ${step.payUrl} with a Solana wallet holding USDC, then call ` +
+        "Next: show the user this link to pay in their browser with a Solana wallet holding " +
+            `USDC: ${step.payUrl}. Then, in the same turn and without waiting for the user, call ` +
             `bugnet_redeem with orderId and claim${named}.`,
-        "Show the user the link, since they pay in their own browser.",
+        "It waits for the payment and goes on once it lands; if it answers that the order is " +
+            "not paid yet, call it again, for up to 10 minutes.",
         `Calling ${step.tool} again without this orderId opens a new order the user would pay again.`,
         "The x402 maxTimeoutSeconds limits a wallet's signed payment, not the user's time to pay.",
     ].join(" ");

@@ -920,7 +920,7 @@ describe("paying with pay, the gateway stand-in", () => {
         const second = await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
         expect(payer.calls).toHaveLength(1);
         expect(first.structuredContent).toEqual(stepResult().structuredContent);
-        expect(second.structuredContent).toEqual(stepResult().structuredContent);
+        expect(second).toEqual(expect.objectContaining(paymentStepResult(standInStep, "q")));
         expect(remote.calls).toHaveLength(2);
     });
 
@@ -1708,16 +1708,14 @@ describe.each(["legacy", "modern"] as const)("paying by link, %s client", (era) 
         expect(retry.requestState).toBeUndefined();
     });
 
-    it("returns the payment step unchanged to a client that cannot open links", async () => {
+    it("gives a client that cannot open links the payment step with the bridge's guide", async () => {
         const remote = fakeRemote(handled);
-        const b = await bridge({
-            remote,
-            era,
-            deps: { pay: devPay(testPayments(), null, { status: async () => "paid" }) },
-        });
+        const pay = devPay(testPayments(), null, { status: async () => "paid" });
+        const b = await bridge({ remote, era, deps: { pay } });
         const r = await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
-        expect(r.structuredContent).toEqual(stepResult().structuredContent);
+        expect(r).toEqual(expect.objectContaining(paymentStepResult(standInStep, "q")));
         expect(remote.calls).toHaveLength(1);
+        expect(pay.orders.heldFor(key)).toMatchObject({ orderId: standInOrder, state: "unknown" });
     });
 
     it.each([

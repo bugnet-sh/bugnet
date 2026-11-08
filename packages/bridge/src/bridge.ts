@@ -251,15 +251,17 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             CLIENT_CAPABILITIES_META_KEY
         ] as ClientCapabilities | undefined) ?? server.getClientCapabilities();
     const secretDeps = { ...deps, clientCapabilities };
-    // A client that can open links gets the pay link, any other the payment step as it is
+    // A client that can open links gets the pay link, any other the payment step to show the user
     const linkPath = (
         step: PaymentStep,
-        result: RemoteResult,
+        quoteId: string | undefined,
         ctx: ServerContext,
         orders: PaidOrders,
     ): RemoteResult => {
         orders.holdLink(step.orderId);
-        return canElicitUrl(clientCapabilities(ctx)) ? payLinkRequest(step, deps.now()) : result;
+        return canElicitUrl(clientCapabilities(ctx))
+            ? payLinkRequest(step, deps.now())
+            : paymentStepResult(step, quoteId);
     };
     // Orders whose payment step this bridge passed on, the only ones a start may name as its own
     const relayed = new Set<string>();
@@ -464,8 +466,8 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             deps.log.warn("pay link refused", { orderId: paid.orderId, why });
             return result;
         }
-        if (orders.tried(paid.orderId)) return linkPath(paid, result, ctx, orders);
-        if (!pay.payer) return linkPath(paid, result, ctx, orders);
+        if (orders.tried(paid.orderId)) return linkPath(paid, quoteIdOf(args), ctx, orders);
+        if (!pay.payer) return linkPath(paid, quoteIdOf(args), ctx, orders);
         orders.markTried(paid.orderId);
         // Never raced against the client's signal, since pay may have paid by the time it gives up
         // The outcome is recorded as it lands, even when this call is already gone
@@ -498,7 +500,7 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
                 if (lastingRefusals.has(outcome.reason)) orders.holdLink(paid.orderId);
                 return result;
             }
-            return linkPath(paid, result, ctx, orders);
+            return linkPath(paid, quoteIdOf(args), ctx, orders);
         }
 
         function redeem(): Promise<RemoteResult> {
