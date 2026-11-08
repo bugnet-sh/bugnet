@@ -115,9 +115,11 @@ function seedPhrase(v: string): boolean {
 }
 
 const maxJsonNodes = 2_000;
+const maxDepth = 16;
 
-// A wallet export such as {"publicKey": ..., "secretKey": [...]}, at any depth
-function jsonKey(v: string, seedName: boolean, depth: number): boolean {
+// A wallet export such as {"publicKey": ..., "secretKey": [...]}, at any depth. A document past
+// the node or depth limit is refused, since what it hides past them was never looked at
+function jsonKey(v: string, seedName: boolean, depth: number, budget: { nodes: number }): boolean {
     if (!v.startsWith("{") && !v.startsWith("[")) return false;
     let doc: unknown;
     try {
@@ -125,12 +127,13 @@ function jsonKey(v: string, seedName: boolean, depth: number): boolean {
     } catch {
         return false;
     }
-    let budget = maxJsonNodes;
     const walk = (node: unknown, keyed: boolean, depth: number): boolean => {
-        if (--budget < 0 || depth > 16) return false;
-        if (typeof node === "string") return refused(node, keyed, depth + 1);
+        if (--budget.nodes < 0 || depth > maxDepth) return true;
+        if (typeof node === "string") return refused(node, keyed, depth + 1, budget);
         if (Array.isArray(node)) {
-            if (refusedBytes(byteArray(node), keyed)) return true;
+            // A byte array is judged whole; its numbers hold nothing more to walk
+            const bytes = byteArray(node);
+            if (bytes !== undefined) return refusedBytes(bytes, keyed);
             return node.some((n) => walk(n, keyed, depth + 1));
         }
         if (typeof node !== "object" || node === null) return false;
@@ -141,10 +144,10 @@ function jsonKey(v: string, seedName: boolean, depth: number): boolean {
     return walk(doc, seedName, depth);
 }
 
-function refused(value: string, seedName: boolean, depth: number): boolean {
+function refused(value: string, seedName: boolean, depth: number, budget: { nodes: number }) {
     const v = value.trim();
     if (ed25519Pem(v) || ed25519Der.test(v) || seedPhrase(v.toLowerCase())) return true;
-    if (depth < 16 && jsonKey(v, seedName, depth)) return true;
+    if (jsonKey(v, seedName, depth, budget)) return true;
     return [hexBytes(v), arrayBytes(v), base58Bytes(v), base64Bytes(v)].some((b) =>
         refusedBytes(b, seedName),
     );
@@ -154,5 +157,5 @@ function refused(value: string, seedName: boolean, depth: number): boolean {
 // 32-byte value is refused only under a wallet key name, since public addresses and random
 // secrets share that size. Bare hex counts only as 64 or 128 digits
 export function looksLikeSolanaKey(value: string, names: readonly string[] = []): boolean {
-    return refused(value, names.some(looksLikeSeedName), 0);
+    return refused(value, names.some(looksLikeSeedName), 0, { nodes: maxJsonNodes });
 }

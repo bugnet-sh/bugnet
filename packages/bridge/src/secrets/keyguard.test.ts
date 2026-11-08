@@ -133,6 +133,31 @@ it("refuses a wallet export with a keypair at any depth, or a seed under a key f
     }
 });
 
+it("refuses JSON past its node or depth limit, and judges a byte array whole", () => {
+    const k = Array.from(keyBytes());
+    let deep: unknown = "x";
+    for (let i = 0; i < 20; i++) deep = { a: deep };
+    for (const v of [
+        // A long byte array before the key no longer uses up the walk
+        JSON.stringify({ pad: Array(5_000).fill(7), secretKey: k }),
+        JSON.stringify({ pad: Array(5_000).fill("x"), secretKey: k }),
+        JSON.stringify({ pad: Array(5_000).fill(1_000) }),
+        JSON.stringify(deep),
+        JSON.stringify({ inner: JSON.stringify({ pad: Array(5_000).fill("x") }) }),
+    ]) {
+        expect(looksLikeSolanaKey(v, ["API_URL"]), v.slice(0, 30)).toBe(true);
+    }
+    let shallow: unknown = "x";
+    for (let i = 0; i < 15; i++) shallow = { a: shallow };
+    for (const v of [
+        JSON.stringify({ pad: Array(5_000).fill(7), other: "x" }),
+        JSON.stringify({ pad: Array(1_500).fill("x") }),
+        JSON.stringify(shallow),
+    ]) {
+        expect(looksLikeSolanaKey(v, ["API_URL"]), v.slice(0, 30)).toBe(false);
+    }
+});
+
 const seedNameCases = [
     "SOLANA_PRIVATE_KEY",
     "SOL_PRIVATE_KEY",
