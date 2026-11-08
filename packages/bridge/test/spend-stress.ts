@@ -1,8 +1,4 @@
-// Stress for the spend ledger with real processes, run by hand: node --import tsx
-// test/spend-stress.ts [a|b|c]... from packages/bridge. a: 8 processes x 40 claims of 1 against a
-// cap of 200, 5 trials, exactly 200 reserved. b: the same while children are stopped and
-// continued at random, never over 200. c: 6 processes claim 3 USD against 5 USD, 30 trials, at
-// most one reserved. Exits 1 when a trial breaks its rule
+// Stress for the spend ledger with real processes, run by hand from packages/bridge
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -144,11 +140,16 @@ async function bigClaims(trials: number): Promise<boolean> {
     return ok;
 }
 
+// node --import tsx test/spend-stress.ts [a|b|c]... runs the named scenarios, or all of them
 const wanted = process.argv.slice(2);
 const pick = (s: string) => wanted.length === 0 || wanted.includes(s);
 let ok = true;
+// a is 8 processes x 40 claims of 1 against a cap of 200, 5 trials, exactly 200 reserved
 if (pick("a")) ok = (await manyClaims(false, 5)) && ok;
+// b is a while children are stopped and continued at random, never over 200
 if (pick("b")) ok = (await manyClaims(true, 5)) && ok;
+// c is 6 processes claiming 3 USD against 5 USD, 30 trials, at most one reserved
 if (pick("c")) ok = (await bigClaims(30)) && ok;
+// Exits 1 when a trial broke its rule
 console.log(ok ? "all held" : "FAILED");
 process.exit(ok ? 0 : 1);

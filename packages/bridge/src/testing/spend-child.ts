@@ -1,7 +1,4 @@
-// One bridge process for the spend ledger race tests. Each "go <dir> <orderId> [micros] [cap]" line
-// on stdin claims micros (default 3 USD) against cap (default 5 USD) and prints one JSON line;
-// "run <dir> <prefix> <count> <micros> <cap>" makes count claims in a row and prints how many
-// were reserved
+// One bridge process for the spend ledger race tests, driven by lines on stdin
 import { createInterface } from "node:readline";
 import { LedgerError, SpendLedger } from "../spend.ts";
 
@@ -27,6 +24,7 @@ lines.on("line", (line) => {
     const [verb, dir, orderId, ...rest] = line.split(" ");
     if (dir === undefined || orderId === undefined) return;
     const n = rest.map(Number);
+    // go <dir> <orderId> [micros] [cap] claims once, 3 USD against 5 USD by default
     if (verb === "go") {
         new SpendLedger({ dir })
             .claim(orderId, n[0] ?? 3_000_000, n[1] ?? 5_000_000)
@@ -36,6 +34,7 @@ lines.on("line", (line) => {
             )
             .then(answer);
     } else if (verb === "run") {
+        // run <dir> <prefix> <count> <micros> <cap> claims count times and tallies the results
         run(dir, orderId, n[0] ?? 1, n[1] ?? 1, n[2] ?? 1).then(answer, (e: unknown) =>
             answer({ error: failure(e) }),
         );

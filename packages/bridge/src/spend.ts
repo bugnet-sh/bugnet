@@ -1,7 +1,4 @@
-// What the key signer spent today (UTC), shared by every bridge process with no lock: a folder per
-// day holds one file per reservation, written whole then linked in place (link fails if it exists),
-// and a claim that then finds the day over its cap takes its own file back. Two claims at the cap
-// can both back off; none goes over it
+// Key signer spend per UTC day, one file per reservation, shared by bridge processes with no lock
 import { createHash, randomUUID } from "node:crypto";
 import { constants, type Stats } from "node:fs";
 import { link, lstat, mkdir, open, readdir, rename, rmdir, unlink } from "node:fs/promises";
@@ -18,7 +15,7 @@ export class LedgerError extends Error {
 }
 
 export interface SpendLedgerOptions {
-    // ~/.config/bugnet/spend; each UTC day gets a folder under it
+    // ~/.config/bugnet/spend, with a folder per UTC day under it
     dir: string;
     now?: () => number;
     // What a file that cannot be read counts as, so it must be at least any one payment
@@ -219,16 +216,14 @@ export class SpendLedger {
             throw new LedgerError("ledger_io");
         }
         let sum = 0;
-        // Temp files of a settle in progress are skipped: the file they replace still counts
+        // A settle's temp file is skipped since the file it replaces still counts
         for (const name of names) {
             if (fileName.test(name)) sum += await this.count(folder, name);
         }
         return sum;
     }
 
-    // Holds the amount against today's cap before anything is signed. A claim that backed off
-    // looks again after a short random wait and tries afresh while the day, without it, still
-    // has room: claims made at the same moment see each other and could otherwise all back off
+    // Holds the amount before anything is signed, so the day never goes over its cap
     async claim(orderId: string, micros: number, dailyCapMicros: number): Promise<Reservation> {
         checkOrder(orderId);
         if (!Number.isSafeInteger(micros) || micros < 0 || micros > this.unreadableMicros) {
@@ -250,13 +245,13 @@ export class SpendLedger {
             const result = await this.tryClaim(folder, orderId, micros, dailyCapMicros);
             if (result === "reserved") this.mine.set(orderId, { day, micros });
             if (result !== "over_cap" || attempt === this.retries) return result;
+            // Claims at the same moment can all back off, so one retries while the day has room
             await wait(2 + Math.random() * 8 * (attempt + 1));
             if ((await this.total(folder)) + micros > dailyCapMicros) return "over_cap";
         }
     }
 
-    // Each try is whole on its own: the file is made first, then every file of the day is summed,
-    // so of two tries the later to make its file always sees the other
+    // The file is made before the day is summed, so the later of two tries always sees the other
     private async tryClaim(
         folder: string,
         orderId: string,
@@ -264,8 +259,7 @@ export class SpendLedger {
         dailyCapMicros: number,
     ): Promise<Reservation> {
         const file = join(folder, nameOf(orderId));
-        // Written whole under a temp name, then linked: a crash leaves at worst an uncounted temp
-        // file, never an empty reservation that would hold the ceiling until the next day
+        // Linked once written whole, so a crash leaves an uncounted temp file, never an empty one
         const tmp = `${file}.${randomUUID()}.tmp`;
         try {
             await create(tmp, this.body(orderId, micros, "reserved"));
@@ -296,7 +290,7 @@ export class SpendLedger {
         return (await this.claim(orderId, micros, dailyCapMicros)) === "reserved";
     }
 
-    // Spent stays counted; a payment that surely moved nothing frees its reservation
+    // Spent stays counted, and a payment that surely moved nothing frees its reservation
     async settle(orderId: string, spent: boolean): Promise<void> {
         checkOrder(orderId);
         const held = this.mine.get(orderId);
