@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
     address,
     generateKeyPairSigner,
@@ -128,8 +128,12 @@ describe("key payment transaction", () => {
     });
 });
 
-// The live source, when a Payments checkout sits next to this repo, so a change there fails here
-const paymentsBuild = "/Users/oynozan/Desktop/Projects/Bugnet/bugnet-payments/src/x402/build.ts";
+// The live source, from BUGNET_PAYMENTS_DIR or a Payments checkout next to this repo, so a change
+// there fails here
+const paymentsBuild = resolve(
+    process.env.BUGNET_PAYMENTS_DIR ?? resolve(import.meta.dirname, "../../../../bugnet-payments"),
+    "src/x402/build.ts",
+);
 
 describe.skipIf(!existsSync(paymentsBuild))("key payment against Payments' own builder", () => {
     it("builds the same message bytes as buildPaymentTransaction", async () => {
