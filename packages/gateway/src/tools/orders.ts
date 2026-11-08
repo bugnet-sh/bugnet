@@ -120,8 +120,20 @@ export function paymentRequiredResult(r: AwaitingPayment, c: PaymentStepContext)
             payUrl: r.payUrl,
             ...(claim ? { claim } : {}),
             ...(c.quoteId ? { quoteId: c.quoteId } : {}),
+            ...stepKind(r),
         },
     };
+}
+
+const orderKinds: ReadonlySet<unknown> = new Set(["start", "extend", "allowance"]);
+
+// Payments' own word on the order, passed on only in its exact shape
+function stepKind(r: AwaitingPayment): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    if (orderKinds.has(r.kind)) out.kind = r.kind;
+    const a = r.allowanceMicros;
+    if (typeof a === "number" && Number.isSafeInteger(a) && a >= 0) out.allowanceMicros = a;
+    return out;
 }
 
 // The order was abandoned to Payments, so a client that holds it treats it as spent

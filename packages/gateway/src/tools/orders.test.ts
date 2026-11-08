@@ -61,6 +61,24 @@ const waits =
 const keepWaiting =
     "Call bugnet_redeem again with the same arguments to keep waiting, for up to 10 minutes in all.";
 
+describe("the order's kind on a payment step", () => {
+    it("passes Payments' kind and allowance on, in their exact shape only", () => {
+        const good = paymentRequiredResult(step({ kind: "allowance", allowanceMicros: 100_000 }), {
+            tool: "bugnet_start",
+        });
+        expect(good.structuredContent).toEqual(
+            expect.objectContaining({ kind: "allowance", allowanceMicros: 100_000 }),
+        );
+        const bad = paymentRequiredResult(step({ kind: "gift" as never, allowanceMicros: -1 }), {
+            tool: "bugnet_start",
+        });
+        expect(bad.structuredContent).not.toHaveProperty("kind");
+        expect(bad.structuredContent).not.toHaveProperty("allowanceMicros");
+        const none = paymentRequiredResult(step(), { tool: "bugnet_start" });
+        expect(none.structuredContent).not.toHaveProperty("kind");
+    });
+});
+
 describe("claimInput and paidRetry", () => {
     it("takes a claim of 43 base64url characters only", () => {
         expect(claimInput.safeParse(claim).success).toBe(true);

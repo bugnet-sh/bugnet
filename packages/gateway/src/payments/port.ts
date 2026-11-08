@@ -225,6 +225,9 @@ export interface AwaitingPayment {
     // A page or x402 resource where the order can be paid outside the MCP client
     payUrl: string;
     paymentRequired: X402PaymentRequired;
+    // The order's kind and allowance, so a local wallet can tell an allowance from sandbox time
+    kind?: OrderKind;
+    allowanceMicros?: number;
 }
 
 // Start and extend, a start with allowanceMicros above 0 adds allowanceMicros, firstUse and x402
