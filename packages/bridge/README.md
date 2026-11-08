@@ -188,6 +188,10 @@ that looks like a wallet key (a 32-byte seed or 64-byte keypair as base58, base6
 `SOLANA_PRIVATE_KEY`, `PRIVATE_KEY`, `*_KEYPAIR`, `WALLET_KEY`, `*_WALLET_KEY`, `MNEMONIC` and
 `SEED_PHRASE`.
 
+The bridge reads the wallet file byte by byte, never as text, and zeroes its copies once the key
+sits in a non-extractable WebCrypto key; `key new` writes it the same way. `key import` reads the
+`.env` value as text, so clearing that copy is best effort.
+
 When your client starts the bridge in a folder below your home folder, that folder must not hold
 `~/.config/bugnet` (the bridge then refuses `mcp.toml`, the wallet file and the `key` commands).
 Starting in `/`, in your home folder or above it is fine. Keep a small balance: any process running

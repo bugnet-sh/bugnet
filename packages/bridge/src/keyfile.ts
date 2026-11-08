@@ -106,21 +106,40 @@ export async function signerFromBytes(bytes: Uint8Array): Promise<KeyPairSigner>
     }
 }
 
-// A JSON array of exactly 64 integers 0-255, parsed without JSON.parse, whose errors quote text
-function keypairArray(text: string): Uint8Array | null {
-    const m = /^\s*\[([\d\s,]*)\]\s*$/.exec(text);
-    if (!m) return null;
-    const parts = (m[1] as string).split(",");
-    if (parts.length !== 64) return null;
+const isSpace = (b: number | undefined) => b === 0x20 || b === 0x09 || b === 0x0a || b === 0x0d;
+
+// A JSON array of exactly 64 integers 0-255, read byte by byte so the key never becomes a JS
+// string, and never quoted in an error
+function keypairFromBytes(buf: Uint8Array): Uint8Array | null {
     const out = new Uint8Array(64);
-    for (let i = 0; i < 64; i++) {
-        const p = (parts[i] as string).trim();
-        if (!/^\d{1,3}$/.test(p) || Number(p) > 255) {
-            out.fill(0);
-            return null;
+    let i = 0;
+    let n = 0;
+    const skip = () => {
+        while (isSpace(buf[i])) i++;
+    };
+    const fail = () => {
+        out.fill(0);
+        return null;
+    };
+    skip();
+    if (buf[i++] !== 0x5b) return fail();
+    for (;;) {
+        skip();
+        let digits = 0;
+        let value = 0;
+        for (let b = buf[i]; b !== undefined && b >= 0x30 && b <= 0x39; b = buf[++i]) {
+            value = value * 10 + (b - 0x30);
+            digits++;
         }
-        out[i] = Number(p);
+        if (digits === 0 || digits > 3 || value > 255 || n === 64) return fail();
+        out[n++] = value;
+        skip();
+        const sep = buf[i++];
+        if (sep === 0x5d) break;
+        if (sep !== 0x2c) return fail();
     }
+    skip();
+    if (i !== buf.length || n !== 64) return fail();
     return out;
 }
 
@@ -143,7 +162,7 @@ export async function loadWallet(home: string | undefined, cwd: string): Promise
         const { bytesRead } = await fh.read(buf, 0, maxWalletBytes, 0).catch(() => {
             throw new KeyError("wallet_unreadable");
         });
-        bytes = keypairArray(buf.toString("utf8", 0, bytesRead));
+        bytes = keypairFromBytes(buf.subarray(0, bytesRead));
         if (bytes === null) throw new KeyError("wallet_format");
         return await signerFromBytes(bytes);
     } finally {
@@ -151,6 +170,23 @@ export async function loadWallet(home: string | undefined, cwd: string): Promise
         bytes?.fill(0);
         await fh.close();
     }
+}
+
+// The Solana CLI's form, written digit by digit so the key never becomes a JS string
+function keypairText(bytes: Uint8Array): Buffer {
+    const out = Buffer.alloc(2 + bytes.length * 4);
+    let i = 0;
+    out[i++] = 0x5b;
+    for (let k = 0; k < bytes.length; k++) {
+        if (k > 0) out[i++] = 0x2c;
+        const b = bytes[k] as number;
+        if (b >= 100) out[i++] = 0x30 + Math.floor(b / 100);
+        if (b >= 10) out[i++] = 0x30 + (Math.floor(b / 10) % 10);
+        out[i++] = 0x30 + (b % 10);
+    }
+    out[i++] = 0x5d;
+    out[i++] = 0x0a;
+    return out.subarray(0, i);
 }
 
 async function writeWallet(home: string | undefined, cwd: string, bytes: Uint8Array) {
@@ -168,7 +204,7 @@ async function writeWallet(home: string | undefined, cwd: string, bytes: Uint8Ar
         const code = (e as NodeJS.ErrnoException).code;
         throw new KeyError(code === "EEXIST" || code === "ELOOP" ? "wallet_exists" : "folder_mode");
     }
-    const text = Buffer.from(`[${Array.from(bytes).join(",")}]\n`);
+    const text = keypairText(bytes);
     try {
         await fh.writeFile(text);
         await fh.sync();
@@ -179,13 +215,14 @@ async function writeWallet(home: string | undefined, cwd: string, bytes: Uint8Ar
 }
 
 export async function keyNew(home: string | undefined, cwd: string): Promise<string> {
-    const jwk = generateKeyPairSync("ed25519").privateKey.export({ format: "jwk" });
-    const seed = Buffer.from(jwk.d as string, "base64url");
-    const pub = Buffer.from(jwk.x as string, "base64url");
+    const pair = generateKeyPairSync("ed25519");
+    // PKCS#8 and SPKI in DER end with the 32-byte seed and the 32-byte public key
+    const der = pair.privateKey.export({ format: "der", type: "pkcs8" });
+    const spki = pair.publicKey.export({ format: "der", type: "spki" });
     const bytes = new Uint8Array(64);
-    bytes.set(seed);
-    bytes.set(pub, 32);
-    seed.fill(0);
+    bytes.set(der.subarray(der.length - 32));
+    bytes.set(spki.subarray(spki.length - 32), 32);
+    der.fill(0);
     try {
         const signer = await signerFromBytes(bytes);
         await writeWallet(home, cwd, bytes);
@@ -199,7 +236,9 @@ export async function keyNew(home: string | undefined, cwd: string): Promise<str
 function keyFromValue(value: string): Uint8Array {
     const v = value.trim();
     if (v.startsWith("[")) {
-        const bytes = keypairArray(v);
+        const raw = Buffer.from(v);
+        const bytes = keypairFromBytes(raw);
+        raw.fill(0);
         if (bytes === null) throw new KeyError("var_format");
         return bytes;
     }

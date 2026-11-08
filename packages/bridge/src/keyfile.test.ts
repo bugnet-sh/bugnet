@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateKeyPairSync } from "node:crypto";
 import { getBase58Decoder } from "@solana/kit";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeyError, loadWallet, runKeyCommand, walletPath } from "./keyfile.ts";
 import { KeyPayer } from "./keypay.ts";
 import { stderrLog } from "./log.ts";
@@ -119,6 +119,37 @@ describe("wallet file", () => {
         await chmod(walletPath(home), 0o600);
         await chmod(join(home, ".config", "bugnet"), 0o755);
         await expect(loadWallet(home, cwd)).rejects.toThrow(/folder_mode/);
+    });
+
+    it("reads the array from the file's bytes, whitespace and all, and nothing else", async () => {
+        const bytes = freshKey();
+        const nums = Array.from(bytes);
+        const dir = join(home, ".config", "bugnet");
+        await mkdir(dir, { recursive: true, mode: 0o700 });
+        const put = async (text: string) => {
+            await rm(walletPath(home), { force: true });
+            await writeFile(walletPath(home), text, { mode: 0o600 });
+        };
+        await put(`  [\n\t${nums.join(" ,\r\n ")}\n]\n`);
+        const toString = vi.spyOn(Buffer.prototype, "toString");
+        try {
+            const signer = await loadWallet(home, cwd);
+            expect(signer.address).toBeTypeOf("string");
+            expect(toString).not.toHaveBeenCalled();
+        } finally {
+            toString.mockRestore();
+        }
+        for (const bad of [
+            `[${nums.slice(0, 63).join(",")}]`,
+            `[${[...nums.slice(0, 63), 256].join(",")}]`,
+            `[${[...nums.slice(0, 63), "0001"].join(",")}]`,
+            `[${nums.join(",")},]`,
+            `[${nums.join(",")}] x`,
+            `[${[...nums.slice(0, 63), "1.0"].join(",")}]`,
+        ]) {
+            await put(bad);
+            await expect(loadWallet(home, cwd)).rejects.toThrow(/wallet_format/);
+        }
     });
 
     it("leaks no key bytes from a malformed file into errors or the log", async () => {
