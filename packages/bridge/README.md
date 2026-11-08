@@ -197,12 +197,15 @@ answer, a timeout included, counts as spent.
 
 With `pay_signer = "key"`, every payment uses the `pay_origin` in `~/.config/bugnet/mcp.toml`
 (default `https://pay.bugnet.sh`); a `pay_origin` from `--config` is ignored and logged. For a local
-stack, put `pay_origin` in that file. `bugnet_secret_from_env` refuses any value
-that looks like a wallet key under any name (a 64-byte keypair as base58, base64, a JSON array or
-`0x` hex, a wallet export with `secretKey` or `privateKey`, a PEM or PKCS#8 key, a seed phrase),
-and the names `SOLANA_PRIVATE_KEY`, `PRIVATE_KEY`, `*_KEYPAIR`, `WALLET_KEY`, `*_WALLET_KEY`,
-`MNEMONIC` and `SEED_PHRASE`. A 32-byte value in those forms counts as a key only under such a
-name, so a Solana address or an `openssl rand -base64 32` secret goes through, as does bare hex.
+stack, put `pay_origin` in that file. `bugnet_secret_from_env` refuses a Solana keypair under any name: 64 bytes whose second half is
+the first half's Ed25519 public key, as base58, base64, a JSON array, hex or inside a JSON wallet
+export at any depth. It also refuses an Ed25519 private key as PEM, PKCS#8 or OpenSSH, and a seed
+phrase. RSA and EC keys, certificates, public keys and 64 random bytes go through. It refuses the
+names `SOLANA_PRIVATE_KEY`, `PRIVATE_KEY`, `*_KEYPAIR`, `WALLET_KEY`, `*_WALLET_KEY`, `MNEMONIC`
+and `SEED_PHRASE`. A 32-byte value counts as a seed only under a wallet-like name (one with `SOL`,
+`WALLET`, `PAYER`, `SIGNER`, `KEYPAIR` or `PHANTOM` before `KEY`, or `PRIVATE_KEY`, `MNEMONIC`,
+`SEED_PHRASE`) or a `secret_key`/`private_key` JSON field, so a Solana address or an
+`openssl rand -base64 32` secret under another name goes through.
 
 The bridge reads the wallet file byte by byte, never as text, and zeroes its copies once the key
 sits in a non-extractable WebCrypto key; `key new` writes it the same way. `key import` reads the
