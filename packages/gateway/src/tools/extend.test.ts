@@ -757,18 +757,18 @@ describe("bugnet_extend", () => {
                 payments: paidAs({ kind: "start", handleSha256: undefined }),
             }),
         );
-        expect(
-            (await callTool(start, "bugnet_extend", { ...args(), orderId: "ord_k", claim })).text,
-        ).toBe(
+        const s = await callTool(start, "bugnet_extend", { ...args(), orderId: "ord_k", claim });
+        expect(s.text).toBe(
             'extend: order ord_k starts a new sandbox, call bugnet_redeem with orderId "ord_k" ' +
                 `and claim "${claim}", plus the quoteId bugnet_start was called with.`,
         );
+        expect(s.structured).toEqual({ message: s.text, orderId: "ord_k" });
         const other = await connectTools(
             testDeps({ router: router(), payments: paidAs({ handleSha256: "ab".repeat(32) }) }),
         );
-        expect(
-            (await callTool(other, "bugnet_extend", { ...args(), orderId: "ord_k", claim })).text,
-        ).toBe("extend: order ord_k is not for that sandbox, check the handle.");
+        const o = await callTool(other, "bugnet_extend", { ...args(), orderId: "ord_k", claim });
+        expect(o.text).toBe("extend: order ord_k is not for that sandbox, check the handle.");
+        expect(o.structured).toEqual({ message: o.text, orderId: "ord_k" });
         expect(applied).toBe(0);
     });
 

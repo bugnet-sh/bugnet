@@ -380,12 +380,18 @@ export const registerExtendTool: Register = (server, deps) => {
                     throw new GatewayError(
                         "invalid",
                         `extend: order ${id} starts a new sandbox, call ${next}`,
+                        null,
+                        null,
+                        { orderId: id },
                     );
                 }
                 if (order.handleSha256 !== handleHash(args.handle)) {
                     throw new GatewayError(
                         "invalid",
                         `extend: order ${id} is not for that sandbox, check the handle`,
+                        null,
+                        null,
+                        { orderId: id },
                     );
                 }
                 return await extendPaid(deps, args.handle, order, budget, {
