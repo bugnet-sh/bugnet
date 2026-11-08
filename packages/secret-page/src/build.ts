@@ -2,7 +2,8 @@
  * Builds the secret entry page into a static bundle for the secrets route's page_dir.
  *
  * The bundle is index.html, assets/page.js, assets/page.css, assets/icon.svg and the fonts with
- * their licences under assets/fonts, plus headers.txt, the response headers the route sends with every one of them (data-plane 8.4).
+ * their licences under assets/fonts, plus headers.txt, the response headers the route sends with
+ * every one of them (data-plane 8.4).
  * The pinned sealing keys are built in, so neither the router nor the route can hand the page a
  * key of its own (data-plane 10.2).
  */

@@ -30,7 +30,8 @@ describe("the bundle", () => {
             [
                 "Content-Security-Policy",
                 "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; " +
-                    "font-src 'self'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; " +
+                    "font-src 'self'; connect-src 'self'; form-action 'none'; " +
+                    "frame-ancestors 'none'; " +
                     "base-uri 'none'",
             ],
         ]);
