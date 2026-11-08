@@ -3,7 +3,18 @@
  * A systemd timer runs it once a day and the gateway rereads the file when it changes.
  * Only hostnames and dates are kept, never seller text.
  */
-import { chmodSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+    closeSync,
+    existsSync,
+    fchmodSync,
+    fsyncSync,
+    openSync,
+    readFileSync,
+    renameSync,
+    rmSync,
+    writeFileSync,
+} from "node:fs";
+import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { bodyJson, createSafeFetcher, type Fetcher } from "../src/assess/fetch.ts";
 import { ConfigError, parseSettings } from "../src/config.ts";
@@ -106,18 +117,39 @@ export function mergeHostsSeen(
     return out;
 }
 
-// Temp file in the same directory then rename, mode 0644
+// Temp file in the same directory, synced, then renamed, mode 0644
 export function writeHostsSeen(path: string, hosts: ReadonlyMap<string, string>): void {
     const sorted = [...hosts.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     const text = JSON.stringify({ v: 1, hosts: Object.fromEntries(sorted) }, null, 4) + "\n";
     const tmp = `${path}.tmp-${process.pid}`;
     try {
-        writeFileSync(tmp, text);
-        chmodSync(tmp, 0o644);
+        const fd = openSync(tmp, "w", 0o644);
+        try {
+            writeFileSync(fd, text);
+            fchmodSync(fd, 0o644);
+            fsyncSync(fd);
+        } finally {
+            closeSync(fd);
+        }
         renameSync(tmp, path);
     } catch (err) {
         rmSync(tmp, { force: true });
         throw err;
+    }
+    syncDir(dirname(path));
+}
+
+// Makes the rename last through a power loss
+function syncDir(dir: string): void {
+    try {
+        const fd = openSync(dir, "r");
+        try {
+            fsyncSync(fd);
+        } finally {
+            closeSync(fd);
+        }
+    } catch {
+        // A lost rename leaves the old file whole, and the next crawl writes it again
     }
 }
 

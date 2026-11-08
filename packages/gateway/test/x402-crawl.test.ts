@@ -1,14 +1,16 @@
 import {
     existsSync,
+    fsyncSync,
     mkdtempSync,
     readdirSync,
     readFileSync,
+    renameSync,
     statSync,
     writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Fetched, Fetcher } from "../src/assess/fetch.ts";
 import { parseHostsSeen } from "../src/x402/index.ts";
 import builtin from "../src/x402/hosts-seen.json" with { type: "json" };
@@ -22,6 +24,12 @@ import {
     runCrawl,
     writeHostsSeen,
 } from "../scripts/x402-crawl.ts";
+
+// Spies that keep the real calls, so the order of the syncs and the rename can be read
+vi.mock("node:fs", async (importOriginal) => {
+    const fs = await importOriginal<typeof import("node:fs")>();
+    return { ...fs, fsyncSync: vi.fn(fs.fsyncSync), renameSync: vi.fn(fs.renameSync) };
+});
 
 const urls = {
     bazaar: "https://bazaar.test/platform/v2/x402/discovery/resources",
@@ -189,6 +197,21 @@ describe("writeHostsSeen", () => {
         );
         expect(statSync(p).mode & 0o777).toBe(0o644);
         expect(readdirSync(dir)).toEqual(["hosts-seen.json"]);
+    });
+
+    // After a power loss the old file or the whole new one is there, never an empty one
+    it("syncs the temp file before the rename and the directory after it", () => {
+        const dir = mkdtempSync(join(tmpdir(), "crawl-"));
+        const p = join(dir, "hosts-seen.json");
+        vi.mocked(fsyncSync).mockClear();
+        vi.mocked(renameSync).mockClear();
+        writeHostsSeen(p, new Map([["a.example", "2026-02-02"]]));
+        const syncs = vi.mocked(fsyncSync).mock.invocationCallOrder;
+        const renames = vi.mocked(renameSync).mock.invocationCallOrder;
+        expect(renames).toHaveLength(1);
+        const rename = renames[0] as number;
+        expect(syncs.filter((n) => n < rename)).toHaveLength(1);
+        expect(syncs.filter((n) => n > rename)).toHaveLength(1);
     });
 });
 
