@@ -164,8 +164,8 @@ export function recommend(
     const pkg = pool[0] as QuotedPackage;
     const why =
         longEnough.length > 0
-            ? `cheapest package that lasts ${minutes} min`
-            : `no package lasts ${minutes} min, extend it when needed`;
+            ? `it is the cheapest package that lasts ${minutes} min`
+            : `no package lasts ${minutes} min, so extend it when needed`;
     return { pkg, why };
 }
 

@@ -294,7 +294,7 @@ describe("recommend", () => {
         const same = [pkg("a1", 10, 1, 1024), pkg("a10", 50, 10, 1024)];
         expect(recommend(same, "build", 5)).toEqual({
             pkg: same[1],
-            why: "cheapest package that lasts 5 min",
+            why: "it is the cheapest package that lasts 5 min",
         });
     });
 });
