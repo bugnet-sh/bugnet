@@ -90,7 +90,6 @@ import {
     claimInput,
     allowanceOrderError,
     memoRetry,
-    paidRetry,
     paymentRequiredResult,
     refusalError,
     retryCall,
@@ -696,11 +695,7 @@ export const registerSandboxTools: Register = (server, deps) => {
         async (args, ctx) => {
             try {
                 const payment = ctx.mcpReq._meta?.["x402/payment"] ?? args.payment;
-                const retried = (args.x402 ? memoRetry : paidRetry)(
-                    args,
-                    payment,
-                    deps.config.x402.enabled,
-                );
+                const retried = memoRetry(args, payment, deps.config.x402.enabled);
                 const sentId = retried?.orderId ?? args.orderId;
                 const key = toolUseId(ctx);
                 let claims: QuoteClaims;

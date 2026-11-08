@@ -1468,6 +1468,52 @@ describe("bugnet_start with x402", () => {
         },
     );
 
+    // A plain start's resend after the quote expired still finds the order the user paid
+    it("answers a start without the x402 field resent after it settled from the stored order", async () => {
+        const payments = testPayments(undefined, { requirePayment: true });
+        const { client, deps, clock } = await x402Setup({ payments });
+        const a = startArgs(signed(deps));
+        const step = await callTool<{ orderId: string }>(client, "bugnet_start", a);
+        const orderId = step.structured.orderId;
+        const payment = { x402Version: 2, accepted: { extra: { memo: orderId } } };
+        const key = { toolUseId: "toolu_resend_plain01" };
+        const first = await callTool(client, "bugnet_start", { ...a, payment }, key);
+        expect(first.isError).toBe(false);
+        clock.now += 6 * 60_000;
+        const again = await callTool(client, "bugnet_start", { ...a, payment }, key);
+        expect(again.isError).toBe(false);
+        expect(again.structured).toEqual(expect.objectContaining({ handle: testHandle, orderId }));
+        const retry = { orderId, payment, idempotencyKey: key.toolUseId };
+        expect(payments.orders.slice(1)).toEqual([retry, retry]);
+    });
+
+    // Payments before port v3 needs the terms beside a payment, so x402 off keeps Plan A's call
+    it("sends a plain start's memo payment with its terms while [x402] is off", async () => {
+        const payments = testPayments(undefined, { requirePayment: true });
+        const { client, deps, clock } = await x402Setup({ payments, off: true });
+        const a = startArgs(signed(deps));
+        const step = await callTool<{ orderId: string }>(client, "bugnet_start", a);
+        const orderId = step.structured.orderId;
+        const payment = { x402Version: 2, accepted: { extra: { memo: orderId } } };
+        const key = { toolUseId: "toolu_resend_plain02" };
+        const first = await callTool(client, "bugnet_start", { ...a, payment }, key);
+        expect(first.isError).toBe(false);
+        expect(payments.orders[1]).toEqual(
+            expect.objectContaining({
+                kind: "start",
+                packageId: "small-10m",
+                amountMicros: 50_000,
+                payment,
+                idempotencyKey: key.toolUseId,
+            }),
+        );
+        expect(payments.orders[1]).not.toHaveProperty("orderId");
+        clock.now += 6 * 60_000;
+        const again = await callTool(client, "bugnet_start", { ...a, payment }, key);
+        expect(again.text).toBe("quote expired, call bugnet_quote again.");
+        expect(payments.orders).toHaveLength(2);
+    });
+
     it("abandons a paid x402 start that the router refuses outright", async () => {
         const { client, deps, payments, seen } = await x402Setup({
             impl: {
