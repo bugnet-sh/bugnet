@@ -38,6 +38,26 @@ it("remembers that an order's pay link was opened, across a second sight of it",
     expect(orders.heldFor(key)?.state).toBe("unknown");
 });
 
+it("finds an order held on its pay link by orderId alone, and no other", () => {
+    let now = 1_000;
+    const orders = new PaidOrders(() => now);
+    const other = { ...step, orderId: "ord_bbbbbbbbbbbbbbbbbbbbbbbbbb" };
+    orders.see("start\0small-10m", step);
+    orders.see("start\0small-10m", other);
+    orders.markPaid(other.orderId, "paid");
+    expect(orders.heldLink(orderId)).toBeUndefined();
+    expect(orders.heldLink(other.orderId)).toBeUndefined();
+    orders.holdLink(orderId);
+    expect(orders.heldLink(orderId)).toEqual({ ...step, state: "unknown" });
+    orders.markPaying(orderId, new Promise(() => {}));
+    expect(orders.heldLink(orderId)?.state).toBe("paying");
+    orders.forget(orderId);
+    expect(orders.heldLink(orderId)).toBeUndefined();
+    orders.holdLink(orderId);
+    now += paidOrderTtlMs;
+    expect(orders.heldLink(orderId)).toBeUndefined();
+});
+
 it("keys a start by package and an extend by sandbox and package", () => {
     expect(orderKey("bugnet_start", { quoteId: "q", packageId: "small-10m" })).toBe(
         "start\0small-10m",

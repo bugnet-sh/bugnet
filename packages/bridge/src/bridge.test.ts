@@ -1761,6 +1761,109 @@ describe.each(["legacy", "modern"] as const)("paying by link, %s client", (era) 
     });
 });
 
+describe.each(["legacy", "modern"] as const)("redeeming a link order, %s client", (era) => {
+    it.each([
+        ["unpaid", ["unpaid", "unpaid", "paid"]],
+        ["settling", ["settling", "paid"]],
+    ] as const)(
+        "waits on the page of a held link order that reads %s, then redeems it once paid",
+        async (_first, states) => {
+            const gw = await gateway(requirePayments());
+            const started = new Set<string>();
+            const pay = devPay(gw.payments, null, { status: queued(gw.payments, [...states]) });
+            const b = await bridge({ gateway: gw.url, era, deps: { started, pay } });
+            const args = startArgs(await quoteId(b.client));
+            const step = await b.client.callTool({ name: "bugnet_start", arguments: args });
+            const { orderId, claim } = step.structuredContent as { orderId: string; claim: string };
+            const seen: string[] = [];
+            const r = await b.client.callTool(
+                { name: "bugnet_redeem", arguments: { orderId, claim, quoteId: args.quoteId } },
+                { onprogress: (p) => seen.push(p.message ?? "") },
+            );
+            expect((r.structuredContent as { handle: string }).handle).toBe(testHandle);
+            // Only the redeem of the paid order reaches the gateway
+            expect(gw.payments.orders.slice(1)).toEqual([{ orderId, claim }]);
+            expect(seen).toContain(`waiting for order ${orderId} to be paid`);
+            expect(pay.orders.step(orderId)).toBeUndefined();
+            expect(started).toEqual(new Set([testHandle]));
+        },
+    );
+
+    it("never starts pay for a held link order it waits on", async () => {
+        const remote = fakeRemote(handled);
+        const payer = payingPayer(testPayments(), {
+            outcome: { kind: "declined", reason: "payer_blocked" },
+            pays: false,
+        });
+        const states: PublicOrderState[] = ["unpaid", "unpaid", "paid"];
+        const pay = devPay(testPayments(), payer, { status: async () => states.shift()! });
+        const b = await bridge({ remote, era, deps: { pay } });
+        await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
+        const redeem = { orderId: standInOrder, claim: standInClaim, quoteId: "q" };
+        const r = await b.client.callTool({ name: "bugnet_redeem", arguments: redeem });
+        expect(r.structuredContent).toEqual({ message: "fine", handle: testHandle });
+        expect(payer.calls).toHaveLength(1);
+        expect(remote.calls.map((c) => c.params.arguments)).toEqual([standInArgs, redeem]);
+        expect(states).toEqual([]);
+    });
+
+    it.each(["paid", "expired", "refunded", "review", null, "throw"] as const)(
+        "forwards a redeem of a held link order at once when its page reads %s",
+        async (state) => {
+            const remote = fakeRemote(handled);
+            let reads = 0;
+            const pay = devPay(testPayments(), null, {
+                status: async () => {
+                    reads += 1;
+                    if (state === "throw") throw new Error("connect ECONNREFUSED 127.0.0.1:443");
+                    return state;
+                },
+                sleep: () => Promise.reject(new Error("this redeem should not wait")),
+            });
+            const b = await bridge({ remote, era, deps: { pay } });
+            await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
+            const redeem = { orderId: standInOrder, claim: standInClaim, quoteId: "q" };
+            const r = await b.client.callTool({ name: "bugnet_redeem", arguments: redeem });
+            expect(r.structuredContent).toEqual({ message: "fine", handle: testHandle });
+            expect(remote.calls.map((c) => c.params.arguments)).toEqual([standInArgs, redeem]);
+            expect(reads).toBe(1);
+        },
+    );
+
+    it.each([
+        ["an order it does not hold", () => {}],
+        [
+            "an order held without a link",
+            (pay: BridgePay) => {
+                pay.orders.see(key, standInStep);
+                pay.orders.markPaid(standInOrder, "unknown");
+            },
+        ],
+        [
+            "a link order a pay is still paying",
+            (pay: BridgePay) => {
+                pay.orders.see(key, standInStep);
+                pay.orders.holdLink(standInOrder);
+                pay.orders.markPaying(standInOrder, new Promise(() => {}));
+            },
+        ],
+    ] as const)("forwards a redeem of %s unchanged, without reading its page", async (_n, hold) => {
+        const remote = fakeRemote(handled);
+        let reads = 0;
+        const pay = devPay(testPayments(), null, {
+            status: async () => (reads++, "unpaid"),
+        });
+        hold(pay);
+        const b = await bridge({ remote, era, deps: { pay } });
+        const redeem = { orderId: standInOrder, claim: standInClaim, quoteId: "q" };
+        const r = await b.client.callTool({ name: "bugnet_redeem", arguments: redeem });
+        expect(r.structuredContent).toEqual({ message: "fine", handle: testHandle });
+        expect(remote.calls).toHaveLength(1);
+        expect(remote.calls[0]!.params.arguments).toEqual(redeem);
+        expect(reads).toBe(0);
+    });
+});
+
 describe("paying by link, the gateway stand-in", () => {
     it("answers a link state it did not sign or no longer holds, and forwards it to nobody", async () => {
         const remote = fakeRemote(handled);

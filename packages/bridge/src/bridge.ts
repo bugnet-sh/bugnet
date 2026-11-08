@@ -307,20 +307,17 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             ...(relay ? { onprogress: relay } : {}),
         });
 
-    // Pays a paid tool's payment step and redeems the order it names
-    const payFlow = async (
+    // Redeems the order a call names once it is paid, at its link or found paid, settling its hold
+    const redeemers = (
         req: CallToolRequest,
         ctx: ServerContext,
         params: Record<string, unknown>,
         pay: BridgePay,
         progress: ReturnType<typeof progressFor>,
-    ): Promise<RemoteResult> => {
+    ) => {
         const { orders } = pay;
         const name = req.params.name;
         const args: Record<string, unknown> = { ...req.params.arguments };
-        const ownPayment =
-            args.payment !== undefined || ctx.mcpReq._meta?.["x402/payment"] !== undefined;
-        const key = orderKey(name, args);
         // Redeems an order paid by pay, at its link or found paid, and settles its hold
         const redeemOrder = async (paid: PaymentStep): Promise<RemoteResult> => {
             let again: RemoteResult;
@@ -371,6 +368,41 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             if (outcome === "paid") return redeemOrder(paid);
             return toolError(unpaidText(outcome, paid));
         };
+        return { redeemOrder, waitAndRedeem };
+    };
+
+    // A redeem of an order held on its pay link waits for the user to pay there, then redeems it
+    const redeemFlow = async (
+        req: CallToolRequest,
+        ctx: ServerContext,
+        params: Record<string, unknown>,
+        pay: BridgePay,
+        progress: ReturnType<typeof progressFor>,
+    ): Promise<RemoteResult> => {
+        const orderId = (req.params.arguments as { orderId?: unknown } | undefined)?.orderId;
+        const held = typeof orderId === "string" ? pay.orders.heldLink(orderId) : undefined;
+        // A pay or wait already running for the order owns it, so this call goes on as before
+        if (!held || held.state === "paying") return call(params, ctx, progress.relay);
+        const state = await pay.status(held.orderId, ctx.mcpReq.signal).catch(() => "?");
+        if (state !== "unpaid" && state !== "settling") return call(params, ctx, progress.relay);
+        return redeemers(req, ctx, params, pay, progress).waitAndRedeem(held, true);
+    };
+
+    // Pays a paid tool's payment step and redeems the order it names
+    const payFlow = async (
+        req: CallToolRequest,
+        ctx: ServerContext,
+        params: Record<string, unknown>,
+        pay: BridgePay,
+        progress: ReturnType<typeof progressFor>,
+    ): Promise<RemoteResult> => {
+        const { orders } = pay;
+        const name = req.params.name;
+        const args: Record<string, unknown> = { ...req.params.arguments };
+        const ownPayment =
+            args.payment !== undefined || ctx.mcpReq._meta?.["x402/payment"] !== undefined;
+        const key = orderKey(name, args);
+        const { redeemOrder, waitAndRedeem } = redeemers(req, ctx, params, pay, progress);
         // The same order's link again, since the user can still pay it in their browser
         const sameLink = (held: PaymentStep): RemoteResult =>
             canElicitUrl(clientCapabilities(ctx))
@@ -541,7 +573,9 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
             result =
                 deps.pay && isPaidTool(req.params.name)
                     ? await payFlow(req, ctx, params, deps.pay, progress)
-                    : await call(params, ctx, progress.relay);
+                    : deps.pay && req.params.name === "bugnet_redeem"
+                      ? await redeemFlow(req, ctx, params, deps.pay, progress)
+                      : await call(params, ctx, progress.relay);
         } catch (e) {
             if (ctx.mcpReq.signal.aborted) throw e;
             // A JSON-RPC error from the gateway reaches the local client as the same error

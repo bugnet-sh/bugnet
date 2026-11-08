@@ -104,6 +104,16 @@ export class PaidOrders {
         return { ...e.step, state: e.state };
     }
 
+    // The hold on an order whose pay link the user was given, for a call that names no package
+    heldLink(
+        orderId: string,
+    ): (PaymentStep & { state: "paying" | "paid" | "unknown" }) | undefined {
+        this.sweep();
+        const e = this.entries.get(orderId);
+        if (!e || !e.link || e.state === "seen") return undefined;
+        return { ...e.step, state: e.state };
+    }
+
     // Marks the order as being paid, with the one pay promise every waiting call shares
     markPaying(orderId: string, flight: Promise<unknown>): void {
         this.sweep();
