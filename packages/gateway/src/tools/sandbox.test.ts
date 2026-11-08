@@ -3081,7 +3081,7 @@ function countingPayments(account: () => Promise<{ x402: X402Account | null; fee
 
 const stopLines = [
     "The sandbox is stopped. It ended at 2026-11-05 12:00 UTC after 1 min 30 s of use, and everything in it was deleted. Tell the user it is stopped.",
-    "x402: $0.02 spent in 2 paid calls. About $0.98 goes back to the paying wallet, usually within 10 minutes.",
+    "x402: $0.02 spent in 2 paid calls. About $0.97 goes back to the paying wallet, plus up to $0.01 from calls still settling, usually within 10 minutes.",
     "Files that call x402 services: /root/src/app/main.py, /root/src/app/.env. They work only inside Bugnet, so ask the user before copying them into their own files.",
 ];
 

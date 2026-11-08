@@ -423,7 +423,7 @@ describe("stop parts", () => {
 
     it("reads the money after the stop, or says the totals are unavailable", async () => {
         expect(await stopMoney(setup().deps, testHandle)).toBe(
-            "x402: $0.02 spent in 2 paid calls. About $0.98 goes back to the paying wallet, usually within 10 minutes.",
+            "x402: $0.02 spent in 2 paid calls. About $0.97 goes back to the paying wallet, plus up to $0.01 from calls still settling, usually within 10 minutes.",
         );
         expect(
             await stopMoney(

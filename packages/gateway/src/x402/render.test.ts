@@ -1351,6 +1351,13 @@ describe("orderCallLost", () => {
 });
 
 describe("status and stop lines", () => {
+    it("promises back only money that is not still settling", () => {
+        const a = testAccount({ leftMicros: 90_000, heldMicros: 0, spentMicros: 0, paidCalls: 0 });
+        expect(stopMoneyLine(a, testTerms())).toBe(
+            "x402: $0.00 spent in 0 paid calls. About $0.09 goes back to the paying wallet, usually within 10 minutes.",
+        );
+    });
+
     const post = `POST ${testChatUrl} max=0.01 payTo=${testPayTo}`;
     const get = `GET ${testChatUrl} max=0.01 payTo=${testPayTo}`;
     const env = ["OPENAI_BASE_URL=https://agent402.tools/v1/auto", "OPENAI_API_KEY=x402"];
@@ -1433,10 +1440,10 @@ describe("status and stop lines", () => {
         const refund = (state: X402RefundState, amountMicros = 980_000, keptMicros = 0) =>
             testAccount({ state: "closed", refund: { state, amountMicros, keptMicros, txs: [] } });
         expect(statusEndedLine(refund("waiting", 0), terms)).toBe(
-            `${s} About $0.98 goes back to the paying wallet, usually within 10 minutes of the end.`,
+            `${s} About $0.97 goes back to the paying wallet, plus up to $0.01 from calls still settling, usually within 10 minutes of the end.`,
         );
         expect(statusEndedLine(testAccount({ state: "closing" }), terms)).toBe(
-            `${s} About $0.98 goes back to the paying wallet, usually within 10 minutes of the end.`,
+            `${s} About $0.97 goes back to the paying wallet, plus up to $0.01 from calls still settling, usually within 10 minutes of the end.`,
         );
         expect(
             statusEndedLine(
@@ -1466,7 +1473,7 @@ describe("status and stop lines", () => {
 
     it("chooses the stop line by the terms' refund minimum", () => {
         expect(stopMoneyLine(testAccount(), terms)).toBe(
-            "x402: $0.02 spent in 2 paid calls. About $0.98 goes back to the paying wallet, usually within 10 minutes.",
+            "x402: $0.02 spent in 2 paid calls. About $0.97 goes back to the paying wallet, plus up to $0.01 from calls still settling, usually within 10 minutes.",
         );
         expect(stopMoneyLine(testAccount({ leftMicros: 4_000, heldMicros: 0 }), terms)).toBe(
             "x402: $0.02 spent in 2 paid calls. About $0.004 is under the $0.01 refund minimum and stays with Bugnet.",

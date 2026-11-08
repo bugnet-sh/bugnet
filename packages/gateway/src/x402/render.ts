@@ -303,6 +303,15 @@ function spentText(account: X402Account): string {
     return `x402: ${usd(account.spentMicros)} spent in ${account.paidCalls} paid calls.`;
 }
 
+// Money still settling may yet be paid to a seller, so it is never promised back
+function backText(account: X402Account): string {
+    const settling =
+        account.heldMicros > 0
+            ? `, plus up to ${usd(account.heldMicros)} from calls still settling`
+            : "";
+    return `About ${usd(account.leftMicros)} goes back to the paying wallet${settling}`;
+}
+
 function underMinimum(account: X402Account, terms: X402Terms): string {
     return (
         `About ${usd(account.leftMicros + account.heldMicros)} is under the ` +
@@ -318,8 +327,7 @@ export function statusEndedLine(account: X402Account, terms: X402Terms): string 
     if (r === undefined || r.state === "waiting") {
         return back < terms.refundMinMicros
             ? `${s} ${underMinimum(account, terms)}`
-            : `${s} About ${usd(back)} goes back to the paying wallet, usually within 10 ` +
-                  "minutes of the end.";
+            : `${s} ${backText(account)}, usually within 10 minutes of the end.`;
     }
     const amount = usd(r.amountMicros);
     switch (r.state) {
@@ -349,8 +357,7 @@ export function stopMoneyLine(account: X402Account, terms: X402Terms): string {
     const back = account.leftMicros + account.heldMicros;
     return back < terms.refundMinMicros
         ? `${spentText(account)} ${underMinimum(account, terms)}`
-        : `${spentText(account)} About ${usd(back)} goes back to the paying wallet, usually ` +
-              "within 10 minutes.";
+        : `${spentText(account)} ${backText(account)}, usually within 10 minutes.`;
 }
 
 export function stopFilesLine(paths: readonly string[]): string {
