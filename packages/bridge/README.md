@@ -180,8 +180,10 @@ Before signing, the bridge fetches the order's payment request itself and checks
 per-payment cap and what is left of the daily cap (kept in `~/.config/bugnet/spend.json`). It
 builds the transfer itself and never signs bytes it was sent. A payment that fails a check is not
 signed: you get the pay link or the payment step back. `bugnet_secret_from_env` refuses any value
-that looks like a wallet key, and names such as `PRIVATE_KEY`, `SECRET_KEY`, `KEYPAIR`, `MNEMONIC`
-or `SEED`.
+that looks like a wallet key (a 32-byte seed or 64-byte keypair as base58, base64, a JSON array or
+`0x` hex, a wallet export with `secretKey`, a PEM or PKCS#8 key, a seed phrase), and the names
+`SOLANA_PRIVATE_KEY`, `PRIVATE_KEY`, `*_KEYPAIR`, `WALLET_KEY`, `*_WALLET_KEY`, `MNEMONIC` and
+`SEED_PHRASE`.
 
 When your client starts the bridge in a folder below your home folder, that folder must not hold
 `~/.config/bugnet` (the bridge then refuses `mcp.toml`, the wallet file and the `key` commands).
