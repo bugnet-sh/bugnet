@@ -1819,11 +1819,34 @@ describe.each(["legacy", "modern"] as const)("redeeming a link order, %s client"
             expect((r.structuredContent as { handle: string }).handle).toBe(testHandle);
             // Only the redeem of the paid order reaches the gateway
             expect(gw.payments.orders.slice(1)).toEqual([{ orderId, claim }]);
-            expect(seen).toContain("waiting for the payment");
+            expect(seen.some((m) => m.startsWith("waiting for the payment at "))).toBe(true);
             expect(pay.orders.step(orderId)).toBeUndefined();
             expect(started).toEqual(new Set([testHandle]));
         },
     );
+
+    it("gives the link back after a short first wait, then waits fully on the next redeem", async () => {
+        const remote = fakeRemote(handled);
+        let reads = 0;
+        const pay = devPay(testPayments(), null, {
+            status: async () => {
+                reads += 1;
+                return reads > 12 ? "paid" : "unpaid";
+            },
+        });
+        const b = await bridge({ remote, era, deps: { pay } });
+        await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
+        const redeem = { orderId: standInOrder, claim: standInClaim, quoteId: "q" };
+        const first = await b.client.callTool({ name: "bugnet_redeem", arguments: redeem });
+        const text = (first.content as { text: string }[])[0]!.text;
+        expect(text.split("\n")[0]).toMatch(/^Pay \$\S+ USDC at \S+\/o\/\S+$/);
+        expect(remote.calls).toHaveLength(1);
+        const firstReads = reads;
+        expect(firstReads).toBeLessThanOrEqual(9);
+        const second = await b.client.callTool({ name: "bugnet_redeem", arguments: redeem });
+        expect(second.structuredContent).toEqual({ message: "fine", handle: testHandle });
+        expect(reads).toBeGreaterThan(firstReads);
+    });
 
     it("never starts pay for a held link order it waits on", async () => {
         const remote = fakeRemote(handled);

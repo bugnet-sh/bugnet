@@ -1,6 +1,6 @@
 {
     "name": "@bugnet/mcp",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "license": "Apache-2.0",
     "description": "Local Bugnet bridge: the remote Bugnet MCP gateway over stdio, plus secrets from this machine",
     "type": "module",

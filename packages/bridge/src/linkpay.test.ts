@@ -7,13 +7,14 @@ import {
     linkTtlMs,
     lostLinkText,
     payLinkRequest,
+    showLinkResult,
     paymentStepResult,
     pollForMs,
     readLinkState,
     waitPaid,
 } from "./linkpay.ts";
 import type { PublicOrderState } from "./orders.ts";
-import type { PaymentStep } from "./pay.ts";
+import { usdText, type PaymentStep } from "./pay.ts";
 
 const step: PaymentStep = {
     tool: "bugnet_start",
@@ -168,13 +169,24 @@ it("stops when the client gives up", async () => {
     expect(reads).toBe(2);
 });
 
+it("leads with the link, so a client shows it even when the agent does not", () => {
+    const first = (paymentStepResult(step).content?.[0] as { text: string }).text.split("\n")[0];
+    expect(first).toBe(`Pay ${usdText(step.amountMicros)} USDC at ${step.payUrl}`);
+    const back = showLinkResult(step);
+    expect((back.content?.[0] as { text: string }).text.split("\n")[0]).toBe(first);
+    expect(back.structuredContent).toEqual(
+        expect.objectContaining({ orderId: step.orderId, payUrl: step.payUrl }),
+    );
+});
+
 it("rebuilds the payment step as the gateway words it", () => {
     const quoteId = "q2.abc";
     const r = paymentStepResult(step, quoteId);
     const guide =
-        "Payment required for order ord_abcdefghijklmnopqrstuvwxyz. Next: show the user this " +
-        "link to pay in their browser with a Solana wallet holding USDC: " +
-        `${step.payUrl}. Then, in the same turn and without waiting for the user, call ` +
+        `Pay ${usdText(step.amountMicros)} USDC at ${step.payUrl}\n` +
+        "Payment required for order ord_abcdefghijklmnopqrstuvwxyz. Next: put this link in " +
+        "your reply to the user now, for paying in their browser with a Solana wallet holding " +
+        `USDC: ${step.payUrl}. Then, in the same turn and without waiting for the user, call ` +
         "bugnet_redeem with orderId and claim " +
         `(orderId "${step.orderId}", claim "${step.claim}", quoteId "q2.abc"). It waits for the ` +
         "payment and goes on once it lands; if it answers that the order is not paid yet, call " +

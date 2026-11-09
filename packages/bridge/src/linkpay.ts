@@ -13,6 +13,8 @@ import { progressEveryMs, usdText, type PaymentStep } from "./pay.ts";
 
 export const pollEveryMs = 2_500;
 export const pollForMs = 600_000;
+// A redeem's first wait is short, so a link the agent never showed comes back to it quickly
+export const firstWaitMs = 20_000;
 export const linkTtlMs = 600_000;
 
 // An empty elicitation object means form only, as the SDK reads it
@@ -75,14 +77,15 @@ export async function waitPaid(
     deps: { status: BridgePay["status"]; sleep?: BridgePay["sleep"]; now: () => number },
     signal: AbortSignal,
     onProgress: () => void,
+    forMs: number = pollForMs,
 ): Promise<LinkOutcome> {
     const sleep =
         deps.sleep ?? ((ms: number, s: AbortSignal) => sleepFor(ms, undefined, { signal: s }));
     const start = deps.now();
     let noted: number | undefined;
     // The read count caps the poll too, so a stopped clock cannot keep it going
-    for (let read = 0; read < Math.ceil(pollForMs / pollEveryMs); read++) {
-        if (deps.now() - start >= pollForMs) return "timeout";
+    for (let read = 0; read < Math.ceil(forMs / pollEveryMs); read++) {
+        if (deps.now() - start >= forMs) return "timeout";
         if (noted === undefined || deps.now() - noted >= progressEveryMs) {
             noted = deps.now();
             onProgress();
@@ -112,16 +115,20 @@ export function paymentStepResult(step: PaymentStep, quoteId?: string): CallTool
         : step.tool !== "bugnet_start"
           ? ` (orderId "${id}", claim "${step.claim}" and this sandbox's handle)`
           : ` (orderId "${id}", claim "${step.claim}")`;
+    // The link leads, since a client shows the first line of a result even when the agent does not
     const guide = [
+        `Pay ${usdText(step.amountMicros)} USDC at ${step.payUrl}\n`,
         `Payment required for order ${id}.`,
-        "Next: show the user this link to pay in their browser with a Solana wallet holding " +
-            `USDC: ${step.payUrl}. Then, in the same turn and without waiting for the user, call ` +
-            `bugnet_redeem with orderId and claim${named}.`,
+        "Next: put this link in your reply to the user now, for paying in their browser with a " +
+            `Solana wallet holding USDC: ${step.payUrl}. Then, in the same turn and without ` +
+            `waiting for the user, call bugnet_redeem with orderId and claim${named}.`,
         "It waits for the payment and goes on once it lands; if it answers that the order is " +
             "not paid yet, call it again, for up to 10 minutes.",
         `Calling ${step.tool} again without this orderId opens a new order the user would pay again.`,
         "The x402 maxTimeoutSeconds limits a wallet's signed payment, not the user's time to pay.",
-    ].join(" ");
+    ]
+        .join(" ")
+        .replace("\n ", "\n");
     return {
         isError: true,
         content: [{ type: "text", text: guide }],
@@ -141,4 +148,23 @@ export function lostLinkText(tool: string): string {
         "from its payment step, since a call without them opens a new order the user would " +
         "pay again."
     );
+}
+
+// A first redeem that found the order unpaid gives the link back, for an agent that never showed it
+export function showLinkResult(step: PaymentStep): CallToolResult {
+    const text =
+        `Pay ${usdText(step.amountMicros)} USDC at ${step.payUrl}\n` +
+        `Order ${step.orderId} is not paid yet. Put this link in your reply to the user now if ` +
+        "it is not there yet, then call bugnet_redeem again with the same arguments. It waits up " +
+        "to 10 minutes and goes on as soon as the payment lands.";
+    return {
+        isError: true,
+        content: [{ type: "text", text }],
+        structuredContent: {
+            message: text,
+            orderId: step.orderId,
+            payUrl: step.payUrl,
+            claim: step.claim,
+        },
+    };
 }

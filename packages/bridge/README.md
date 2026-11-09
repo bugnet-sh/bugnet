@@ -5,7 +5,7 @@ heavy code in a throwaway cloud Linux sandbox instead of on your computer, and p
 run.
 
 ```sh
-npx -y @bugnet/mcp@0.1.1
+npx -y @bugnet/mcp@0.1.2
 ```
 
 The bridge runs on your computer. Your MCP client talks to it over stdio, and it passes every call
@@ -35,7 +35,7 @@ It needs Node 20.19.3 or newer.
 **Claude Code**
 
 ```sh
-claude mcp add --scope user --transport stdio bugnet -- npx -y @bugnet/mcp@0.1.1
+claude mcp add --scope user --transport stdio bugnet -- npx -y @bugnet/mcp@0.1.2
 ```
 
 or `claude plugin install bugnet-wallet@bugnet` from the `bugnet-sh/bugnet` marketplace, which also adds the skill and hint hooks. Start Claude Code as plain `claude`, never `pay claude`, which loads only pay's own server and hides Bugnet.
@@ -43,7 +43,7 @@ or `claude plugin install bugnet-wallet@bugnet` from the `bugnet-sh/bugnet` mark
 **Codex CLI**
 
 ```sh
-codex mcp add bugnet -- npx -y @bugnet/mcp@0.1.1
+codex mcp add bugnet -- npx -y @bugnet/mcp@0.1.2
 ```
 
 A paid call waits while you approve the payment and the first start downloads the bridge, so give both more time in `~/.codex/config.toml`:
@@ -51,7 +51,7 @@ A paid call waits while you approve the payment and the first start downloads th
 ```toml
 [mcp_servers.bugnet]
 command = "npx"
-args = ["-y", "@bugnet/mcp@0.1.1"]
+args = ["-y", "@bugnet/mcp@0.1.2"]
 startup_timeout_sec = 30
 tool_timeout_sec = 400
 ```
@@ -64,7 +64,7 @@ tool_timeout_sec = 400
     "mcpServers": {
         "bugnet": {
             "command": "npx",
-            "args": ["-y", "@bugnet/mcp@0.1.1"]
+            "args": ["-y", "@bugnet/mcp@0.1.2"]
         }
     }
 }
@@ -78,7 +78,7 @@ tool_timeout_sec = 400
         "bugnet": {
             "type": "stdio",
             "command": "npx",
-            "args": ["-y", "@bugnet/mcp@0.1.1"]
+            "args": ["-y", "@bugnet/mcp@0.1.2"]
         }
     }
 }
@@ -143,9 +143,11 @@ bridge pays it:
 
 It pays an order at most once. If your client stops waiting, the bridge keeps the paid order for
 30 minutes and uses it on the next call for the same size, or the next x402 allowance call for the
-same sandbox, instead of paying again. Without `pay`, or with `pay_command = ""`, the agent shows
-you the pay link and calls `bugnet_redeem` at once, which waits up to 10 minutes and goes on by
-itself as soon as you pay in the browser. With `pay_link_dialog = true`, a client that can open
+same sandbox, instead of paying again. Without `pay`, or with `pay_command = ""`, the pay link
+leads the payment step, so your client shows it, and the agent calls `bugnet_redeem` at once.
+Its first call waits 20 seconds and, if you have not paid yet, gives the link back for the agent
+to show. The next call waits up to 10 minutes and goes on by itself as soon as you pay in the
+browser. With `pay_link_dialog = true`, a client that can open
 links shows the link in its own dialog instead, and goes on only once you answer that dialog.
 
 ### Paying from a local wallet file

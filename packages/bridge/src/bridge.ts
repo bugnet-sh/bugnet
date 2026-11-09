@@ -24,6 +24,8 @@ import {
     linkStateOrderId,
     payLinkRequest,
     paymentStepResult,
+    showLinkResult,
+    firstWaitMs,
     readLinkState,
     waitPaid,
     type LinkOutcome,
@@ -352,7 +354,7 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
                 paid.orderId,
                 { status: pay.status, ...(pay.sleep ? { sleep: pay.sleep } : {}), now: deps.now },
                 ctx.mcpReq.signal,
-                () => progress.note("waiting for the payment"),
+                () => progress.note(`waiting for the payment at ${paid.payUrl}`),
             ).then(
                 (o) => {
                     // A timeout or review may still be paid, a refunded one goes on its next read
@@ -380,6 +382,8 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         return { redeemOrder, waitAndRedeem };
     };
 
+    // Orders whose first short redeem wait is spent, so later redeems wait the full time
+    const firstWaited = new Set<string>();
     // A redeem of an order held on its pay link waits for the user to pay there, then redeems it
     const redeemFlow = async (
         req: CallToolRequest,
@@ -394,6 +398,21 @@ export function buildBridgeServer(deps: BridgeDeps): Server {
         if (!held || held.state === "paying") return call(params, ctx, progress.relay);
         const state = await pay.status(held.orderId, ctx.mcpReq.signal).catch(() => "?");
         if (state !== "unpaid" && state !== "settling") return call(params, ctx, progress.relay);
+        if (state === "unpaid" && !firstWaited.has(held.orderId)) {
+            firstWaited.add(held.orderId);
+            const first = await waitPaid(
+                held.orderId,
+                { status: pay.status, ...(pay.sleep ? { sleep: pay.sleep } : {}), now: deps.now },
+                ctx.mcpReq.signal,
+                () => progress.note(`waiting for the payment at ${held.payUrl}`),
+                firstWaitMs,
+            );
+            if (first === "timeout") return showLinkResult(held);
+            if (first === "paid") {
+                pay.orders.markPaid(held.orderId, "paid");
+                return redeemers(req, ctx, params, pay, progress).redeemOrder(held);
+            }
+        }
         return redeemers(req, ctx, params, pay, progress).waitAndRedeem(held, true);
     };
 
