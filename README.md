@@ -152,7 +152,7 @@ To pay from the [`pay`](https://pay.sh) wallet on this computer, use the bridge 
 ```json
 {
     "mcpServers": {
-        "bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.0"] }
+        "bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.1"] }
     }
 }
 ```
@@ -188,7 +188,7 @@ To pay from the [`pay`](https://pay.sh) wallet on this computer, use the bridge 
 ```json
 {
     "servers": {
-        "bugnet": { "type": "stdio", "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.0"] }
+        "bugnet": { "type": "stdio", "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.1"] }
     }
 }
 ```
@@ -198,7 +198,7 @@ To pay from the [`pay`](https://pay.sh) wallet on this computer, use the bridge 
 To pay from the [`pay`](https://pay.sh) wallet on this computer, add the bridge:
 
 ```sh
-codex mcp add bugnet -- npx -y @bugnet/mcp@0.1.0
+codex mcp add bugnet -- npx -y @bugnet/mcp@0.1.1
 ```
 
 Then give it more time in `~/.codex/config.toml`, since a paid call waits while you approve the payment and the first start downloads the bridge:
@@ -206,7 +206,7 @@ Then give it more time in `~/.codex/config.toml`, since a paid call waits while 
 ```toml
 [mcp_servers.bugnet]
 command = "npx"
-args = ["-y", "@bugnet/mcp@0.1.0"]
+args = ["-y", "@bugnet/mcp@0.1.1"]
 startup_timeout_sec = 30
 tool_timeout_sec = 400
 ```
@@ -250,7 +250,7 @@ entry in the file that Cascade's **Open MCP config file** opens.
 | URL       | `https://mcp.bugnet.sh/mcp`                 |
 | Transport | Streamable HTTP                             |
 | Sign-in   | None, no headers and no API key             |
-| Stdio     | `npx -y @bugnet/mcp@0.1.0`, needs Node 20.3 |
+| Stdio     | `npx -y @bugnet/mcp@0.1.1`, needs Node 20.3 |
 
 Most clients take one of these two shapes. The second runs the [bridge](#the-bridge-npx-bugnetmcp).
 
@@ -265,7 +265,7 @@ Most clients take one of these two shapes. The second runs the [bridge](#the-bri
 ```json
 {
     "mcpServers": {
-        "bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.0"] }
+        "bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.1"] }
     }
 }
 ```
@@ -289,11 +289,11 @@ newer.
 
 | Client      | Setup                                                                                  |
 | ----------- | -------------------------------------------------------------------------------------- |
-| Claude Code | `claude mcp add --scope user --transport stdio bugnet -- npx -y @bugnet/mcp@0.1.0`     |
-| Codex CLI   | `codex mcp add bugnet -- npx -y @bugnet/mcp@0.1.0`                                     |
-| Cursor      | `"bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.0"] }`                  |
-| Devin       | `"bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.0"] }`                  |
-| VS Code     | `"bugnet": { "type": "stdio", "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.0"] }` |
+| Claude Code | `claude mcp add --scope user --transport stdio bugnet -- npx -y @bugnet/mcp@0.1.1`     |
+| Codex CLI   | `codex mcp add bugnet -- npx -y @bugnet/mcp@0.1.1`                                     |
+| Cursor      | `"bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.1"] }`                  |
+| Devin       | `"bugnet": { "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.1"] }`                  |
+| VS Code     | `"bugnet": { "type": "stdio", "command": "npx", "args": ["-y", "@bugnet/mcp@0.1.1"] }` |
 
 The bridge reads `~/.config/bugnet/mcp.toml` if it exists, or the file `--config` names.
 `--gateway URL` points it at another server. The settings file holds no secrets. Every setting

@@ -2,7 +2,7 @@
     "manifest_version": "0.3",
     "name": "bugnet",
     "display_name": "Bugnet",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Run untrusted or heavy software in disposable cloud Linux sandboxes, paid per run in USDC on Solana",
     "author": { "name": "Bugnet" },
     "server": {

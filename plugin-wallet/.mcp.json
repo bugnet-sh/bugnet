@@ -5,7 +5,7 @@
             "command": "npx",
             "args": [
                 "-y",
-                "@bugnet/mcp@0.1.0",
+                "@bugnet/mcp@0.1.1",
                 "--gateway",
                 "${BUGNET_MCP_URL:-https://mcp.bugnet.sh/mcp}"
             ]
