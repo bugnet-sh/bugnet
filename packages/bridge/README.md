@@ -150,29 +150,49 @@ links shows the link in its own dialog instead, and goes on only once you answer
 
 ### Paying from a local wallet file
 
-Instead of `pay`, the bridge can sign Bugnet orders itself from a wallet file, with no prompt:
+Instead of `pay`, the bridge can sign Bugnet orders itself from a Solana key, with no prompt. It
+takes the key one of three ways, simplest first:
 
-1. Run `bugnet-mcp key new` in your own terminal. It creates `~/.config/bugnet/wallet.json`
-   (mode 0600, in a 0700 folder) and prints only its address. To move a key you already have,
-   run `bugnet-mcp key import --from ./.env --var NAME`, then delete that line as it tells you.
-2. Send that address a small amount of USDC on Solana. It needs no SOL: Bugnet pays the fee.
-3. Turn it on in `~/.config/bugnet/mcp.toml`. The bridge reads these keys only from that exact
-   file, never from `--config` or `XDG_CONFIG_HOME`. Once the file sets any of them, it must be
-   yours and not writable by group or others:
+1. **The key in your project's `.env`.** Add a line such as `BUGNET_WALLET_KEY=<key>` to the
+   `.env` in the folder the bridge runs in (the project folder, for a client that starts it
+   there), with the key as base58 or a JSON array of 64 numbers, and set `wallet_env` below. The
+   coding agent working in that folder can read the file, so keep only a small balance there.
+2. **`bugnet-mcp key import`.** Run `bugnet-mcp key import --from ./.env --var BUGNET_WALLET_KEY`
+   in your own terminal. It moves the key into the bridge's own wallet file,
+   `~/.config/bugnet/wallet.json` (mode 0600, in a 0700 folder), and prints the address and that
+   path. Then delete the line from `.env`. A key that sat in a project `.env` may already be
+   exposed: agents can read `.env`, transcripts keep what they read, and git history may hold it.
+3. **`bugnet-mcp key new`.** Run it in your own terminal. It creates a fresh wallet in
+   `~/.config/bugnet/wallet.json` and prints only its address.
+
+Send the wallet's address a small amount of USDC on Solana. It needs no SOL: Bugnet pays the fee.
+
+Then turn it on in `~/.config/bugnet/mcp.toml`. The bridge reads these keys only from that exact
+file, never from `--config` or `XDG_CONFIG_HOME`. Once the file sets any of them, it must be yours
+and not writable by group or others. For the `.env` way:
 
 ```toml
-pay_signer = "key"           # "pay" (the default) keeps using the pay CLI
-max_payment_usd = 1          # per payment, default 1, at most 20
-daily_usd = 5                # per UTC day across all bridges, default 5, at most 100
+pay_signer = "key"                # "pay" (the default) keeps using the pay CLI
+wallet_env = "BUGNET_WALLET_KEY"  # the variable holding the key; leave it out to use wallet.json
+max_payment_usd = 1               # per payment, default 1, at most 20
+daily_usd = 5                     # per UTC day across all bridges, default 5, at most 100
 # Bugnet's wallets for sandbox time and its fee payer; without them it signs nothing
-pay_to = ["<bugnet sandbox wallet>"]
-fee_payer = ["<bugnet fee payer>"]
+pay_to = ["4JJ6XsUTFKQSCdJ6Qo8AQENvexWLtm5uHLeinbv4AScD"]
+fee_payer = ["AxsYqFSYfxJKJgj8iTCJhVWLi1mphAx6Sh3cMLMdqyyr"]
 # Bugnet's x402 allowance wallet, never one of the pay_to wallets
-allowance_pay_to = ["<bugnet allowance wallet>"]
-key_pays_allowances = true   # the default; false sends x402 allowances to pay with Touch ID
+allowance_pay_to = ["DG9LtTcLRYgKHCvDkoxd4DcVLfCndQFFBnzVf8ACmwzA"]
+key_pays_allowances = true        # the default; false sends x402 allowances to pay with Touch ID
 ```
 
-Bugnet publishes its real wallet addresses at launch; put those in place of the placeholders.
+For `key import` and `key new`, use the same file without the `wallet_env` line. The three
+addresses are Bugnet's production wallets.
+
+With `wallet_env`, the bridge reads that variable from `.env` in the folder it runs in, and from
+its own environment when `.env` has no such line. It reads it again for each payment, so an edit
+counts from the next payment on, and it never opens `wallet.json`. It refuses a `.env` that is a
+link, not a regular file or over 64 KiB. When the variable is missing or not a Solana keypair, it
+signs nothing and you get the pay link; the log shows only `key_wallet_env_missing`,
+`key_wallet_env_invalid` or `key_wallet_env_file`. Every cap, pin and check below applies the same.
 
 Setting `pay_signer = "key"` is your approval for the agent to spend from this wallet, within the
 caps and with no prompt: it pays sandbox time, and by default x402 allowances too
@@ -217,12 +237,14 @@ and `SEED_PHRASE`. A 32-byte value counts as a seed only under a wallet-like nam
 
 The bridge reads the wallet file byte by byte, never as text, and zeroes its copies once the key
 sits in a non-extractable WebCrypto key; `key new` writes it the same way. `key import` reads the
-`.env` value as text, so clearing that copy is best effort.
+`.env` value as text, and `wallet_env` reads it as text at each payment, so clearing those
+copies is best effort.
 
 When your client starts the bridge in a folder below your home folder, that folder must not hold
 `~/.config/bugnet` (the bridge then refuses `mcp.toml`, the wallet file and the `key` commands).
-Starting in `/`, in your home folder or above it is fine. Keep a small balance: any process running
-as you can read the wallet file.
+Starting in `/`, in your home folder or above it is fine. This does not apply to the project
+`.env` that `wallet_env` names. Keep a small balance: any process running as you can read the
+wallet file, and the agent can read a project `.env`.
 
 ## Secrets from your machine
 
