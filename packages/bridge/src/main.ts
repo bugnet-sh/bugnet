@@ -33,7 +33,7 @@ function choosePayer(command: Serve, origin: string, log: Log): OrderPayer | nul
         log,
     });
     if (command.signer.keyPaysAllowances) {
-        log.info("wallet file pays x402 allowances too", { setting: "key_pays_allowances" });
+        log.info("key signer pays x402 allowances too", { setting: "key_pays_allowances" });
     }
     return routeAllowances(key, cli, command.signer.keyPaysAllowances);
 }
