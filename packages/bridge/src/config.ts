@@ -94,6 +94,7 @@ const signerKeys = [
     "fee_payer",
     "key_pays_allowances",
     "allowance_pay_to",
+    "wallet_env",
 ];
 
 function withoutSignerKeys(doc: Record<string, unknown>): Record<string, unknown> {
@@ -125,6 +126,11 @@ const signerSchema = z
         allowance_pay_to: pinned,
         // The key payer's origin, never the one --config or the gateway sets
         pay_origin: payOrigin,
+        // Names the variable holding the key, read from the working folder's .env or the environment
+        wallet_env: z
+            .string()
+            .regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/, "a variable name such as BUGNET_WALLET_KEY")
+            .optional(),
     })
     .refine((s) => !s.pay_to.some((a) => s.allowance_pay_to.includes(a)), {
         path: ["allowance_pay_to"],
@@ -139,6 +145,7 @@ const signerSchema = z
         keyPaysAllowances: s.key_pays_allowances,
         allowancePayTo: s.allowance_pay_to,
         keyOrigin: s.pay_origin,
+        walletEnv: s.wallet_env ?? null,
     }));
 
 export type SignerSettings = z.infer<typeof signerSchema>;

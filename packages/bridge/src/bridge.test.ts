@@ -19,12 +19,12 @@ import {
 import { Code } from "@connectrpc/connect";
 import { CLIENT_CAPABILITIES_META_KEY, inputRequired } from "@modelcontextprotocol/server";
 import { generateKeyPairSync } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getBase58Decoder } from "@solana/kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { signerFromBytes } from "./keyfile.ts";
+import { keySigner, signerFromBytes } from "./keyfile.ts";
 import { KeyPayer, routeAllowances } from "./keypay.ts";
 import { stderrLog } from "./log.ts";
 import { SpendLedger } from "./spend.ts";
@@ -2153,6 +2153,7 @@ describe("x402 allowances and the key signer", () => {
                 keyPaysAllowances: false,
                 allowancePayTo: [],
                 keyOrigin: testPayOrigin,
+                walletEnv: null,
             },
             signer: async () => signer,
             ledger: new SpendLedger({ dir: join(dir, "spend") }),
@@ -2168,5 +2169,84 @@ describe("x402 allowances and the key signer", () => {
         expect(wire.length).toBeGreaterThan(100);
         const text = JSON.stringify(r) + b.lines.join("") + keyLines.join("");
         for (const f of [...forms, wire, wire.slice(0, 40)]) expect(text).not.toContain(f);
+    });
+
+    it("never puts a wallet_env key from .env in a tool result or the log", async () => {
+        const jwk = generateKeyPairSync("ed25519").privateKey.export({ format: "jwk" });
+        const bytes = new Uint8Array(64);
+        bytes.set(Buffer.from(jwk.d as string, "base64url"));
+        bytes.set(Buffer.from(jwk.x as string, "base64url"), 32);
+        const valid = getBase58Decoder().decode(bytes);
+        const invalid = `[${Array.from(bytes.subarray(0, 63)).join(",")}]`;
+        const forms = [
+            valid,
+            valid.slice(0, 20),
+            invalid.slice(0, 30),
+            Array.from(bytes.subarray(0, 8)).join(","),
+            getBase58Decoder().decode(bytes.subarray(0, 32)),
+            Buffer.from(bytes).toString("hex"),
+            Buffer.from(bytes).toString("base64"),
+        ];
+        const recipient = "Bhhc3XNdjtCNr3pj2aZwhCt8pHwsU8wRL7dqJNDZEExw";
+        const feePayer = "73iCm2eWpXsEqTpYkNHe4VoiR4Eq7nyCLv9wYZzEnFM9";
+        const pr = {
+            x402Version: 2,
+            resource: { url: `${testPayOrigin}/o/${standInOrder}` },
+            accepts: [
+                {
+                    scheme: "exact",
+                    network: solanaMainnet,
+                    asset: usdcMint,
+                    amount: "50000",
+                    payTo: recipient,
+                    extra: {
+                        feePayer,
+                        memo: standInOrder,
+                        recentBlockhash: "9gw8RJhnpnYgrfhj1UWAFbQvDVfYGYVk8ndb6bLUmzDo",
+                        lastValidBlockHeight: "1",
+                    },
+                },
+            ],
+        };
+        const fetcher = (async (_url: string, init?: RequestInit) => {
+            const sig = (init?.headers as Record<string, string>)["PAYMENT-SIGNATURE"];
+            if (sig !== undefined) return Response.json({ paid: true });
+            return Response.json(pr, {
+                status: 402,
+                headers: { "PAYMENT-REQUIRED": Buffer.from(JSON.stringify(pr)).toString("base64") },
+            });
+        }) as typeof fetch;
+        const dir = await mkdtemp(join(tmpdir(), "bugnet-envleak-"));
+        open.push(() => rm(dir, { recursive: true, force: true }));
+        for (const [i, value] of [valid, invalid].entries()) {
+            await writeFile(join(dir, ".env"), `BUGNET_WALLET_KEY=${value}\n`);
+            const keyLines: string[] = [];
+            const keyPayer = new KeyPayer({
+                origin: testPayOrigin,
+                settings: {
+                    paySigner: "key",
+                    maxPaymentMicros: 1_000_000,
+                    dailyMicros: 5_000_000,
+                    payTo: [recipient],
+                    feePayer: [feePayer],
+                    keyPaysAllowances: false,
+                    allowancePayTo: [],
+                    keyOrigin: testPayOrigin,
+                    walletEnv: "BUGNET_WALLET_KEY",
+                },
+                signer: keySigner("BUGNET_WALLET_KEY", undefined, () => dir, {}),
+                ledger: new SpendLedger({ dir: join(dir, `spend-${i}`) }),
+                log: stderrLog((l) => keyLines.push(l)),
+                fetch: fetcher,
+            });
+            const remote = fakeRemote((params) =>
+                (params.arguments as { claim?: string }).claim === undefined ? stepResult() : done,
+            );
+            const b = await bridge({ remote, deps: { pay: devPay(testPayments(), keyPayer) } });
+            const r = await b.client.callTool({ name: "bugnet_start", arguments: standInArgs });
+            const text = JSON.stringify(r) + b.lines.join("") + keyLines.join("");
+            if (value === invalid) expect(text).toContain("key_wallet_env_invalid");
+            for (const f of forms) expect(text).not.toContain(f);
+        }
     });
 });

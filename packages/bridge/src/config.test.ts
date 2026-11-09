@@ -169,6 +169,7 @@ describe("signer settings", () => {
             keyPaysAllowances: true,
             allowancePayTo: [],
             keyOrigin: "https://pay.bugnet.sh",
+            walletEnv: null,
         });
         const cmd = loadCommand(["--config", fixed()], { HOME: join(dir, "home") });
         expect(cmd.kind === "serve" && cmd.signer.paySigner).toBe("key");
@@ -230,6 +231,39 @@ describe("signer settings", () => {
         expect(() => loadCommand(["--config", other], { HOME: join(dir, "home") })).toThrow(
             /key_pays_allowances is read only from/,
         );
+    });
+
+    it("reads wallet_env only from the fixed file, and only as a variable name", async () => {
+        const home = join(dir, "home");
+        await write('pay_signer = "key"\n');
+        expect(loadSignerSettings(home).walletEnv).toBeNull();
+        await write('pay_signer = "key"\nwallet_env = "BUGNET_WALLET_KEY"\n');
+        expect(loadSignerSettings(home)).toMatchObject({
+            paySigner: "key",
+            walletEnv: "BUGNET_WALLET_KEY",
+        });
+        await write('pay_signer = "key"\nwallet_env = "_a1"\n');
+        expect(loadSignerSettings(home).walletEnv).toBe("_a1");
+        for (const bad of [
+            '""',
+            '"1KEY"',
+            '"MY-KEY"',
+            '"MY.KEY"',
+            '"A B"',
+            `"${"A".repeat(65)}"`,
+            "1",
+        ]) {
+            await write(`pay_signer = "key"\nwallet_env = ${bad}\n`);
+            expect(() => loadSignerSettings(home), bad).toThrow(/wallet_env/);
+        }
+        await write(`pay_signer = "key"\nwallet_env = "${"A".repeat(64)}"\n`);
+        expect(loadSignerSettings(home).walletEnv).toBe("A".repeat(64));
+        const other = join(dir, "other.toml");
+        await writeFile(other, 'wallet_env = "BUGNET_WALLET_KEY"\n');
+        expect(() => loadCommand(["--config", other], { HOME: home })).toThrow(
+            /wallet_env is read only from/,
+        );
+        expect(parseSettings('wallet_env = "X"\n')).toEqual(parseSettings(""));
     });
 
     it("refuses the fixed file only from a working folder strictly below HOME that holds it", async () => {

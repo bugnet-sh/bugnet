@@ -71,6 +71,7 @@ const settings: SignerSettings = {
     keyPaysAllowances: false,
     allowancePayTo: [allowanceWallet],
     keyOrigin: origin,
+    walletEnv: null,
 };
 
 interface Sent {

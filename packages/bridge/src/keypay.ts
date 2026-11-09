@@ -251,7 +251,7 @@ export function routeAllowances(
 export interface KeyPayerOptions {
     origin: string;
     settings: SignerSettings;
-    // Loads the wallet file; called per payment until it succeeds
+    // Gives the key for each payment, and the wallet file loader keeps it once loaded
     signer: () => Promise<KeyPairSigner>;
     ledger: SpendLedger;
     log: Log;

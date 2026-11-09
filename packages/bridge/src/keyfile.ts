@@ -20,6 +20,9 @@ const keyMessages = {
     from_unreadable: "the --from file could not be read",
     var_missing: "the --from file has no such variable",
     var_format: "the variable is not a 64-byte Solana key (base58 or JSON array)",
+    wallet_env_missing: "the wallet_env variable is set neither in .env nor in the environment",
+    wallet_env_invalid: "the wallet_env variable is not a 64-byte Solana keypair",
+    wallet_env_file: "the .env in the working folder is a link, not a regular file, or over 64 KiB",
 } as const;
 
 export type KeyCode = keyof typeof keyMessages;
@@ -35,6 +38,7 @@ export class KeyError extends Error {
 
 const maxWalletBytes = 4096;
 const maxDotenvBytes = 1024 * 1024;
+const maxEnvFileBytes = 64 * 1024;
 // PKCS#8 wrapping of a raw Ed25519 seed, so the import reads a buffer this module can zero
 const pkcs8Prefix = [
     0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
@@ -280,6 +284,77 @@ export async function keyImport(
     } finally {
         bytes.fill(0);
     }
+}
+
+// The project's .env, refused when it is a link, not a regular file or too big to be one
+async function envFileValue(cwd: string, name: string): Promise<string | undefined> {
+    const path = join(cwd, ".env");
+    const st = await lstat(path).catch((e: unknown) => {
+        if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw new KeyError("wallet_env_file");
+    });
+    if (st === null) return undefined;
+    if (!st.isFile() || st.size > maxEnvFileBytes) throw new KeyError("wallet_env_file");
+    let fh;
+    try {
+        fh = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    } catch {
+        throw new KeyError("wallet_env_file");
+    }
+    const buf = Buffer.alloc(maxEnvFileBytes + 1);
+    try {
+        const now = await fh.stat();
+        if (!now.isFile() || now.ino !== st.ino || now.dev !== st.dev) {
+            throw new KeyError("wallet_env_file");
+        }
+        const { bytesRead } = await fh.read(buf, 0, buf.length, 0).catch(() => {
+            throw new KeyError("wallet_env_file");
+        });
+        if (bytesRead > maxEnvFileBytes) throw new KeyError("wallet_env_file");
+        return parseDotenv(buf.toString("utf8", 0, bytesRead)).get(name);
+    } finally {
+        buf.fill(0);
+        await fh.close();
+    }
+}
+
+// The key named by wallet_env, read afresh for each payment from the working folder's .env, then
+// from the bridge's own environment, with only fixed codes coming out and never the value
+export async function loadEnvWallet(
+    name: string,
+    cwd: string,
+    env: NodeJS.ProcessEnv,
+): Promise<KeyPairSigner> {
+    let value = await envFileValue(cwd, name);
+    if (value === undefined || value === "") value = env[name];
+    if (value === undefined || value === "") throw new KeyError("wallet_env_missing");
+    let bytes: Uint8Array | undefined;
+    try {
+        bytes = keyFromValue(value);
+        return await signerFromBytes(bytes);
+    } catch {
+        throw new KeyError("wallet_env_invalid");
+    } finally {
+        bytes?.fill(0);
+    }
+}
+
+// The signer for each payment, wallet_env when set, else the wallet file kept once loaded
+export function keySigner(
+    walletEnv: string | null,
+    home: string | undefined,
+    cwd: () => string,
+    env: NodeJS.ProcessEnv,
+): () => Promise<KeyPairSigner> {
+    if (walletEnv !== null) return () => loadEnvWallet(walletEnv, cwd(), env);
+    let wallet: Promise<KeyPairSigner> | undefined;
+    return () => {
+        wallet ??= loadWallet(home, cwd()).catch((e: unknown) => {
+            wallet = undefined;
+            throw e;
+        });
+        return wallet;
+    };
 }
 
 export type KeyCommand =

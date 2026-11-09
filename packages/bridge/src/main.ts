@@ -1,11 +1,10 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pinnedKeys } from "@bugnet/seal";
-import type { KeyPairSigner } from "@solana/kit";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { buildBridgeServer, version } from "./bridge.ts";
 import { type Command, ConfigError, loadCommand, paymentOrigin, usage } from "./config.ts";
-import { bugnetDir, loadWallet, runKeyCommand } from "./keyfile.ts";
+import { bugnetDir, keySigner, runKeyCommand } from "./keyfile.ts";
 import { KeyPayer, routeAllowances } from "./keypay.ts";
 import { type Log, stderrLog } from "./log.ts";
 import { orderStatus, PaidOrders } from "./orders.ts";
@@ -16,7 +15,7 @@ import { SpendLedger } from "./spend.ts";
 
 type Serve = Extract<Command, { kind: "serve" }>;
 
-// The pay CLI by default; the wallet file only when the fixed settings file says pay_signer = "key",
+// The pay CLI by default; the key only when the fixed settings file says pay_signer = "key",
 // and then for x402 allowances too unless it says key_pays_allowances = false. origin is the fixed
 // file's pay_origin whenever the key signs
 function choosePayer(command: Serve, origin: string, log: Log): OrderPayer | null {
@@ -26,17 +25,10 @@ function choosePayer(command: Serve, origin: string, log: Log): OrderPayer | nul
         : null;
     if (command.signer.paySigner !== "key") return cli;
     const home = process.env.HOME;
-    let wallet: Promise<KeyPairSigner> | undefined;
     const key = new KeyPayer({
         origin,
         settings: command.signer,
-        signer: () => {
-            wallet ??= loadWallet(home, process.cwd()).catch((e: unknown) => {
-                wallet = undefined;
-                throw e;
-            });
-            return wallet;
-        },
+        signer: keySigner(command.signer.walletEnv, home, () => process.cwd(), process.env),
         ledger: new SpendLedger({ dir: join(bugnetDir(home), "spend") }),
         log,
     });

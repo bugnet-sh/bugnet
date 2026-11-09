@@ -180,6 +180,7 @@ describe("wallet file", () => {
                 keyPaysAllowances: false,
                 allowancePayTo: [],
                 keyOrigin: "https://pay.bugnet.sh",
+                walletEnv: null,
             },
             signer: () => loadWallet(home, cwd),
             ledger: new SpendLedger({ dir: join(dir, "spend") }),
