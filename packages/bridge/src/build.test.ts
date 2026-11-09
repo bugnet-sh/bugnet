@@ -21,7 +21,7 @@ describe("the bridge package", () => {
 
     it("ships the bundle and the example settings, never the Claude Desktop extension", async () => {
         const pkg = await json("package.json");
-        expect(pkg.files).toEqual(["dist/main.js", "config/example.toml"]);
+        expect(pkg.files).toEqual(["dist/main.js", "config/example.toml", "LICENSE"]);
         expect(pkg.bin).toEqual({ "bugnet-mcp": "dist/main.js" });
     });
 

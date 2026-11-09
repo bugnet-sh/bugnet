@@ -9,7 +9,8 @@
     },
     "files": [
         "dist/main.js",
-        "config/example.toml"
+        "config/example.toml",
+        "LICENSE"
     ],
     "engines": {
         "node": ">=20.19.3"
