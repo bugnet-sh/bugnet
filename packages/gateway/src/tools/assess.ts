@@ -183,8 +183,18 @@ export function renderAssessment(
             "The user has not seen this check, so share it before any local install or run.",
         );
     }
+    if (offersSandbox(a, quote)) {
+        lines.push("When you ask, put the Bugnet sandbox first, marked recommended.");
+    }
     lines.push("Ask the user before bugnet_start.");
     return lines.join("\n");
+}
+
+// The result orders the choices itself, since server instructions can reach the client late
+function offersSandbox(a: Assessment, quote: BuiltQuote | null): boolean {
+    if (a.recommendation === "local_ok" || !quote || refusedByPolicy(a.summary)) return false;
+    if (!quote.structured.largeEnough) return false;
+    return quote.structured.recommended !== null || onlyShortOnTime(quote);
 }
 
 // For work no package can hold, so the summary never promises that a sandbox can run it

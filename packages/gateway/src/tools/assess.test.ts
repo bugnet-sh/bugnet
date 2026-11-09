@@ -181,6 +181,7 @@ describe("bugnet_assess tool", () => {
             /Recommended package: gpu-m, 4 vCPU \/ 32 GiB \/ 1 GPU, 30 min, \$0\.90 USDC/,
         );
         expect(text).toMatch(/quoteId \(valid 10 min\): q3\./);
+        expect(text).toMatch(/When you ask, put the Bugnet sandbox first, marked recommended\./);
         expect(text.trim().endsWith("Ask the user before bugnet_start.")).toBe(true);
         expect(asked?.requirements).toMatchObject({ gpu: true });
         expect(asked).toMatchObject({
@@ -289,6 +290,7 @@ describe("bugnet_assess tool", () => {
         const text = r.content.map((c) => c.text).join("\n");
         expect(text).toMatch(/No quote: prices are unavailable right now/);
         expect(text).toMatch(/Ask the user before bugnet_start\.$/);
+        expect(text).not.toMatch(/put the Bugnet sandbox first/);
         expect(r.structuredContent?.quote).toBeNull();
         expect(r.structuredContent?.assessment.summary).toBe(assessment.summary);
     });
@@ -629,6 +631,7 @@ describe("renderAssessment", () => {
         const fine: Assessment = { ...assessment, recommendation: "local_ok" };
         const text = renderAssessment(fine, null);
         expect(text).not.toMatch(shared);
+        expect(text).not.toMatch(/put the Bugnet sandbox first/);
         expect(text.endsWith("Ask the user before bugnet_start.")).toBe(true);
     });
 });
