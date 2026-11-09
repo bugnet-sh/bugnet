@@ -1,30 +1,41 @@
 # Bugnet
 
-Your AI coding agent runs risky or heavy code in a throwaway cloud Linux sandbox instead of on
-your computer, and pays for it per run.
+**Disposable cloud sandboxes for AI coding agents.** Pay per run, no account.
 
-**Not launched yet.** The public server and the npm package go live at launch.
-
-[![CI](https://img.shields.io/github/actions/workflow/status/bugnet-sh/bugnet/ci.yml?branch=main&label=CI)](https://github.com/bugnet-sh/bugnet/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@bugnet/mcp)](https://www.npmjs.com/package/@bugnet/mcp)
-[![npm downloads](https://img.shields.io/npm/dw/@bugnet/mcp)](https://www.npmjs.com/package/@bugnet/mcp)
 [![License](https://img.shields.io/github/license/bugnet-sh/bugnet)](#license)
-[![GitHub stars](https://img.shields.io/github/stars/bugnet-sh/bugnet)](https://github.com/bugnet-sh/bugnet/stargazers)
-[![Last commit](https://img.shields.io/github/last-commit/bugnet-sh/bugnet)](https://github.com/bugnet-sh/bugnet/commits)
+[![CI](https://img.shields.io/github/actions/workflow/status/bugnet-sh/bugnet/ci.yml?branch=main&label=CI)](https://github.com/bugnet-sh/bugnet/actions/workflows/ci.yml)
 
-You ask your agent to try a GitHub repo someone sent you, or to get an AI model running. Bugnet
-lets the agent do that on a fresh cloud machine. Your files, keys and network stay out of reach.
-When the time is up, the machine and everything on it are deleted.
+Your agent runs the repo someone sent you, a local AI model or a risky script on a fresh cloud
+Linux machine instead of your computer. When the time is up, the machine and everything on it are
+deleted.
 
-- **No account and no API key.** Your agent pays per run in USDC on Solana with x402.
-- **Works with the agent you already use.** Claude Code, claude.ai, Cursor, VS Code, Codex,
-  Devin Desktop (formerly Windsurf), or any other MCP client.
+## Get started
+
+```sh
+claude mcp add --scope user --transport http bugnet https://mcp.bugnet.sh/mcp
+```
+
+Then ask your agent:
+
+> Someone sent me https://github.com/antfu/vitesse-lite. Get it running and give me a link.
+
+It checks the repo for free, tells you what it found and the price, and asks before it spends
+anything. You pay in USDC on Solana, at a pay link or from your own wallet. Other clients are in
+[Install](#install).
+
+## Why Bugnet
+
+- **No account, no API key.** Your agent pays per run with x402.
+- **Your machine stays out of it.** Your files, keys and network are out of reach.
+- **Any MCP client.** Claude Code, claude.ai, Cursor, VS Code, Codex and Devin Desktop.
+- **Pay-per-call APIs inside.** Code in the sandbox uses x402 APIs without a key, paid from a
+  capped allowance outside the sandbox.
 - **No AI on our side.** Bugnet is plain code. Your own agent does the thinking.
 
 ## Contents
 
 - [How it works](#how-it-works)
-- [Quick start](#quick-start)
 - [Install](#install)
 - [Tools](#tools)
 - [Paying](#paying)
@@ -60,21 +71,6 @@ Your agent learns when to offer Bugnet from the server's MCP instructions. The C
 adds a skill and local hints on top. The hints are computed on your machine and send nothing
 anywhere.
 
-## Quick start
-
-In Claude Code:
-
-```sh
-claude mcp add --scope user --transport http bugnet https://mcp.bugnet.sh/mcp
-```
-
-Then ask your agent something like:
-
-> Try https://github.com/someone/some-tool for me, I don't trust it.
-
-The agent checks the repo for free, tells you what it found and the price, and asks before it
-spends anything. Other clients are below.
-
 ## Install
 
 Bugnet is one MCP server at `https://mcp.bugnet.sh/mcp`. It speaks Streamable HTTP and needs no
@@ -91,7 +87,7 @@ claude plugin install bugnet@bugnet          # pays by link, in your browser
 claude plugin install bugnet-wallet@bugnet   # pays from the pay wallet on this computer
 ```
 
-`bugnet` connects to `https://mcp.bugnet.sh/mcp` and needs nothing else. `bugnet-wallet` runs the [bridge](#the-bridge-npx-bugnetmcp) with `npx`, so it needs Node 20.3 or newer, and pays with [`pay`](https://pay.sh) set up on this computer. Start Claude Code as plain `claude`, never `pay claude`, which loads only pay's own server and hides Bugnet.
+`bugnet` connects to `https://mcp.bugnet.sh/mcp` and needs nothing else. `bugnet-wallet` runs the [bridge](#the-bridge-npx-bugnetmcp) with `npx`, so it needs Node 20.19.3 or newer, and pays with [`pay`](https://pay.sh) set up on this computer. Start Claude Code as plain `claude`, never `pay claude`, which loads only pay's own server and hides Bugnet.
 
 Inside a session, `/plugin marketplace add bugnet-sh/bugnet` and then `/plugin install bugnet@bugnet`
 do the same. Start a new session afterwards. The tools show up as
