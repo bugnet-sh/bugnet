@@ -27,8 +27,10 @@ const raw = x402Fixture("index-sample.json") as { v: number; services: Record<st
 const svc = (i: number) => sample.services[i];
 
 describe("the built-in index", () => {
-    it("loads empty", () => {
-        expect(builtinIndex).toEqual({ v: 1, services: [] });
+    it("loads the services that passed a paid call", () => {
+        expect(builtinIndex.services).toHaveLength(13);
+        expect(new Set(builtinIndex.services.map((s) => s.serviceId)).size).toBe(13);
+        expect(builtinIndex.services.every((s) => s.reviewedAt === "2026-11-09")).toBe(true);
         expect(indexOf(testDeps())).toBe(builtinIndex);
         expect(indexOf(testDeps({ x402Index: sample }))).toBe(sample);
     });
