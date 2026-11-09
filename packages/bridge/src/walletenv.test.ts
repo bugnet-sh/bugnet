@@ -1,5 +1,6 @@
+import { execFileSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getBase58Decoder } from "@solana/kit";
@@ -16,11 +17,14 @@ const origin = "https://pay.bugnet.sh";
 
 let root = "";
 let cwd = "";
+let home = "";
 
 beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), "bugnet-walletenv-"));
     cwd = join(root, "project");
+    home = join(root, "home");
     await mkdir(cwd);
+    await mkdir(join(home, ".config", "bugnet"), { recursive: true, mode: 0o700 });
 });
 
 afterEach(async () => {
@@ -109,7 +113,7 @@ describe("wallet_env key", () => {
 
     it("reads the value again for each payment", async () => {
         const env: NodeJS.ProcessEnv = {};
-        const signer = keySigner(name, join(root, "home"), () => cwd, env);
+        const signer = keySigner(name, home, () => cwd, env);
         expect(await codeOf(signer())).toBe("wallet_env_missing");
         const a = freshKey();
         await writeFile(join(cwd, ".env"), `${name}=${base58(a)}\n`);
@@ -151,11 +155,12 @@ describe("wallet_env key", () => {
         await rm(join(cwd, ".env"));
         await mkdir(join(cwd, ".env"));
         expect(await codeOf(loadEnvWallet(name, cwd, env))).toBe("wallet_env_file");
+        await rm(join(cwd, ".env"), { recursive: true });
+        execFileSync("mkfifo", [join(cwd, ".env")]);
+        expect(await codeOf(loadEnvWallet(name, cwd, env))).toBe("wallet_env_file");
     });
 
     it("never reads the wallet file when wallet_env is set", async () => {
-        const home = join(root, "home");
-        await mkdir(join(home, ".config", "bugnet"), { recursive: true, mode: 0o700 });
         expect((await runKeyCommand({ kind: "key-new" }, home, root)).code).toBe(0);
         const fromWallet = (await keySigner(null, home, () => root, {})()).address;
         const env = { [name]: base58(freshKey()) };
@@ -163,10 +168,28 @@ describe("wallet_env key", () => {
         expect(fromEnv).not.toBe(fromWallet);
         // Without the variable it signs nothing rather than fall back to the wallet file
         expect(await codeOf(keySigner(name, home, () => root, {})())).toBe("wallet_env_missing");
-        // A folder the wallet loader would refuse is never looked at
-        await rm(join(home, ".config", "bugnet"), { recursive: true });
+        // A wallet file the loader would refuse is never opened
+        await chmod(join(home, ".config", "bugnet", "wallet.json"), 0o644);
         expect((await keySigner(name, home, () => root, env)()).address).toBe(fromEnv);
-        expect((await keySigner(name, undefined, () => root, env)()).address).toBe(fromEnv);
+    });
+
+    it("signs nothing unless ~/.config/bugnet, home of the spend ledger, passes the folder check", async () => {
+        const env = { [name]: base58(freshKey()) };
+        const folder = join(home, ".config", "bugnet");
+        expect(await codeOf(keySigner(name, undefined, () => cwd, env)())).toBe("no_home");
+        expect(await codeOf(keySigner(name, "relative", () => cwd, env)())).toBe("no_home");
+        await chmod(folder, 0o755);
+        expect(await codeOf(keySigner(name, home, () => cwd, env)())).toBe("folder_mode");
+        await rm(folder, { recursive: true });
+        expect(await codeOf(keySigner(name, home, () => cwd, env)())).toBe("folder_mode");
+        await mkdir(join(root, "elsewhere"), { mode: 0o700 });
+        await symlink(join(root, "elsewhere"), folder);
+        expect(await codeOf(keySigner(name, home, () => cwd, env)())).toBe("folder_mode");
+        await rm(folder);
+        await mkdir(folder, { mode: 0o700 });
+        const below = join(home, ".config");
+        expect(await codeOf(keySigner(name, home, () => below, env)())).toBe("inside_cwd");
+        expect(await codeOf(keySigner(name, home, () => cwd, env)())).toBe("none");
     });
 
     it("signs nothing and leaks nothing when the value is missing or invalid", async () => {
@@ -185,7 +208,7 @@ describe("wallet_env key", () => {
             const payer = new KeyPayer({
                 origin,
                 settings,
-                signer: keySigner(name, join(root, "home"), () => cwd, {}),
+                signer: keySigner(name, home, () => cwd, {}),
                 ledger: new SpendLedger({ dir: join(root, `spend-${i}`) }),
                 log: stderrLog((l) => lines.push(l)),
                 fetch: (async () => {
@@ -218,7 +241,7 @@ describe("wallet_env key", () => {
         const payer = new KeyPayer({
             origin,
             settings,
-            signer: keySigner(name, join(root, "home"), () => cwd, {}),
+            signer: keySigner(name, home, () => cwd, {}),
             ledger: new SpendLedger({ dir: join(root, "spend") }),
             log: stderrLog((l) => lines.push(l)),
             fetch: (async () => Response.json({ paid: true })) as typeof fetch,

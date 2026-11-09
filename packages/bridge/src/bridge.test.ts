@@ -19,7 +19,7 @@ import {
 import { Code } from "@connectrpc/connect";
 import { CLIENT_CAPABILITIES_META_KEY, inputRequired } from "@modelcontextprotocol/server";
 import { generateKeyPairSync } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getBase58Decoder } from "@solana/kit";
@@ -2218,6 +2218,8 @@ describe("x402 allowances and the key signer", () => {
         }) as typeof fetch;
         const dir = await mkdtemp(join(tmpdir(), "bugnet-envleak-"));
         open.push(() => rm(dir, { recursive: true, force: true }));
+        const home = join(dir, "home");
+        await mkdir(join(home, ".config", "bugnet"), { recursive: true, mode: 0o700 });
         for (const [i, value] of [valid, invalid].entries()) {
             await writeFile(join(dir, ".env"), `BUGNET_WALLET_KEY=${value}\n`);
             const keyLines: string[] = [];
@@ -2234,7 +2236,7 @@ describe("x402 allowances and the key signer", () => {
                     keyOrigin: testPayOrigin,
                     walletEnv: "BUGNET_WALLET_KEY",
                 },
-                signer: keySigner("BUGNET_WALLET_KEY", undefined, () => dir, {}),
+                signer: keySigner("BUGNET_WALLET_KEY", home, () => dir, {}),
                 ledger: new SpendLedger({ dir: join(dir, `spend-${i}`) }),
                 log: stderrLog((l) => keyLines.push(l)),
                 fetch: fetcher,

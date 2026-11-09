@@ -22,7 +22,8 @@ const keyMessages = {
     var_format: "the variable is not a 64-byte Solana key (base58 or JSON array)",
     wallet_env_missing: "the wallet_env variable is set neither in .env nor in the environment",
     wallet_env_invalid: "the wallet_env variable is not a 64-byte Solana keypair",
-    wallet_env_file: "the .env in the working folder is a link, not a regular file, or over 64 KiB",
+    wallet_env_file:
+        "the .env in the working folder is unreadable, a link, not a regular file, or over 64 KiB",
 } as const;
 
 export type KeyCode = keyof typeof keyMessages;
@@ -249,7 +250,8 @@ function keyFromValue(value: string): Uint8Array {
     if (!/^[1-9A-HJ-NP-Za-km-z]{80,90}$/.test(v)) throw new KeyError("var_format");
     let decoded: Uint8Array;
     try {
-        decoded = new Uint8Array(getBase58Encoder().encode(v));
+        // A fresh array this function owns, so it can zero it
+        decoded = getBase58Encoder().encode(v) as Uint8Array;
     } catch {
         throw new KeyError("var_format");
     }
@@ -297,13 +299,16 @@ async function envFileValue(cwd: string, name: string): Promise<string | undefin
     if (!st.isFile() || st.size > maxEnvFileBytes) throw new KeyError("wallet_env_file");
     let fh;
     try {
-        fh = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+        // O_NONBLOCK so a FIFO swapped in after lstat cannot block the open
+        fh = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     } catch {
         throw new KeyError("wallet_env_file");
     }
     const buf = Buffer.alloc(maxEnvFileBytes + 1);
     try {
-        const now = await fh.stat();
+        const now = await fh.stat().catch(() => {
+            throw new KeyError("wallet_env_file");
+        });
         if (!now.isFile() || now.ino !== st.ino || now.dev !== st.dev) {
             throw new KeyError("wallet_env_file");
         }
@@ -314,7 +319,9 @@ async function envFileValue(cwd: string, name: string): Promise<string | undefin
         return parseDotenv(buf.toString("utf8", 0, bytesRead)).get(name);
     } finally {
         buf.fill(0);
-        await fh.close();
+        await fh.close().catch(() => {
+            throw new KeyError("wallet_env_file");
+        });
     }
 }
 
@@ -346,7 +353,14 @@ export function keySigner(
     cwd: () => string,
     env: NodeJS.ProcessEnv,
 ): () => Promise<KeyPairSigner> {
-    if (walletEnv !== null) return () => loadEnvWallet(walletEnv, cwd(), env);
+    if (walletEnv !== null) {
+        return async () => {
+            const dir = cwd();
+            // ~/.config/bugnet holds the spend ledger, so it gets the wallet file's check
+            await checkFolder(bugnetDir(home), dir, home);
+            return loadEnvWallet(walletEnv, dir, env);
+        };
+    }
     let wallet: Promise<KeyPairSigner> | undefined;
     return () => {
         wallet ??= loadWallet(home, cwd()).catch((e: unknown) => {

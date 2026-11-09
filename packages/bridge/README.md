@@ -188,11 +188,14 @@ For `key import` and `key new`, use the same file without the `wallet_env` line.
 addresses are Bugnet's production wallets.
 
 With `wallet_env`, the bridge reads that variable from `.env` in the folder it runs in, and from
-its own environment when `.env` has no such line. It reads it again for each payment, so an edit
-counts from the next payment on, and it never opens `wallet.json`. It refuses a `.env` that is a
-link, not a regular file or over 64 KiB. When the variable is missing or not a Solana keypair, it
-signs nothing and you get the pay link; the log shows only `key_wallet_env_missing`,
-`key_wallet_env_invalid` or `key_wallet_env_file`. Every cap, pin and check below applies the same.
+its own environment when `.env` has no such line or leaves it empty. It reads it again for each
+payment, so an edit counts from the next payment on, and it never opens `wallet.json`. It still
+checks `~/.config/bugnet`, which holds the spend ledger, as it does for the wallet file: a folder
+you own with mode 0700 (`chmod 700 ~/.config/bugnet`), not inside the working folder. It refuses a
+`.env` that is unreadable, a link, not a regular file or over 64 KiB. When the variable is missing
+or not a Solana keypair, or a check fails, it signs nothing and you get the pay link; the log shows
+only `key_wallet_env_missing`, `key_wallet_env_invalid`, `key_wallet_env_file`, `key_folder_mode`,
+`key_inside_cwd` or `key_no_home`. Every cap, pin and check below applies the same.
 
 Setting `pay_signer = "key"` is your approval for the agent to spend from this wallet, within the
 caps and with no prompt: it pays sandbox time, and by default x402 allowances too
@@ -241,7 +244,8 @@ sits in a non-extractable WebCrypto key; `key new` writes it the same way. `key 
 copies is best effort.
 
 When your client starts the bridge in a folder below your home folder, that folder must not hold
-`~/.config/bugnet` (the bridge then refuses `mcp.toml`, the wallet file and the `key` commands).
+`~/.config/bugnet` (the bridge then refuses `mcp.toml`, the wallet file, the `wallet_env` signer
+and the `key` commands).
 Starting in `/`, in your home folder or above it is fine. This does not apply to the project
 `.env` that `wallet_env` names. Keep a small balance: any process running as you can read the
 wallet file, and the agent can read a project `.env`.
