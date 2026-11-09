@@ -59,7 +59,7 @@ describe("key new", () => {
 });
 
 describe("key import", () => {
-    it("moves a base58 key and prints only the address and the delete hint", async () => {
+    it("moves a base58 key and prints only the address and where it went", async () => {
         const bytes = freshKey();
         const from = join(home, ".env");
         await writeFile(from, `OTHER=1\nWALLET=${getBase58Decoder().decode(bytes)}\n`);
@@ -69,11 +69,10 @@ describe("key import", () => {
             cwd,
         );
         expect(out.code).toBe(0);
-        expect(out.stdout).toContain(`delete WALLET from ${from} now`);
-        expect(out.stderr).toMatch(/may already be exposed.*bugnet-mcp key new/s);
-        for (const f of forms(bytes)) expect(out.stdout + out.stderr).not.toContain(f);
         const signer = await loadWallet(home, cwd);
-        expect(out.stdout.split("\n")[0]).toBe(signer.address);
+        expect(out.stdout).toBe(`${signer.address}\nimported into ${walletPath(home)}\n`);
+        expect(out.stderr).toBe("");
+        for (const f of forms(bytes)) expect(out.stdout + out.stderr).not.toContain(f);
     });
 
     it("never echoes a bad value", async () => {

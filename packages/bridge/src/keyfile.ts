@@ -360,12 +360,7 @@ export function keySigner(
 export type KeyCommand =
     { kind: "key-new" } | { kind: "key-import"; from: string; variable: string };
 
-export const importWarning =
-    "bugnet-mcp: warning: a key that sat in a project .env may already be exposed (agents can " +
-    "read .env, transcripts keep what they read, and git history may hold it). Prefer " +
-    "bugnet-mcp key new and a fresh wallet.\n";
-
-// What the command prints: the address and a hint, or a fixed error line
+// What the command prints, the address and where the key went, or a fixed error line
 export async function runKeyCommand(
     cmd: KeyCommand,
     home: string | undefined,
@@ -383,8 +378,8 @@ export async function runKeyCommand(
         const address = await keyImport(home, cwd, cmd.from, cmd.variable);
         return {
             code: 0,
-            stdout: `${address}\ndelete ${cmd.variable} from ${cmd.from} now\n`,
-            stderr: importWarning,
+            stdout: `${address}\nimported into ${walletPath(home)}\n`,
+            stderr: "",
         };
     } catch (e) {
         const text = e instanceof KeyError ? e.message : "key_failed: the key command failed";
