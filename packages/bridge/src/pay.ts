@@ -97,11 +97,17 @@ export function payArgs(origin: string, maxMicros: number): string[] {
     ];
 }
 
-// Any PAY_ variable could loosen pay's limits, and NO_DNA turns on its auto-pay
-export function payEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+// Drops PAY_ variables and NO_DNA, which loosen pay's limits, and the key signer's wallet_env key
+export function payEnv(
+    env: NodeJS.ProcessEnv,
+    walletEnv: string | null = null,
+): Record<string, string> {
+    const wallet = walletEnv?.toUpperCase();
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(env)) {
-        if (typeof v === "string" && !/^PAY_/i.test(k) && k !== "NO_DNA") out[k] = v;
+        if (typeof v !== "string" || /^PAY_/i.test(k) || k === "NO_DNA") continue;
+        if (k.toUpperCase() === wallet) continue;
+        out[k] = v;
     }
     return out;
 }
@@ -195,6 +201,8 @@ export interface PayCliOptions {
     command: string;
     origin: string;
     env: NodeJS.ProcessEnv;
+    // The variable named by wallet_env, kept out of pay's environment
+    walletEnv?: string | null;
     log: Log;
     timeoutMs?: number;
     progressMs?: number;
@@ -234,7 +242,7 @@ export class PayCli implements OrderPayer {
         const transport = new StdioClientTransport({
             command: this.opts.command,
             args,
-            env: payEnv(this.opts.env),
+            env: payEnv(this.opts.env, this.opts.walletEnv),
             stderr: "pipe",
         });
         // Pay's own words are never logged, they can name the payment

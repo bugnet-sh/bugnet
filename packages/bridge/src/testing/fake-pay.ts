@@ -19,6 +19,7 @@ serveStdio(() => {
         const seen = {
             argv: process.argv.slice(2),
             payEnvKeys: Object.keys(process.env).filter((k) => /^PAY_/i.test(k) || k === "NO_DNA"),
+            envKeys: Object.keys(process.env),
             capabilities: server.getClientCapabilities() ?? null,
         };
         writeFileSync(record, JSON.stringify(seen));

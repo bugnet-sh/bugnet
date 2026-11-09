@@ -86,6 +86,14 @@ describe("pay helpers", () => {
             GONE: undefined,
         };
         expect(payEnv(env)).toEqual({ HOME: "/h", PATH: "/bin" });
+        const withKey = { ...env, BUGNET_WALLET_KEY: "k", bugnet_wallet_key: "k" };
+        expect(payEnv(withKey, "BUGNET_WALLET_KEY")).toEqual({ HOME: "/h", PATH: "/bin" });
+        expect(payEnv(withKey, null)).toEqual({
+            HOME: "/h",
+            PATH: "/bin",
+            BUGNET_WALLET_KEY: "k",
+            bugnet_wallet_key: "k",
+        });
     });
 
     it("writes exact dollar amounts", () => {
@@ -298,6 +306,18 @@ describe("PayCli", () => {
         expect(record.capabilities).toEqual({});
         expect(lines.map((l) => JSON.parse(l).msg)).toEqual(["pay started", "pay finished"]);
         expect(lines.join("\n")).not.toContain(step.claim);
+    });
+
+    it("never gives pay the variable wallet_env names", async () => {
+        const { outcome, record } = await run(
+            { BUGNET_WALLET_KEY: "not-a-real-key", OTHER_VAR: "1" },
+            { walletEnv: "BUGNET_WALLET_KEY" },
+        );
+        expect(outcome).toEqual({ kind: "paid" });
+        expect(record.envKeys).toContain("OTHER_VAR");
+        expect(record.envKeys).not.toContain("BUGNET_WALLET_KEY");
+        const without = await run({ BUGNET_WALLET_KEY: "not-a-real-key" });
+        expect(without.record.envKeys).toContain("BUGNET_WALLET_KEY");
     });
 
     it("pays again without its limits when pay cannot read the Solana network, and only then", async () => {

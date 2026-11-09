@@ -21,7 +21,13 @@ type Serve = Extract<Command, { kind: "serve" }>;
 function choosePayer(command: Serve, origin: string, log: Log): OrderPayer | null {
     const s = command.settings;
     const cli = s.pay_command
-        ? new PayCli({ command: s.pay_command, origin, env: process.env, log })
+        ? new PayCli({
+              command: s.pay_command,
+              origin,
+              env: process.env,
+              walletEnv: command.signer.walletEnv,
+              log,
+          })
         : null;
     if (command.signer.paySigner !== "key") return cli;
     const home = process.env.HOME;
