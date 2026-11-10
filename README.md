@@ -16,13 +16,9 @@ deleted.
 claude mcp add --scope user --transport http bugnet https://mcp.bugnet.sh/mcp
 ```
 
-Then ask your agent:
-
-> Someone sent me https://github.com/antfu/vitesse-lite. Get it running and give me a link.
-
-It checks the repo for free, tells you what it found and the price, and asks before it spends
-anything. You pay in USDC on Solana, at a pay link or from your own wallet. Other clients are in
-[Install](#install).
+Then ask your agent to run something in a sandbox. It checks it for free, tells you what it found
+and the price, and asks before it spends anything. You pay in USDC on Solana, at a pay link or from
+your own wallet. Other clients are in [Install](#install).
 
 ## Why Bugnet
 
