@@ -43,13 +43,13 @@ your own wallet. Other clients are in [Install](#install).
 ## How it works
 
 ```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 400, "rankSpacing": 70}}}%%
 flowchart LR
-    agent["Your AI agent<br/>(Claude Code, Cursor, Codex...)"]
+    agent["Your AI agent<br/>Claude Code, Cursor, Codex"]
     mcp["Bugnet MCP server<br/>mcp.bugnet.sh"]
     box["Throwaway cloud<br/>Linux sandbox"]
-    agent -->|"tool calls over MCP"| mcp
-    agent -.->|"pays per run with x402<br/>(USDC on Solana)"| mcp
-    mcp -->|"starts it, runs commands,<br/>reads files"| box
+    agent -->|"MCP tool calls<br/>paid with x402"| mcp
+    mcp -->|"runs commands<br/>reads files"| box
 ```
 
 1. You ask for something like "try this repo" or "get this text to speech model running".
