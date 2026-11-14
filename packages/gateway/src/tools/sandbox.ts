@@ -309,8 +309,9 @@ async function priceForStart(
     const requirements = claims.requirements;
     let option: PackageOption | undefined;
     try {
+        // The estimate holds the price the user confirmed for as long as the quote lives
         const res = await deps.router.pricePackage(
-            { packageId, requirements },
+            { packageId, requirements, estimateId: claims.estimateId ?? "" },
             { timeoutMs: timeoutMs() },
         );
         option = res.option;

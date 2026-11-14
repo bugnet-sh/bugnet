@@ -2345,6 +2345,7 @@ describe("bugnet_start on a router with PricePackage", () => {
             expect.objectContaining({
                 packageId: "small-10m",
                 requirements: expect.objectContaining(requirements),
+                estimateId,
             }),
         );
         expect(seen.estimates).toBe(0);
@@ -2395,6 +2396,7 @@ describe("bugnet_start on a router with PricePackage", () => {
             startArgs(signed(deps)),
         );
         expect(r.isError).toBe(false);
+        expect(seen.price?.estimateId).toBe("");
         expect(seen.create?.estimateId).toBe("");
         expect(seen.fetches).toBe(0);
         expect(r.structured.source).toBeUndefined();
