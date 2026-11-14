@@ -354,15 +354,16 @@ your client when the client can open links, and waits up to 10 minutes for you t
 **Unpaid and unused orders.** An unpaid order expires after 15 minutes, and nothing is charged. A
 paid order that starts no sandbox within 30 minutes is refunded.
 
-**Prices.** A sandbox comes in fixed sizes: CPU, memory, disk and minutes. Each has a fixed price
-in USDC. `bugnet_assess` and `bugnet_quote` show the prices for free before anything is paid, and
-`bugnet_status` shows what more time costs. Stopping early does not refund the unused time. A
-small sandbox for ten minutes costs a few cents.
+**Prices.** A sandbox comes in fixed sizes: CPU, memory, disk and minutes. Each size has a price
+in USDC, quoted live. `bugnet_assess` and `bugnet_quote` show the quoted price for free before
+anything is paid, and `bugnet_status` shows what more time costs. Stopping early does not refund
+the unused time. A small sandbox for ten minutes costs at most a few cents.
+
 **The approval click.** `bugnet_start` and `bugnet_extend` are marked as tools a person must
 approve. Claude Code asks you before every call, even in modes that skip other prompts, and
 refuses the call when there is no person to ask. The call carries `confirmPriceUsd`, the price
 your agent told you, so you see it in the prompt. Bugnet refuses the call if that price is not
-the exact price of the size you picked. So approving means "yes, pay this exact amount for this
+the quoted price of the size you picked. So approving means "yes, pay this exact amount for this
 sandbox". Other clients ask according to their own tool approval settings, so keep approval on
 for these two tools.
 
