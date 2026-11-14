@@ -220,7 +220,7 @@ function startInput(x402: boolean) {
                 .string()
                 .max(20)
                 .describe(
-                    "The package price you told the user, such as 0.05, shown in the approval prompt",
+                    "The package price you told the user, exactly as quoted, shown in the approval prompt",
                 ),
             orderId: z
                 .string()
