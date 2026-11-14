@@ -7,6 +7,8 @@ export interface OrderClaims {
     package_id: string;
     amount_micros: number;
     allowance_micros?: number;
+    // Start tokens only, so the router leaves the x402 session fee out of package revenue
+    fee_micros?: number;
     expires_at: string;
     handle_sha256?: string;
 }

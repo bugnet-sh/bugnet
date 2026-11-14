@@ -339,6 +339,7 @@ describe("DevPayments x402 ledger", () => {
         });
         if (r.status !== "paid" || r.kind === "allowance") throw new Error("expected a start");
         expect(tokenClaims(r.orderToken).allowance_micros).toBe(1_000_000);
+        expect(tokenClaims(r.orderToken).fee_micros).toBe(3_000);
         expect(await dev.x402Account(h, signal())).toEqual({ x402: null, feeDue: true });
         dev.x402.bind("toolu_start_00001", h);
         expect(await dev.x402Account(h, signal())).toEqual({ x402: view, feeDue: false });
@@ -355,6 +356,7 @@ describe("DevPayments x402 ledger", () => {
         expect(plain).not.toHaveProperty("firstUse");
         expect(plain).not.toHaveProperty("x402");
         expect(tokenClaims(plain.orderToken)).not.toHaveProperty("allowance_micros");
+        expect(tokenClaims(plain.orderToken)).not.toHaveProperty("fee_micros");
     });
 
     it("refuses x402 on a start while the terms forbid it", async () => {
@@ -683,12 +685,14 @@ describe("DevPayments x402 ledger", () => {
             packageId: "more",
             amountMicros: 40_000,
             allowanceMicros: 100_000,
+            feeMicros: 3_000,
             handleSha256: h,
             description: "e",
             idempotencyKey: "toolu_extend_00001",
         });
         if (r.status !== "paid" || r.kind === "allowance") throw new Error("expected an extend");
         expect(tokenClaims(r.orderToken)).not.toHaveProperty("allowance_micros");
+        expect(tokenClaims(r.orderToken)).not.toHaveProperty("fee_micros");
     });
 
     it.each([

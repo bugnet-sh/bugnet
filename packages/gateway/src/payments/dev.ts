@@ -505,6 +505,7 @@ export class DevPayments implements Payments {
             ...(kind === "start" && (o.allowanceMicros ?? 0) > 0
                 ? { allowance_micros: o.allowanceMicros }
                 : {}),
+            ...(kind === "start" && (o.feeMicros ?? 0) > 0 ? { fee_micros: o.feeMicros } : {}),
             expires_at: new Date(this.now() + this.ttlMs).toISOString(),
             ...(o.handleSha256 ? { handle_sha256: o.handleSha256 } : {}),
         });
