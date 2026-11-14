@@ -245,6 +245,23 @@ describe("bugnet_extend", () => {
         });
     });
 
+    it("abandons an extension refused for a price change and says refunded once", async () => {
+        const { client, payments } = await connect({
+            ...checked,
+            extendPlacement() {
+                throw routerError(Code.FailedPrecondition, "PRICE_CHANGED", {
+                    metadata: { package_id: "small-10m-more", price_micros: "60000" },
+                });
+            },
+        });
+        const r = await callTool(client, "bugnet_extend", args(), { toolUseId: "toolu_p" });
+        expect(r.text).toBe(
+            "extend: the price of small-10m-more changed to $0.06, so this order is refunded. " +
+                "Call bugnet_extend again for the new price. The extension was not applied.",
+        );
+        expect(payments.abandoned).toEqual([{ orderId: "toolu_p", reason: "not_applied" }]);
+    });
+
     it("keeps the refund wording when the refusal is a bare NotFound", async () => {
         const { client, payments } = await connect({
             ...checked,

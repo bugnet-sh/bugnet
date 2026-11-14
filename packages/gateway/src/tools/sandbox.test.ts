@@ -382,6 +382,26 @@ describe("bugnet_start", () => {
         },
     );
 
+    it("keeps a start refused for a price change, which the router refunds", async () => {
+        const { client, payments } = await setup({
+            ...startRouter({ waits: [] }),
+            createPlacement() {
+                throw routerError(Code.FailedPrecondition, "PRICE_CHANGED", {
+                    metadata: {
+                        package_id: "small-10m",
+                        paid_micros: "50000",
+                        price_micros: "60000",
+                    },
+                });
+            },
+        });
+        const r = await callTool(client, "bugnet_start", startArgs(await quoteId(client)));
+        expect(r.isError).toBe(true);
+        expect(r.text).toMatch(/^start: the price of small-10m changed to \$0\.06, so this order/);
+        expect(r.text.match(/refunded/g)).toHaveLength(1);
+        expect(payments.abandoned).toEqual([]);
+    });
+
     it("keeps the order when the wallet is busy or rate limited", async () => {
         let reason = "WALLET_BUSY";
         const { client, payments } = await setup({

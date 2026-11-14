@@ -145,9 +145,11 @@ export async function extendPaid(
             .catch((x) => deps.log.error("abandon failed", { err: String(x) }));
         const err = fromRouter(applied.refused, "extend");
         // A not_ready kind would let sandboxFailure swap the refund sentence for "has ended"
+        // The price-change wording already says the order is refunded
+        const refund = err.reason === "PRICE_CHANGED" ? "" : " and the payment is refunded";
         throw new GatewayError(
             err.kind === "not_ready" ? "precondition" : err.kind,
-            `${err.message}. The extension was not applied and the payment is refunded`,
+            `${err.message}. The extension was not applied${refund}`,
             null,
             null,
             abandonedFields(order.orderId),

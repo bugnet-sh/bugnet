@@ -8,6 +8,7 @@ import {
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { BinaryReader, WireType } from "@bufbuild/protobuf/wire";
 import type { Config } from "./config.ts";
+import { usd } from "./money.ts";
 import { SandboxRouterService } from "./gen/bugnet/router/v1/router_pb.ts";
 import { toolCallSignal } from "./request.ts";
 
@@ -506,6 +507,20 @@ const rules: Record<string, Rule> = {
 
 /* Codes */
 
+const maxPriceMicros = 1_000_000_000n;
+
+// Built from the new price alone, since a retried start can report one at or below the paid amount
+function priceChangedText(meta: Record<string, string>, what: string): string {
+    const raw = meta.price_micros ?? "";
+    const price = /^\d{1,10}$/.test(raw) && BigInt(raw) <= maxPriceMicros ? BigInt(raw) : null;
+    const pkg = meta.package_id ?? "";
+    const named = /^[a-z0-9][a-z0-9-]{0,63}$/.test(pkg) ? ` of ${pkg}` : "";
+    const changed =
+        price === null ? "the price changed" : `the price${named} changed to ${usd(price)}`;
+    const again = what === "extend" ? "bugnet_extend" : "bugnet_quote";
+    return `${changed}, so this order is refunded. Call ${again} again for the new price`;
+}
+
 // Turns a router failure into the error the agent sees, never echoing provider text
 export function fromRouter(err: unknown, what: string): GatewayError {
     if (err instanceof GatewayError) return err;
@@ -519,6 +534,9 @@ export function fromRouter(err: unknown, what: string): GatewayError {
         return new GatewayError(kind, `${what}: ${text}`, wait, reason);
     };
     if (rule && rule.code === err.code) return fail(rule.kind, rule.text);
+    if (reason === "PRICE_CHANGED" && err.code === Code.FailedPrecondition) {
+        return fail("precondition", priceChangedText(errorMetadata(err), what));
+    }
     switch (err.code) {
         case Code.NotFound:
             // Routers before HANDLE_UNKNOWN sent an unknown handle without a reason

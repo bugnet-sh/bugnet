@@ -159,6 +159,32 @@ describe("router error details", () => {
 });
 
 describe("fromRouter", () => {
+    it("says a price change refunds the order and names the new price only", () => {
+        const changed = (meta: Record<string, string>) =>
+            routerError(Code.FailedPrecondition, "PRICE_CHANGED", {
+                message: "underpaid by 4 micros, paid 50000",
+                metadata: meta,
+            });
+        const meta = { package_id: "small-10m", paid_micros: "50000", price_micros: "24420" };
+        const start = fromRouter(changed(meta), "start");
+        expect(start.kind).toBe("precondition");
+        expect(start.reason).toBe("PRICE_CHANGED");
+        expect(start.message).toBe(
+            "start: the price of small-10m changed to $0.02442, so this order is refunded. " +
+                "Call bugnet_quote again for the new price",
+        );
+        expect(fromRouter(changed(meta), "extend").message).toBe(
+            "extend: the price of small-10m changed to $0.02442, so this order is refunded. " +
+                "Call bugnet_extend again for the new price",
+        );
+        const bare = fromRouter(changed({ price_micros: "9e9", package_id: "a b" }), "start");
+        expect(bare.message).toBe(
+            "start: the price changed, so this order is refunded. Call bugnet_quote again for " +
+                "the new price",
+        );
+        expect(bare.message).not.toMatch(/underpaid|paid 50000/);
+    });
+
     it.each(table)("maps %s under its code", (reason, code, kind) => {
         const e = fromRouter(
             routerError(code, reason, { message: "cloudvm said acmebox no" }),
