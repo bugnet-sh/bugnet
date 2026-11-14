@@ -55,7 +55,7 @@ const ids = opt("--ids")?.split(",");
 const model = opt("--model") ?? "sonnet";
 const concurrency = Number(opt("--concurrency") ?? 2);
 const maxUsd = Number(opt("--max-usd") ?? 1.5);
-const reply = opt("--reply") ?? "Yes, run it in Bugnet, up to $0.50 is fine.";
+const reply = opt("--reply") ?? "Yes, run it in Bugnet, up to $1.00 is fine.";
 const turnTimeoutMs = 15 * 60 * 1000;
 
 // Paid tools stay off this list, so their approval prompts reach the approver and its price limit
@@ -84,7 +84,7 @@ const handlePattern = /sbx_[a-z2-7]{26}/g;
 const tagOf = (h: string) => `h:${createHash("sha256").update(h).digest("hex").slice(0, 12)}`;
 const scrub = (s: string) => s.replace(handlePattern, (h) => tagOf(h));
 
-const priceLimit = (reply.match(/\$(\d+(?:\.\d+)?)/) ?? [])[1] ?? "0.5";
+const priceLimit = (reply.match(/\$(\d+(?:\.\d+)?)/) ?? [])[1] ?? "1";
 
 function argsFor(prompt: string, resume: string | null): string[] {
     const approver = {

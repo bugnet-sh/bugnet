@@ -126,7 +126,7 @@ describe("user simulator", () => {
 
     it("reads the price limit from a reply", () => {
         expect(priceLimitOf(replyTexts.x402)).toBe(1.1);
-        expect(priceLimitOf(replyTexts.sandbox)).toBe(0.5);
+        expect(priceLimitOf(replyTexts.sandbox)).toBe(1);
         expect(priceLimitOf(replyTexts.probe)).toBeNull();
         expect(priceLimitOf(replyTexts.decline)).toBeNull();
     });

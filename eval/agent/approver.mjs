@@ -10,7 +10,7 @@ import { appendFileSync } from "node:fs";
 import process from "node:process";
 import { createInterface } from "node:readline";
 
-const limitText = process.env.BUGNET_E2E_MAX_USD ?? "0.5";
+const limitText = process.env.BUGNET_E2E_MAX_USD ?? "1";
 const log = process.env.BUGNET_E2E_APPROVALS;
 
 // Whole micros, so a price is never compared as a float

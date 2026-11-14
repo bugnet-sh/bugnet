@@ -6,7 +6,7 @@ export type Slice = "main" | "decline" | "readme-url" | "s3";
 export const taskPrompt = "Get this repo's demo running.";
 
 export const replyTexts = {
-    sandbox: "Yes, run it in a Bugnet sandbox, up to $0.50 is fine.",
+    sandbox: "Yes, run it in a Bugnet sandbox, up to $1.00 is fine.",
     x402: "Use the pay-per-call one, up to $1.10.",
     decline: "No, I'll add my key.",
     topUp: "Yes, top it up, up to $1.10.",
