@@ -5,7 +5,7 @@
 #
 # The tree is self-contained, since dist/main.js and dist/x402-crawl.js bundle every dependency
 # and the server needs only Node. It also carries the reviewed x402 index and the systemd units.
-# It builds only from clean checkouts of this repository and of bugnet-proto beside it, so the
+# It builds only from clean checkouts of this repository and of bugnet-proto in ../proto, so the
 # version name is the commit it was built from, and VERSION records both commits.
 set -euo pipefail
 
@@ -18,7 +18,7 @@ if [[ -n $(git status --porcelain --untracked-files=no) ]]; then
 	exit 1
 fi
 version=$(git rev-parse --short=7 HEAD)
-proto=$(cd "$repo/../bugnet-proto" && pwd)
+proto=$(cd "$repo/../proto" && pwd)
 if [[ -n $(git -C "$proto" status --porcelain --untracked-files=no) ]]; then
 	echo "release.sh: $proto has uncommitted changes, so the router client would match no commit" >&2
 	exit 1
@@ -28,7 +28,7 @@ rm -rf "$out" "$out.tgz"
 
 pnpm install --frozen-lockfile
 cd packages/gateway
-# The router client comes from the bugnet-proto checkout beside this repository
+# The router client comes from the bugnet-proto checkout in ../proto
 pnpm proto
 pnpm exec tsc --noEmit -p .
 

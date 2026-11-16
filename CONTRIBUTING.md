@@ -35,10 +35,11 @@ cleans what comes back. No AI model runs in it.
 ## Prerequisites
 
 - Node 26 and pnpm 12.6.0, the version `packageManager` in `package.json` names
-- `buf` and the `bugnet-proto` checkout next to this repository:
+- `buf` and a checkout of `bugnet-proto` in `../proto`, beside this repository:
   `pnpm --filter @bugnet/gateway proto` generates the router client into `packages/gateway/src/gen`,
   which git ignores
-- A running router (`../bugnet-router`, see its README) for anything past unit tests
+- A running router (`bugnet-router` checked out in `../router`, see its README) for anything past
+  unit tests
 
 <!-- PENDING: bugnet-proto and bugnet-router are not public, so outside contributors cannot run the codegen yet -->
 
@@ -61,9 +62,9 @@ pnpm test --no-file-parallelism   # unit tests, one file at a time
 
 ## Running locally
 
-1. Start the router with `../bugnet-router/scripts/dev-up.sh` (local provider, port 8080).
+1. Start the router with `../router/scripts/dev-up.sh` (local provider, port 8080).
 2. Copy `.env.example` to `.env` and fill it: `BUGNET_INTERNAL_TOKEN` and
-   `BUGNET_ORDER_PRIVATE_KEY` are the router's values in `../bugnet-router/.env.keys`, and
+   `BUGNET_ORDER_PRIVATE_KEY` are the router's values in `../router/.env.keys`, and
    `BUGNET_QUOTE_KEY` is `openssl rand -base64 32`.
 3. Start the gateway on `127.0.0.1:8787` with dev payments, which start sandboxes without
    charging and refuse to run anywhere but loopback:
@@ -113,12 +114,12 @@ pnpm --filter ./packages/secret-page exec \
 ```
 
 CI (`.github/workflows/ci.yml`) runs on every push and pull request: a frozen install, the proto
-codegen, `pnpm lint`, `pnpm typecheck`, a check that the committed hook bundle matches a fresh
-`pnpm build:plugin`, and `pnpm test` with Go and Playwright's Chromium, Firefox and WebKit, failing
-if the Go or browser tests skipped. It checks out the private `bugnet-proto` beside this repository
-with the `PROTO_READ_TOKEN` secret, a fine-grained token with read-only Contents on that repository,
-so pull requests from forks stop at that step. The evals stay out of CI because they spend money and
-need API keys.
+codegen, `pnpm lint`, `pnpm typecheck`, a check that the committed hook bundle matches a fresh `pnpm
+build:plugin`, and `pnpm test` with Go and Playwright's Chromium, Firefox and WebKit, failing if the
+Go or browser tests skipped. It checks out the private `bugnet-proto` as `proto` beside this
+repository with the `PROTO_READ_TOKEN` secret, a fine-grained token with read-only Contents on that
+repository, so pull requests from forks stop at that step. The evals stay out of CI because they
+spend money and need API keys.
 
 The live judge spends Claude usage: each session is a real model run, up to `perRun.maxBudgetUsd`
 ($0.40) at API prices, and the whole run is capped by `budgetUsd` in
@@ -203,15 +204,15 @@ the same skill and hooks. The hooks run `hooks/bugnet-hook.mjs`, bundled from `p
 and committed so the plugins work straight from git. `pnpm run build:plugin` writes the bundle
 into both, and `plugin.test.ts` checks that the two copies match. The hooks need Node and stay
 silent without it. `BUGNET_HINTS=off` turns hints off and `quiet` keeps only hints after a failed
-local command. Install from a clone of this repository:
+local command. Install from the folder that holds a clone of this repository in `gateway`:
 
 ```sh
-claude plugin marketplace add ./bugnet-gateway
+claude plugin marketplace add ./gateway
 claude plugin install bugnet@bugnet
 claude plugin install bugnet-wallet@bugnet
 ```
 
-`claude plugin validate ./bugnet-gateway` checks the marketplace and the plugin first. Install one
+`claude plugin validate ./gateway` checks the marketplace and the plugin first. Install one
 plugin, not both.
 
 The server URL defaults to `https://mcp.bugnet.sh/mcp`; `BUGNET_MCP_URL` overrides it, as in the
@@ -370,10 +371,10 @@ by hand: `node_modules/.bin/tsx packages/gateway/scripts/x402-crawl.ts -config c
 
 ### Building a release
 
-`deploy/release.sh [out-dir]` builds the tree a server runs, from a clean checkout of the commit
-to ship and a clean `bugnet-proto` beside it. It writes `gateway-<sha>/` and `gateway-<sha>.tgz`
-under `out-dir`, or under `release/` by default. `packages/gateway/dist/main.js` and
-`dist/x402-crawl.js` bundle every dependency, so the server needs Node and nothing from npm. The
+`deploy/release.sh [out-dir]` builds the tree a server runs, from a clean checkout of the commit to
+ship and a clean `bugnet-proto` checkout in `../proto`. It writes `gateway-<sha>/` and
+`gateway-<sha>.tgz` under `out-dir`, or under `release/` by default. `packages/gateway/dist/main.js`
+and `dist/x402-crawl.js` bundle every dependency, so the server needs Node and nothing from npm. The
 tree also holds the reviewed index, the three units and `VERSION`, which names the gateway and
 `bugnet-proto` commits it was built from. `pnpm build` is not a release, since it leaves the
 dependencies out of the bundle.

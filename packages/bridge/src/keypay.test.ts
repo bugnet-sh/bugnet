@@ -143,11 +143,11 @@ function findPaymentsBuild(): string | undefined {
         return undefined;
     }
     for (let d = import.meta.dirname; ; d = dirname(d)) {
-        const build = join(d, "bugnet-payments", "src/x402/build.ts");
+        const build = join(d, "payments", "src/x402/build.ts");
         if (existsSync(build)) return build;
         if (dirname(d) === d) break;
     }
-    skipping(`no bugnet-payments folder above ${import.meta.dirname} and no BUGNET_PAYMENTS_DIR`);
+    skipping(`no payments folder above ${import.meta.dirname} and no BUGNET_PAYMENTS_DIR`);
     return undefined;
 }
 
