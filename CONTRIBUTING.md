@@ -176,14 +176,19 @@ node_modules/.bin/tsx eval/x402/heldout.ts --rerun RESULTS.json
 ```
 
 It exits 1 when an arm ran fewer prompts than the baseline, an arm's told-before-run share fell
-by more than the 95% interval of the difference, or told(no) is above 0. x402 stays off until
-it passes.
+by more than the 95% interval of the difference, or told(no) is above 0.
+
+Neither run has happened yet. `eval/agent/x402-repos.json` does not exist, because the 20 repos
+are not picked. `mcp.bugnet.sh` has run with `[x402] enabled = true` since its launch on
+2026-11-09, when x402 went live without these gates, so a pass or a fail now tells whether to
+keep it on.
 
 ## Tools
 
 The README's [tools table](README.md#tools) lists every tool for users. Each tool's annotations
 (read-only, destructive, idempotent) are set where it is registered in `packages/gateway/src/tools`.
-Every tool but `bugnet_start` and `bugnet_extend` is free. Approval means the tool carries
+Three tools cost money and ask for approval: `bugnet_start`, `bugnet_extend` and
+`bugnet_x402_budget`. Every other tool is free. Approval means the tool carries
 `anthropic/requiresUserInteraction`, which `tools.require_user_approval` turns off for unattended
 test gateways only. `bugnet_transfer` asks too while `tools.confirm_transfers` is on.
 
@@ -243,10 +248,38 @@ minutes (`src/orders.ts`) and uses it before opening a new order for the same pa
 `pay_command = ""` turns pay off. `BUGNET_LIVE_PAY=1 pnpm test packages/bridge/src/pay.live.test.ts`
 runs the real `pay`.
 
-Without `pay`, or after pay could not start, it asks a client that declares URL elicitation to open
-the pay link and polls `/o/<orderId>/status` every 2.5 s for up to 10 minutes (`src/linkpay.ts`);
-other clients get the payment step unchanged. `pnpm --filter @bugnet/mcp mcpb` writes the Claude
-Desktop extension to `packages/bridge/dist/bugnet.mcpb`.
+Without `pay`, or after pay could not start, the payment step leads with the pay link for the
+agent to show in its reply (`src/linkpay.ts`). The first `bugnet_redeem` of that order waits
+20 s and, if it is still unpaid, returns the link again. Each later redeem polls
+`/o/<orderId>/status` every 2.5 s for up to 10 minutes. `pay_link_dialog = true` opens the link
+in a URL dialog instead, for clients that declare URL elicitation.
+
+With `pay_signer = "key"` the bridge signs payments itself from a local wallet file or from the
+variable `wallet_env` names, read from the working directory's `.env` or the environment at each
+payment (`src/keypay.ts`, `src/keyfile.ts`). It builds Payments' exact transaction, checks the
+pinned `pay_to`, `fee_payer` and `allowance_pay_to` wallets and the memo, and holds every payment
+under `max_payment_usd` and `daily_usd`, which cannot go above $20 and $100. Each payment takes
+one file in a per-day spend ledger under `~/.config/bugnet/spend/` (`src/spend.ts`). These
+settings are read only from `~/.config/bugnet/mcp.toml`, never from `--config`.
+[`packages/bridge/README.md`](packages/bridge/README.md) "Paying from a local wallet file" has
+the user side.
+
+`pnpm --filter @bugnet/mcp mcpb` writes the Claude Desktop extension to
+`packages/bridge/dist/bugnet.mcpb`.
+
+### Releasing the bridge
+
+1. Set the new version in `packages/bridge/package.json` and `packages/bridge/mcpb/manifest.json`.
+2. Move every `@bugnet/mcp@<version>` pin to it. `git grep -n "@bugnet/mcp@"` lists them: the
+   README, `packages/bridge/README.md` and `plugin-wallet/.mcp.json`.
+3. Run the checks and the bridge tests, then merge to `main` and push.
+4. Check the npm login with `npm whoami`. A saved login expires, and npm then answers a publish
+   with 404 instead of asking you to sign in. Run `npm login` when it fails.
+5. From `packages/bridge`, run `pnpm publish --access public --no-git-checks`. Check it with
+   `npx -y @bugnet/mcp@<version> --version`.
+6. Tag the commit `v<version>` and push the tag. For a GitHub release, attach the file
+   `pnpm --filter @bugnet/mcp mcpb` writes.
+7. Move the version in the website's install docs too, which live in their own repository.
 
 ## The secret page
 
@@ -333,6 +366,17 @@ move the timer with each deploy: `systemctl enable --now bugnet-x402-crawl@<vers
 disable the previous version's. A failed crawl leaves the file as it was and exits 1. To run it
 by hand: `node_modules/.bin/tsx packages/gateway/scripts/x402-crawl.ts -config config/dev.toml
 --out /tmp/hosts-seen.json`.
+
+### Building a release
+
+`deploy/release.sh [out-dir]` builds the tree a server runs, from a clean checkout of the commit
+to ship. It writes `gateway-<sha>/` and `gateway-<sha>.tgz` under `out-dir`, or under `release/`
+by default. `packages/gateway/dist/main.js` and `dist/x402-crawl.js` bundle every dependency, so
+the server needs Node and nothing from npm. The tree also holds the reviewed index and the three
+units. `pnpm build` is not a release, since it leaves the dependencies out of the bundle.
+
+The steps that move a server to a release are in the private `bugnet-sh/internal` repository,
+`deploy/gateway/README.md`.
 
 ## Style
 

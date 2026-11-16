@@ -49,10 +49,11 @@ charset=utf-8`, `text/css; charset=utf-8` and `image/svg+xml`.
 ## Pinned keys
 
 The bundle seals only to the keys in [`../seal/src/pinned.ts`](../seal/src/pinned.ts), and refuses
-the page before anything is typed when the link lists none of them. That list is empty until the
-proxy's box key is made at deploy (data-plane 15.5), so the build warns, and the page it makes
-refuses every key. A rotation adds the new key there, rebuilds and redeploys this bundle and the
-bridge, and only then lets the router list the new key first (data-plane 10.2).
+the page before anything is typed when the link lists none of them. The list holds `k1`, the
+production proxy's box key, made on the server on 2026-11-09 (data-plane 15.5). A build with an
+empty list warns, and the page it makes refuses every key. A rotation adds the new key there,
+rebuilds and redeploys this bundle and the bridge, and only then lets the router list the new key
+first (data-plane 10.2).
 
 A release build refuses a key whose id starts with `dev-`, and the development public key under
 any id. The development key in `../seal/src/testing` goes only into the test builds, which show a
