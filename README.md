@@ -237,12 +237,12 @@ entry in the file that Cascade's **Open MCP config file** opens.
 
 ### Any MCP client
 
-| Setting   | Value                                       |
-| --------- | ------------------------------------------- |
-| URL       | `https://mcp.bugnet.sh/mcp`                 |
-| Transport | Streamable HTTP                             |
-| Sign-in   | None, no headers and no API key             |
-| Stdio     | `npx -y @bugnet/mcp@0.1.2`, needs Node 20.3 |
+| Setting   | Value                                          |
+| --------- | ---------------------------------------------- |
+| URL       | `https://mcp.bugnet.sh/mcp`                    |
+| Transport | Streamable HTTP                                |
+| Sign-in   | None, no headers and no API key                |
+| Stdio     | `npx -y @bugnet/mcp@0.1.2`, needs Node 20.19.3 |
 
 Most clients take one of these two shapes. The second runs the [bridge](#the-bridge-npx-bugnetmcp).
 
@@ -276,8 +276,8 @@ it passes every call on to Bugnet's server unchanged, except that it pays or ope
   confirm, and seals the token before it leaves your computer.
 - **Clients that only run local servers.**
 
-Use the bridge instead of the URL, not both, or every tool shows up twice. It needs Node 20.3 or
-newer.
+Use the bridge instead of the URL, not both, or every tool shows up twice. It needs Node 20.19.3
+or newer.
 
 | Client      | Setup                                                                                  |
 | ----------- | -------------------------------------------------------------------------------------- |
@@ -323,9 +323,12 @@ Paid tools ask you first, and so does moving a file between your computer and a 
 | `bugnet_secrets`          | Lists the sandbox's secrets, never their values                         | Free           |
 | `bugnet_secret_delete`    | Deletes a secret                                                        | Free           |
 | `bugnet_secret_put_grant` | Lets the bridge add sealed secrets, agents never call it                | Free           |
+| `bugnet_x402_find`        | Finds a pay-per-call x402 API for a missing API key                     | Free           |
+| `bugnet_x402_budget`      | Funds and sets limits for x402 calls from the sandbox                   | Paid, asks you |
 
-The bridge hides `bugnet_secret_put_grant` and adds `bugnet_secret_from_env`, which adds a secret
-from your machine after you confirm it.
+The two x402 tools appear when the server runs with x402 on, as `mcp.bugnet.sh` does. The bridge
+hides `bugnet_secret_put_grant` and adds `bugnet_secret_from_env`, which adds a secret from your
+machine after you confirm it.
 
 ## Paying
 
