@@ -155,8 +155,8 @@ describe("assessor over GitHub", () => {
             license: "BSD-3-Clause",
             ownerType: "Organization",
         });
-        expect(r.summary).toMatch(
-            /No risk signals found in pallets\/flasky \(68k stars, since 2010, BSD-3-Clause\)/,
+        expect(r.summary).toBe(
+            "No known risk signals found in pallets/flasky (68k stars, since 2010, BSD-3-Clause).",
         );
         const raw = calls.filter((c) => c.url.startsWith("https://raw.githubusercontent.com/"));
         expect(raw.length).toBeLessThanOrEqual(6);
@@ -494,7 +494,7 @@ describe("assessor over Hugging Face", () => {
         const r = await a.assess({ source: "pallets/flasky" }, signal());
         expect(r).toMatchObject({ recommendation: "local_ok", source: { kind: "github" } });
         expect(r.categories).not.toContain("local_ai_model");
-        expect(r.summary).toMatch(/No risk signals found in pallets\/flasky/);
+        expect(r.summary).toMatch(/^No known risk signals found in pallets\/flasky/);
         const none = await a.assess({ source: "nobody/nothing" }, signal());
         expect(none.risk.findings).toMatchObject([{ id: "source_not_found" }]);
         expect(none.categories).toEqual([]);

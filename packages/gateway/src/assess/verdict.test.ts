@@ -48,7 +48,7 @@ describe("withoutSandboxClaim", () => {
     }
 
     it("leaves a summary without a claim as it is", () => {
-        const s = "No risk signals found in acme/tool. Running it locally looks fine.";
+        const s = "No known risk signals found in acme/tool.";
         expect(withoutSandboxClaim(s)).toBe(s);
     });
 });

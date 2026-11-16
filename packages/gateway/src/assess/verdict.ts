@@ -319,7 +319,8 @@ export function summarise(s: SummaryInput): string {
         if (why) return `${sentence(why.title)} There is no evidence either way.`;
         return "No source or commands to check, so there is no evidence either way.";
     }
-    return `No risk signals found${name ? ` in ${name}` : ""}${factText(s.report)}. Running it locally looks fine.`;
+    // Founder decision D7, so a clean scan never reads as a promise that the code is safe
+    return `No known risk signals found${name ? ` in ${name}` : ""}${factText(s.report)}.`;
 }
 
 /* Combining */
