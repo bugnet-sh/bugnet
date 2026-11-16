@@ -4,9 +4,9 @@
 #   deploy/release.sh [out-dir]    writes out-dir/gateway-<sha>/ and out-dir/gateway-<sha>.tgz
 #
 # The tree is self-contained, since dist/main.js and dist/x402-crawl.js bundle every dependency
-# and the server needs only Node. It also carries the reviewed x402 index, which each deploy
-# copies to Payments and the router, and the systemd units. It builds from a clean checkout only,
-# so the version name is the commit it was built from.
+# and the server needs only Node. It also carries the reviewed x402 index and the systemd units.
+# It builds only from clean checkouts of this repository and of bugnet-proto beside it, so the
+# version name is the commit it was built from, and VERSION records both commits.
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
@@ -18,6 +18,11 @@ if [[ -n $(git status --porcelain --untracked-files=no) ]]; then
 	exit 1
 fi
 version=$(git rev-parse --short=7 HEAD)
+proto=$(cd "$repo/../bugnet-proto" && pwd)
+if [[ -n $(git -C "$proto" status --porcelain --untracked-files=no) ]]; then
+	echo "release.sh: $proto has uncommitted changes, so the router client would match no commit" >&2
+	exit 1
+fi
 out=$out_base/gateway-$version
 rm -rf "$out" "$out.tgz"
 
@@ -42,6 +47,8 @@ printf '{\n    "name": "@bugnet/gateway",\n    "private": true,\n    "type": "mo
 	>"$out/packages/gateway/package.json"
 cp deploy/bugnet-gateway@.service deploy/bugnet-x402-crawl@.service \
 	deploy/bugnet-x402-crawl@.timer "$out/deploy/"
+printf 'bugnet-gateway %s\nbugnet-proto %s\n' "$(git rev-parse HEAD)" "$(git -C "$proto" rev-parse HEAD)" \
+	>"$out/VERSION"
 node --check "$out/packages/gateway/dist/main.js"
 
 # macOS tar adds extended attributes that GNU tar on the server warns about

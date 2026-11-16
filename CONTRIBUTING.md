@@ -26,7 +26,7 @@ out, and what a pull request needs. What Bugnet is and how people install it is 
 | `eval/agent`                      | The live judge: real Claude Code sessions with and without Bugnet                                      |
 | `eval/x402`                       | The x402 eval: 20-repo harness, user simulator, transcript judge and the held-out interval check       |
 | `config`                          | `example.toml` with every setting, `dev.toml` for a local run                                          |
-| `deploy`                          | The systemd units the server runs the gateway and its daily x402 crawl with                            |
+| `deploy`                          | The systemd units for the gateway and its daily x402 crawl, and `release.sh`, which builds a release   |
 
 The gateway is a stateless TypeScript MCP server. It checks quotes, asks the Payments service for
 an order, calls the router (Bugnet's backend, which places and drives sandboxes) over Connect, and
@@ -179,9 +179,7 @@ It exits 1 when an arm ran fewer prompts than the baseline, an arm's told-before
 by more than the 95% interval of the difference, or told(no) is above 0.
 
 Neither run has happened yet. `eval/agent/x402-repos.json` does not exist, because the 20 repos
-are not picked. `mcp.bugnet.sh` has run with `[x402] enabled = true` since its launch on
-2026-11-09, when x402 went live without these gates, so a pass or a fail now tells whether to
-keep it on.
+are not picked. `mcp.bugnet.sh` has run with x402 on since 2026-11-09.
 
 ## Tools
 
@@ -222,8 +220,8 @@ local run above.
 ## The bridge
 
 `npx @bugnet/mcp` is a local stdio MCP server that passes every gateway tool through unchanged,
-except that it pays or opens the pay link for a payment step of `bugnet_start` or `bugnet_extend`,
-and adds `bugnet_secret_from_env`. That tool reads a secret from an
+except that it pays or shows the pay link for a payment step of `bugnet_start`, `bugnet_extend` or
+`bugnet_x402_budget`, and adds `bugnet_secret_from_env`. That tool reads a secret from an
 environment variable, a `.env` file or a macOS keychain item, asks the user to confirm the name,
 source and hosts, and seals it to the egress proxy, so the value never enters the chat. A client
 that cannot ask gets only the preset hosts of a known secret, for a sandbox this bridge started.
@@ -238,9 +236,10 @@ It reads `~/.config/bugnet/mcp.toml` when it exists, or the file `--config` name
 [`packages/bridge/config/example.toml`](packages/bridge/config/example.toml) lists every setting
 at its default. It holds no secrets.
 
-When `bugnet_start` or `bugnet_extend` answers with a payment step, the bridge pays it with the
-`pay` CLI (`src/pay.ts`). It checks that the pay link is `pay_origin` plus `/o/<orderId>`, that the
-x402 memo names the order and that the amount is at most `confirmPriceUsd`, then starts
+When `bugnet_start`, `bugnet_extend` or `bugnet_x402_budget` answers with a payment step, the
+bridge pays it with the `pay` CLI (`src/pay.ts`). It checks that the pay link is `pay_origin` plus
+`/o/<orderId>`, that the x402 memo names the order and that the amount is at most
+`confirmPriceUsd`, then starts
 `pay mcp --allow-origin <pay_origin> --allow-network mainnet --max-payment <confirmPriceUsd>` with
 every `PAY_*` variable and `NO_DNA` removed and no client capabilities, so pay asks for Touch ID and
 fails closed without it. It pays an order at most once, keeps a paid order it could not use for 30
@@ -269,9 +268,11 @@ the user side.
 
 ### Releasing the bridge
 
-1. Set the new version in `packages/bridge/package.json` and `packages/bridge/mcpb/manifest.json`.
-2. Move every `@bugnet/mcp@<version>` pin to it. `git grep -n "@bugnet/mcp@"` lists them: the
-   README, `packages/bridge/README.md` and `plugin-wallet/.mcp.json`.
+1. Set the new version in `packages/bridge/package.json`, `packages/bridge/mcpb/manifest.json` and
+   `plugin-wallet/.claude-plugin/plugin.json`. Claude Code updates an installed plugin only when its
+   version moves, and a test keeps the plugin's version equal to the bridge's.
+2. Move every pinned `@bugnet/mcp@` version to it. `git grep -n '@bugnet/mcp@[0-9]'` lists them:
+   the README, `packages/bridge/README.md` and `plugin-wallet/.mcp.json`.
 3. Run the checks and the bridge tests, then merge to `main` and push.
 4. Check the npm login with `npm whoami`. A saved login expires, and npm then answers a publish
    with 404 instead of asking you to sign in. Run `npm login` when it fails.
@@ -370,13 +371,14 @@ by hand: `node_modules/.bin/tsx packages/gateway/scripts/x402-crawl.ts -config c
 ### Building a release
 
 `deploy/release.sh [out-dir]` builds the tree a server runs, from a clean checkout of the commit
-to ship. It writes `gateway-<sha>/` and `gateway-<sha>.tgz` under `out-dir`, or under `release/`
-by default. `packages/gateway/dist/main.js` and `dist/x402-crawl.js` bundle every dependency, so
-the server needs Node and nothing from npm. The tree also holds the reviewed index and the three
-units. `pnpm build` is not a release, since it leaves the dependencies out of the bundle.
+to ship and a clean `bugnet-proto` beside it. It writes `gateway-<sha>/` and `gateway-<sha>.tgz`
+under `out-dir`, or under `release/` by default. `packages/gateway/dist/main.js` and
+`dist/x402-crawl.js` bundle every dependency, so the server needs Node and nothing from npm. The
+tree also holds the reviewed index, the three units and `VERSION`, which names the gateway and
+`bugnet-proto` commits it was built from. `pnpm build` is not a release, since it leaves the
+dependencies out of the bundle.
 
-The steps that move a server to a release are in the private `bugnet-sh/internal` repository,
-`deploy/gateway/README.md`.
+The steps that move a server to a release are kept in Bugnet's private operations repository.
 
 ## Style
 

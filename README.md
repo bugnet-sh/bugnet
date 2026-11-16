@@ -351,8 +351,9 @@ goes on by itself. This works in every client, claude.ai included.
 Desktop extension, the bridge pays the order with [`pay`](https://pay.sh) on your computer, and
 you approve each payment with Touch ID. It pays only links on `pay.bugnet.sh`, only on Solana
 mainnet, and never more than the price you approved.
-The result: one approval click plus Touch ID. Without `pay`, the bridge opens the pay link in
-your client when the client can open links, and waits up to 10 minutes for you to pay.
+The result: one approval click plus Touch ID. Without `pay`, the payment step leads with the pay
+link, and the agent shows it to you. `bugnet_redeem` then waits for your payment, up to 10
+minutes. With `pay_link_dialog = true`, a client that can open links shows it in its own dialog.
 
 **Unpaid and unused orders.** An unpaid order expires after 15 minutes, and nothing is charged. A
 paid order that starts no sandbox within 30 minutes is refunded.
@@ -362,13 +363,13 @@ in USDC, quoted live. `bugnet_assess` and `bugnet_quote` show the quoted price f
 anything is paid, and `bugnet_status` shows what more time costs. Stopping early does not refund
 the unused time. A small sandbox for ten minutes costs at most a few cents.
 
-**The approval click.** `bugnet_start` and `bugnet_extend` are marked as tools a person must
-approve. Claude Code asks you before every call, even in modes that skip other prompts, and
-refuses the call when there is no person to ask. The call carries `confirmPriceUsd`, the price
-your agent told you, so you see it in the prompt. Bugnet refuses the call if that price is not
-the quoted price of the size you picked. So approving means "yes, pay this exact amount for this
-sandbox". Other clients ask according to their own tool approval settings, so keep approval on
-for these two tools.
+**The approval click.** The three paid tools, `bugnet_start`, `bugnet_extend` and
+`bugnet_x402_budget`, are marked as tools a person must approve. Claude Code asks you before every
+call, even in modes that skip other prompts, and refuses the call when there is no person to ask.
+The call carries `confirmPriceUsd`, the price your agent told you, so you see it in the prompt.
+Bugnet refuses the call if that price is not the quoted price of what you are buying. So approving
+means "yes, pay this exact amount". Other clients ask according to their own tool approval settings,
+so keep approval on for these three tools.
 
 ## Security model
 

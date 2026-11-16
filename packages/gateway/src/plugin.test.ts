@@ -35,11 +35,9 @@ describe("the plugins", () => {
         const b = json<PluginJson>("plugin/.claude-plugin/plugin.json");
         const w = json<PluginJson>("plugin-wallet/.claude-plugin/plugin.json");
         expect(b.name).toBe("bugnet");
-        expect([w.name, w.displayName, w.version]).toEqual([
-            "bugnet-wallet",
-            "Bugnet with a local wallet",
-            "0.1.0",
-        ]);
+        expect([w.name, w.displayName]).toEqual(["bugnet-wallet", "Bugnet with a local wallet"]);
+        // Claude Code updates an installed plugin only when its version moves with the bridge pin
+        expect(w.version).toBe(json<PluginJson>("packages/bridge/package.json").version);
         expect(w.keywords).toEqual([...b.keywords, "wallet"]);
     });
 
