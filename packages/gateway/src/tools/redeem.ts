@@ -1,9 +1,18 @@
 // Finishes an order paid outside the MCP client, keeping nothing between calls
 import { setTimeout as sleep } from "node:timers/promises";
-import type { CallToolResult, ServerContext } from "@modelcontextprotocol/server";
+import type {
+    CallToolResult,
+    InputRequiredResult,
+    ServerContext,
+} from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { X402ServiceInfo } from "../gen/bugnet/router/v1/router_pb.ts";
-import type { ClaimOrderRequest, OrderResult, PaidAllowanceOrder } from "../payments/port.ts";
+import type {
+    AwaitingPayment,
+    ClaimOrderRequest,
+    OrderResult,
+    PaidAllowanceOrder,
+} from "../payments/port.ts";
 import { toolCallSignal } from "../request.ts";
 import { GatewayError } from "../router.ts";
 import { QuoteError, verifyQuote, type QuoteClaims } from "../quote.ts";
@@ -184,6 +193,8 @@ export interface RedeemOptions {
     // Waits for an unpaid order to be paid, unless the user closed the pay prompt
     wait: boolean;
     prompt?: PaymentStepContext["prompt"];
+    // Shows the pay prompt again for an order still unpaid after the wait
+    again?: (order: AwaitingPayment) => InputRequiredResult;
 }
 
 // Finishes an order by its claim, for bugnet_redeem and for a bugnet_start that showed a pay prompt
@@ -192,7 +203,7 @@ export async function redeemOrder(
     ctx: ServerContext,
     args: RedeemArgs,
     opts: RedeemOptions = { wait: true },
-): Promise<CallToolResult> {
+): Promise<CallToolResult | InputRequiredResult> {
     const { orderId, claim, quoteId, handle } = args;
     try {
         let claims: QuoteClaims | undefined;
@@ -238,6 +249,7 @@ export async function redeemOrder(
         if (opts.wait && order.status === "payment_required") {
             order = await waitForPayment(deps, ctx, order, look, budget, reserve);
         }
+        if (order.status === "payment_required" && opts.again) return opts.again(order);
         if (order.status === "payment_required") {
             return paymentRequiredResult(order, {
                 tool: "bugnet_redeem",

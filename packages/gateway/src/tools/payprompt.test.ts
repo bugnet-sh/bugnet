@@ -16,7 +16,7 @@ import {
     type TestPayments,
 } from "../testing/harness.ts";
 import type { Deps } from "./common.ts";
-import { signPromptState, takesUrlPrompt, verifyPromptState } from "./payprompt.ts";
+import { promptRounds, signPromptState, takesUrlPrompt, verifyPromptState } from "./payprompt.ts";
 
 const key = Buffer.alloc(32, 7);
 const orderId = "ord_aaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -35,13 +35,14 @@ function withEnvelope(caps: unknown, client = "claude-code"): ServerContext {
 
 describe("the pay prompt's state", () => {
     it("comes back only signed by this key, unchanged and before it expires", () => {
-        const state = signPromptState(key, testNow, orderId, claim);
-        expect(verifyPromptState(key, testNow, state)).toEqual({ orderId, claim });
+        const state = signPromptState(key, testNow, { orderId, claim, round: 2 });
+        expect(verifyPromptState(key, testNow, state)).toEqual({ orderId, claim, round: 2 });
+        expect(verifyPromptState(key, testNow, state.replace(".2.", ".1."))).toBeNull();
         expect(verifyPromptState(Buffer.alloc(32, 8), testNow, state)).toBeNull();
         const other = state.replace(orderId, "ord_bbbbbbbbbbbbbbbbbbbbbbbbbb");
         expect(verifyPromptState(key, testNow, other)).toBeNull();
         expect(verifyPromptState(key, testNow + 31 * 60_000, state)).toBeNull();
-        expect(verifyPromptState(key, testNow, "p1.x.y.z")).toBeNull();
+        expect(verifyPromptState(key, testNow, "p1.x.y.z.1.s")).toBeNull();
     });
 });
 
@@ -147,9 +148,30 @@ describe("bugnet_start on a client that shows URL prompts", () => {
         expect(lastOrder(c.payments)).toBe(paid);
     });
 
-    it("keeps the order and names it when the payment has not landed", async () => {
+    it("shows the prompt again until the payment lands", async () => {
+        let rounds = 0;
+        const c = await promptingClient((payments, url) => {
+            rounds += 1;
+            // The user goes on twice before paying, then pays and goes on
+            if (rounds === 3) payments.dev.pay(url.split("/o/")[1] ?? "");
+            return "accept";
+        });
+        const r = await start(c);
+        expect(r.isError).toBe(false);
+        expect(r.structured).toEqual(expect.objectContaining({ handle: testHandle }));
+        expect(c.asked.map((a) => a.message)).toEqual([
+            "Pay $0.05 USDC to start your Bugnet sandbox",
+            "The payment has not arrived yet. Pay $0.05 USDC to start your Bugnet sandbox",
+            "The payment has not arrived yet. Pay $0.05 USDC to start your Bugnet sandbox",
+        ]);
+        expect(new Set(c.asked.map((a) => a.url)).size).toBe(1);
+        expect(c.payments.orders.filter((o) => "kind" in o && o.kind === "start")).toHaveLength(1);
+    });
+
+    it("hands the order to the agent once the prompts run out", async () => {
         const c = await promptingClient(() => "accept");
         const r = await start(c);
+        expect(c.asked).toHaveLength(promptRounds);
         expect(r.isError).toBe(true);
         const id = c.asked[0]?.url.split("/o/")[1] ?? "";
         expect(r.text).toContain(

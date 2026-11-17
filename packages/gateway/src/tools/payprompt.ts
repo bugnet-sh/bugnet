@@ -18,6 +18,8 @@ const promptKey = "pay";
 const stateVersion = "p1";
 // An unpaid order lapses after 15 minutes, so a prompt round never needs longer
 const stateTtlMs = 30 * 60_000;
+// Prompts per call, below the 10 input rounds the SDK client allows by default
+export const promptRounds = 8;
 
 // Whether this request's client shows URL prompts, which only 2026-07-28 requests declare
 export function takesUrlPrompt(ctx: ServerContext): boolean {
@@ -56,29 +58,41 @@ function mac(key: Buffer, body: string): Buffer {
     return createHmac("sha256", key).update(`bugnet pay prompt\n${body}`).digest();
 }
 
-// The state round-trips through the client, so it carries a MAC and an expiry
-export function signPromptState(key: Buffer, now: number, orderId: string, claim: string): string {
-    const body = `${stateVersion}.${orderId}.${claim}.${Math.floor(now + stateTtlMs)}`;
-    return `${body}.${mac(key, body).toString("base64url")}`;
-}
-
 export interface PromptOrder {
     orderId: string;
     claim: string;
+    // The prompt this answers, 1 for the first
+    round: number;
+}
+
+// The state round-trips through the client, so it carries a MAC and an expiry
+export function signPromptState(key: Buffer, now: number, p: PromptOrder): string {
+    const expires = Math.floor(now + stateTtlMs);
+    const body = `${stateVersion}.${p.orderId}.${p.claim}.${expires}.${p.round}`;
+    return `${body}.${mac(key, body).toString("base64url")}`;
 }
 
 export function verifyPromptState(key: Buffer, now: number, state: string): PromptOrder | null {
     const parts = state.split(".");
-    if (parts.length !== 5 || parts[0] !== stateVersion) return null;
-    const [, orderId, claim, expires, sig] = parts as [string, string, string, string, string];
-    const body = parts.slice(0, 4).join(".");
+    if (parts.length !== 6 || parts[0] !== stateVersion) return null;
+    const [, orderId, claim, expires, round, sig] = parts as [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+    ];
+    const body = parts.slice(0, 5).join(".");
     const want = mac(key, body);
     const got = Buffer.from(sig, "base64url");
     if (got.length !== want.length || !timingSafeEqual(got, want)) return null;
     if (!orderIdPattern.test(orderId) || !claimPattern.test(claim)) return null;
     const until = Number(expires);
     if (!Number.isSafeInteger(until) || until < now) return null;
-    return { orderId, claim };
+    const n = Number(round);
+    if (!Number.isSafeInteger(n) || n < 1) return null;
+    return { orderId, claim, round: n };
 }
 
 // Asks the client to show the pay link; the client calls the tool again once the user answers
@@ -87,16 +101,18 @@ export function payPrompt(
     now: number,
     order: AwaitingPayment,
     claim: string,
+    round = 1,
 ): InputRequiredResult {
     const price = stepPrice(order);
+    const ask = `Pay ${price ? `${price} USDC` : "in USDC"} to start your Bugnet sandbox`;
     return inputRequired({
         inputRequests: {
             [promptKey]: inputRequired.elicitUrl({
                 url: order.payUrl,
-                message: `Pay ${price ? `${price} USDC` : "in USDC"} to start your Bugnet sandbox`,
+                message: round > 1 ? `The payment has not arrived yet. ${ask}` : ask,
             }),
         },
-        requestState: signPromptState(key, now, order.orderId, claim),
+        requestState: signPromptState(key, now, { orderId: order.orderId, claim, round }),
     });
 }
 

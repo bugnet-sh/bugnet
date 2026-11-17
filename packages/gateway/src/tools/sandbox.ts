@@ -21,6 +21,7 @@ import {
 } from "../router.ts";
 import {
     paymentMemo,
+    type AwaitingPayment,
     type OrderRequest,
     type OrderResult,
     type PaidOrder,
@@ -95,7 +96,7 @@ import {
     retryCall,
     type PaidRetry,
 } from "./orders.ts";
-import { payPrompt, promptAnswer, takesUrlPrompt } from "./payprompt.ts";
+import { payPrompt, promptAnswer, promptRounds, takesUrlPrompt } from "./payprompt.ts";
 import { redeemOrder } from "./redeem.ts";
 import {
     endedAnswer,
@@ -726,11 +727,22 @@ export const registerSandboxTools: Register = (server, deps) => {
                 // A call the client repeats after a pay prompt finishes that order by its claim
                 const answer = promptAnswer(deps.config.secrets.quoteKey, deps.now(), ctx);
                 if (answer) {
+                    const key = deps.config.secrets.quoteKey;
+                    // Until the payment lands the prompt is shown again, so the user stays on it
+                    const again =
+                        answer.accepted && answer.round < promptRounds
+                            ? (o: AwaitingPayment) =>
+                                  payPrompt(key, deps.now(), o, answer.claim, answer.round + 1)
+                            : undefined;
                     return await redeemOrder(
                         deps,
                         ctx,
                         { orderId: answer.orderId, claim: answer.claim, quoteId: args.quoteId },
-                        { wait: answer.accepted, prompt: answer.accepted ? "shown" : "closed" },
+                        {
+                            wait: answer.accepted,
+                            prompt: answer.accepted ? "shown" : "closed",
+                            ...(again ? { again } : {}),
+                        },
                     );
                 }
                 const payment = ctx.mcpReq._meta?.["x402/payment"] ?? args.payment;
