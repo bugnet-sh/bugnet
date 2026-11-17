@@ -95,6 +95,8 @@ import {
     retryCall,
     type PaidRetry,
 } from "./orders.ts";
+import { payPrompt, promptAnswer, takesUrlPrompt } from "./payprompt.ts";
+import { redeemOrder } from "./redeem.ts";
 import {
     endedAnswer,
     paidLine,
@@ -721,6 +723,16 @@ export const registerSandboxTools: Register = (server, deps) => {
         },
         async (args, ctx) => {
             try {
+                // A call the client repeats after a pay prompt finishes that order by its claim
+                const answer = promptAnswer(deps.config.secrets.quoteKey, deps.now(), ctx);
+                if (answer) {
+                    return await redeemOrder(
+                        deps,
+                        ctx,
+                        { orderId: answer.orderId, claim: answer.claim, quoteId: args.quoteId },
+                        { wait: answer.accepted, prompt: answer.accepted ? "shown" : "closed" },
+                    );
+                }
                 const payment = ctx.mcpReq._meta?.["x402/payment"] ?? args.payment;
                 const retried = memoRetry(args, payment, deps.config.x402.enabled);
                 const sentId = retried?.orderId ?? args.orderId;
@@ -835,6 +847,11 @@ export const registerSandboxTools: Register = (server, deps) => {
                     });
                 }
                 if (order.status === "payment_required") {
+                    // A client that shows URL prompts gets the link at once and calls again after
+                    const held = order.claim ?? args.claim;
+                    if (payment === undefined && held !== undefined && takesUrlPrompt(ctx)) {
+                        return payPrompt(deps.config.secrets.quoteKey, deps.now(), order, held);
+                    }
                     return paymentRequiredResult(order, {
                         tool: "bugnet_start",
                         ...(sentId ? { sentOrderId: sentId } : {}),

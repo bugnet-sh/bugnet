@@ -460,7 +460,7 @@ describe("bugnet_redeem while the order waits for its payment", () => {
         expect(payments.orders).toEqual([{ orderId, claim }]);
     });
 
-    it("sends progress while it waits", async () => {
+    it("shows the price and the pay link as progress at once while it waits", async () => {
         vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
         try {
             const { client, deps, payments } = await waiting(startRouter([]));
@@ -477,7 +477,7 @@ describe("bugnet_redeem while the order waits for its payment", () => {
                 { onprogress: (p) => seen.push(p.message ?? "") },
             );
             expect(r.isError).toBeFalsy();
-            expect(seen).toContain("waiting for the payment");
+            expect(seen[0]).toBe(`Pay $0.25 USDC here: http://127.0.0.1:8787/o/${orderId}`);
         } finally {
             vi.useRealTimers();
         }

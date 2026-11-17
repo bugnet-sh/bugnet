@@ -37,7 +37,14 @@ import {
     type Register,
 } from "./common.ts";
 import { extendPaid } from "./extend.ts";
-import { claimInput, paymentRequiredResult, refusalError, retryCall } from "./orders.ts";
+import {
+    claimInput,
+    paymentRequiredResult,
+    refusalError,
+    retryCall,
+    type PaymentStepContext,
+} from "./orders.ts";
+import { payLine } from "./payprompt.ts";
 import { placeReserveMs, startPaid } from "./sandbox.ts";
 
 export const redeemInput = z.object({
@@ -84,19 +91,26 @@ async function waitForPayment(
             sleep(ms, undefined, signal ? { signal } : {}));
     // The look count caps the wait too, so a stopped clock cannot keep it going
     const most = Math.ceil(deps.config.limits.tool_budget / lookEveryMs);
-    return withProgress(ctx, "waiting for the payment", async () => {
-        let order = first;
-        for (let n = 0; n < most && awaitingPayment(order); n++) {
-            if (tool?.aborted || budget.left() < lookEveryMs + lookMs + reserveMs) break;
-            try {
-                await pause(lookEveryMs, tool);
-            } catch {
-                break;
+    // Clients show the note under the running call, so the pay link stays in sight while it waits
+    const note = first.status === "payment_required" ? payLine(first) : "waiting for the payment";
+    return withProgress(
+        ctx,
+        note,
+        async () => {
+            let order = first;
+            for (let n = 0; n < most && awaitingPayment(order); n++) {
+                if (tool?.aborted || budget.left() < lookEveryMs + lookMs + reserveMs) break;
+                try {
+                    await pause(lookEveryMs, tool);
+                } catch {
+                    break;
+                }
+                order = await look();
             }
-            order = await look();
-        }
-        return order;
-    });
+            return order;
+        },
+        { now: true },
+    );
 }
 
 // Enables a paid allowance's services from the stored answer, as the budget tool's paid retry does
@@ -159,6 +173,147 @@ async function redeemAllowance(
     });
 }
 
+export interface RedeemArgs {
+    orderId: string;
+    claim: string;
+    quoteId?: string | undefined;
+    handle?: string | undefined;
+}
+
+export interface RedeemOptions {
+    // Waits for an unpaid order to be paid, unless the user closed the pay prompt
+    wait: boolean;
+    prompt?: PaymentStepContext["prompt"];
+}
+
+// Finishes an order by its claim, for bugnet_redeem and for a bugnet_start that showed a pay prompt
+export async function redeemOrder(
+    deps: Deps,
+    ctx: ServerContext,
+    args: RedeemArgs,
+    opts: RedeemOptions = { wait: true },
+): Promise<CallToolResult> {
+    const { orderId, claim, quoteId, handle } = args;
+    try {
+        let claims: QuoteClaims | undefined;
+        if (quoteId !== undefined) {
+            try {
+                claims = verifyQuote(deps.config.secrets.quoteKey, quoteId, deps.now(), {
+                    allowExpired: true,
+                });
+            } catch (e) {
+                if (!(e instanceof QuoteError)) throw e;
+                throw new GatewayError(
+                    "invalid",
+                    `${e.message}. Keep orderId "${orderId}" and claim "${claim}" on the ` +
+                        "next bugnet_redeem, so the order is not paid twice",
+                );
+            }
+        }
+        const budget = new Budget(deps);
+        // Keeps EnableX402's wait for an allowance, which an extension fits in too
+        const reserve = handle !== undefined ? enableWaitMs : placeReserveMs;
+        const request: ClaimOrderRequest = {
+            orderId,
+            claim,
+            ...(handle !== undefined ? { handleSha256: handleHash(handle) } : {}),
+        };
+        const look = async (): Promise<OrderResult> => {
+            try {
+                return await deps.payments.order(request, budget.signal(30_000, reserve));
+            } catch {
+                // A redeem is a retry by claim, so the user may have paid
+                throw new GatewayError(
+                    "unavailable",
+                    `redeem: Bugnet could not check order ${orderId} right now. Call ` +
+                        "bugnet_redeem again with orderId and claim in a minute, and do " +
+                        "not pay again",
+                    null,
+                    null,
+                    { orderId },
+                );
+            }
+        };
+        let order = await look();
+        if (opts.wait && order.status === "payment_required") {
+            order = await waitForPayment(deps, ctx, order, look, budget, reserve);
+        }
+        if (order.status === "payment_required") {
+            return paymentRequiredResult(order, {
+                tool: "bugnet_redeem",
+                sentOrderId: orderId,
+                sentClaim: claim,
+                ...(quoteId !== undefined ? { quoteId } : {}),
+                withHandle: handle !== undefined,
+                ...(opts.prompt ? { prompt: opts.prompt } : {}),
+            });
+        }
+        if (order.status === "refused") {
+            throw (
+                paidOrderRefusal(order, quoteId !== undefined ? "start" : "x402", orderId) ??
+                refusalError(order, "redeem", "bugnet_redeem", {
+                    sentOrderId: orderId,
+                    handleSent: handle !== undefined,
+                })
+            );
+        }
+        const id = order.orderId;
+        if (order.kind === "allowance") {
+            if (handle === undefined) {
+                throw orderError(
+                    id,
+                    `redeem: order ${id} is paid and adds x402 allowance to a sandbox. ` +
+                        "Call bugnet_x402_budget with that sandbox's handle, the same " +
+                        `amountUsd and confirmPriceUsd, orderId "${id}" and claim ` +
+                        `"${claim}"`,
+                );
+            }
+            if (order.handleSha256 !== handleHash(handle)) {
+                throw orderError(
+                    id,
+                    `redeem: order ${id} is not for that sandbox, check the handle`,
+                );
+            }
+            return await redeemAllowance(deps, ctx, handle, order, claim, budget);
+        }
+        if (order.kind === "start") {
+            if (!claims) {
+                throw orderError(
+                    id,
+                    `redeem: order ${id} is paid and starts a new sandbox. Call ` +
+                        `bugnet_redeem again with orderId "${id}", claim "${claim}" and ` +
+                        "quoteId, the quoteId bugnet_start was called with",
+                );
+            }
+            return await startPaid(deps, ctx, claims, order, budget, {
+                retry: retryCall("bugnet_redeem", id, {
+                    claim,
+                    ...(quoteId ? { quoteId } : {}),
+                }),
+            });
+        }
+        if (handle === undefined) {
+            throw orderError(
+                id,
+                `redeem: order ${id} is paid and adds time to a sandbox. Call ` +
+                    "bugnet_extend with that sandbox's handle, the same packageId and " +
+                    `confirmPriceUsd, orderId "${id}" and claim "${claim}"`,
+            );
+        }
+        if (order.handleSha256 !== handleHash(handle)) {
+            throw orderError(id, `redeem: order ${id} is not for that sandbox, check the handle`);
+        }
+        return await extendPaid(deps, handle, order, budget, {
+            minutes: null,
+            retry: retryCall("bugnet_redeem", id, { claim, handle: true }),
+        });
+    } catch (e) {
+        return handle !== undefined
+            ? await sandboxFailure(deps, handle, e, "redeem")
+            : failure(e, "redeem");
+    }
+}
+
 export const registerRedeemTool: Register = (server, deps) => {
     server.registerTool(
         "bugnet_redeem",
@@ -179,132 +334,6 @@ export const registerRedeemTool: Register = (server, deps) => {
             },
             // The wallet signature was the payment approval, so this tool asks for none
         },
-        async (args, ctx) => {
-            const { orderId, claim, quoteId, handle } = args;
-            try {
-                let claims: QuoteClaims | undefined;
-                if (quoteId !== undefined) {
-                    try {
-                        claims = verifyQuote(deps.config.secrets.quoteKey, quoteId, deps.now(), {
-                            allowExpired: true,
-                        });
-                    } catch (e) {
-                        if (!(e instanceof QuoteError)) throw e;
-                        throw new GatewayError(
-                            "invalid",
-                            `${e.message}. Keep orderId "${orderId}" and claim "${claim}" on the ` +
-                                "next bugnet_redeem, so the order is not paid twice",
-                        );
-                    }
-                }
-                const budget = new Budget(deps);
-                // Keeps EnableX402's wait for an allowance, which an extension fits in too
-                const reserve = handle !== undefined ? enableWaitMs : placeReserveMs;
-                const request: ClaimOrderRequest = {
-                    orderId,
-                    claim,
-                    ...(handle !== undefined ? { handleSha256: handleHash(handle) } : {}),
-                };
-                const look = async (): Promise<OrderResult> => {
-                    try {
-                        return await deps.payments.order(request, budget.signal(30_000, reserve));
-                    } catch {
-                        // A redeem is a retry by claim, so the user may have paid
-                        throw new GatewayError(
-                            "unavailable",
-                            `redeem: Bugnet could not check order ${orderId} right now. Call ` +
-                                "bugnet_redeem again with orderId and claim in a minute, and do " +
-                                "not pay again",
-                            null,
-                            null,
-                            { orderId },
-                        );
-                    }
-                };
-                let order = await look();
-                if (order.status === "payment_required") {
-                    order = await waitForPayment(deps, ctx, order, look, budget, reserve);
-                }
-                if (order.status === "payment_required") {
-                    return paymentRequiredResult(order, {
-                        tool: "bugnet_redeem",
-                        sentOrderId: orderId,
-                        sentClaim: claim,
-                        ...(quoteId !== undefined ? { quoteId } : {}),
-                        withHandle: handle !== undefined,
-                    });
-                }
-                if (order.status === "refused") {
-                    throw (
-                        paidOrderRefusal(
-                            order,
-                            quoteId !== undefined ? "start" : "x402",
-                            orderId,
-                        ) ??
-                        refusalError(order, "redeem", "bugnet_redeem", {
-                            sentOrderId: orderId,
-                            handleSent: handle !== undefined,
-                        })
-                    );
-                }
-                const id = order.orderId;
-                if (order.kind === "allowance") {
-                    if (handle === undefined) {
-                        throw orderError(
-                            id,
-                            `redeem: order ${id} is paid and adds x402 allowance to a sandbox. ` +
-                                "Call bugnet_x402_budget with that sandbox's handle, the same " +
-                                `amountUsd and confirmPriceUsd, orderId "${id}" and claim ` +
-                                `"${claim}"`,
-                        );
-                    }
-                    if (order.handleSha256 !== handleHash(handle)) {
-                        throw orderError(
-                            id,
-                            `redeem: order ${id} is not for that sandbox, check the handle`,
-                        );
-                    }
-                    return await redeemAllowance(deps, ctx, handle, order, claim, budget);
-                }
-                if (order.kind === "start") {
-                    if (!claims) {
-                        throw orderError(
-                            id,
-                            `redeem: order ${id} is paid and starts a new sandbox. Call ` +
-                                `bugnet_redeem again with orderId "${id}", claim "${claim}" and ` +
-                                "quoteId, the quoteId bugnet_start was called with",
-                        );
-                    }
-                    return await startPaid(deps, ctx, claims, order, budget, {
-                        retry: retryCall("bugnet_redeem", id, {
-                            claim,
-                            ...(quoteId ? { quoteId } : {}),
-                        }),
-                    });
-                }
-                if (handle === undefined) {
-                    throw orderError(
-                        id,
-                        `redeem: order ${id} is paid and adds time to a sandbox. Call ` +
-                            "bugnet_extend with that sandbox's handle, the same packageId and " +
-                            `confirmPriceUsd, orderId "${id}" and claim "${claim}"`,
-                    );
-                }
-                if (order.handleSha256 !== handleHash(handle)) {
-                    throw orderError(
-                        id,
-                        `redeem: order ${id} is not for that sandbox, check the handle`,
-                    );
-                }
-                return await extendPaid(deps, handle, order, budget, {
-                    minutes: null,
-                    retry: retryCall("bugnet_redeem", id, { claim, handle: true }),
-                });
-            } catch (e) {
-                return handle !== undefined
-                    ? await sandboxFailure(deps, handle, e, "redeem")
-                    : failure(e, "redeem");
-            }
-        },
+        async (args, ctx) => redeemOrder(deps, ctx, args),
     );
 };

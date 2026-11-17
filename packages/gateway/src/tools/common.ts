@@ -284,22 +284,22 @@ export async function withProgress<T>(
     ctx: ServerContext,
     message: string,
     work: (signal: AbortSignal) => Promise<T>,
+    opts: { now?: boolean } = {},
 ): Promise<T> {
     const token = ctx.mcpReq._meta?.progressToken;
     const stop = new AbortController();
     let tick = 0;
-    const timer =
-        token === undefined
-            ? undefined
-            : setInterval(() => {
-                  tick += 1;
-                  ctx.mcpReq
-                      .notify({
-                          method: "notifications/progress",
-                          params: { progressToken: token, progress: tick, message },
-                      })
-                      .catch(() => {});
-              }, 5000);
+    const note = () => {
+        tick += 1;
+        ctx.mcpReq
+            .notify({
+                method: "notifications/progress",
+                params: { progressToken: token as string | number, progress: tick, message },
+            })
+            .catch(() => {});
+    };
+    if (token !== undefined && opts.now) note();
+    const timer = token === undefined ? undefined : setInterval(note, 5000);
     try {
         return await work(stop.signal);
     } finally {

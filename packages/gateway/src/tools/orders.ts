@@ -65,6 +65,30 @@ export interface PaymentStepContext {
     sentClaim?: string;
     quoteId?: string;
     withHandle?: boolean;
+    // The client showed the pay link as a prompt, which the user went on from or closed
+    prompt?: "shown" | "closed";
+}
+
+// After a pay prompt the user has the link, so the guide only says how to go on
+function promptGuide(r: AwaitingPayment, prompt: "shown" | "closed", named: string): string {
+    const id = r.orderId;
+    const lines =
+        prompt === "shown"
+            ? [
+                  `Order ${id} is not paid yet, and a payment can take a few seconds to confirm.`,
+                  `The user has its pay link from a prompt: ${r.payUrl}. Call bugnet_redeem ` +
+                      `with orderId and claim${named} to keep waiting, for up to 10 minutes in all.`,
+              ]
+            : [
+                  `Order ${id} is not paid, and the user closed the pay prompt.`,
+                  "Ask whether they still want the sandbox. If so, show them its pay link " +
+                      `${r.payUrl} and call bugnet_redeem with orderId and claim${named}, which ` +
+                      "waits for the payment.",
+              ];
+    return [
+        ...lines,
+        "The x402 maxTimeoutSeconds limits a wallet's signed payment, not the user's time to pay.",
+    ].join(" ");
 }
 
 // Claude Code shows the model only the text of an error result, other clients read the fields
@@ -80,32 +104,34 @@ export function paymentRequiredResult(r: AwaitingPayment, c: PaymentStepContext)
         : ` (orderId "${id}" and the claim from its first payment step)`;
     // A redeem that waited already follows a shown link, so it does not ask for the link again
     const waited = c.tool === "bugnet_redeem" && c.sentOrderId === id;
-    const guide = [
-        c.sentOrderId === id
-            ? `Order ${id} is not paid yet, and a payment can take a few seconds to confirm.`
-            : `Payment required for order ${id}.`,
-        waited
-            ? `Show the user its pay link only if they have not seen it: ${r.payUrl}.`
-            : "Next: show the user this link to pay in their browser with a Solana wallet " +
-              `holding USDC: ${r.payUrl}. Then, in the same turn and without waiting for the ` +
-              `user, call bugnet_redeem with orderId and claim${named}.`,
-        waited
-            ? ""
-            : "It waits for the payment and goes on once it lands; if it answers that the " +
-              "order is not paid yet, call it again, for up to 10 minutes.",
-        c.tool === "bugnet_redeem"
-            ? ""
-            : `Calling ${c.tool} again without this orderId opens a new order the user would ` +
-              "pay again.",
-        // Live runs saw the model tell users they had 60 s to pay
-        "The x402 maxTimeoutSeconds limits a wallet's signed payment, not the user's time to pay.",
-        c.tool === "bugnet_redeem"
-            ? "Call bugnet_redeem again with the same arguments to keep waiting, for up to " +
-              "10 minutes in all."
-            : "",
-    ]
-        .filter(Boolean)
-        .join(" ");
+    const guide = c.prompt
+        ? promptGuide(r, c.prompt, named)
+        : [
+              c.sentOrderId === id
+                  ? `Order ${id} is not paid yet, and a payment can take a few seconds to confirm.`
+                  : `Payment required for order ${id}.`,
+              waited
+                  ? `Show the user its pay link only if they have not seen it: ${r.payUrl}.`
+                  : "Next: show the user this link to pay in their browser with a Solana wallet " +
+                    `holding USDC: ${r.payUrl}. Then, in the same turn and without waiting for the ` +
+                    `user, call bugnet_redeem with orderId and claim${named}.`,
+              waited
+                  ? ""
+                  : "It waits for the payment and goes on once it lands; if it answers that the " +
+                    "order is not paid yet, call it again, for up to 10 minutes.",
+              c.tool === "bugnet_redeem"
+                  ? ""
+                  : `Calling ${c.tool} again without this orderId opens a new order the user would ` +
+                    "pay again.",
+              // Live runs saw the model tell users they had 60 s to pay
+              "The x402 maxTimeoutSeconds limits a wallet's signed payment, not the user's time to pay.",
+              c.tool === "bugnet_redeem"
+                  ? "Call bugnet_redeem again with the same arguments to keep waiting, for up to " +
+                    "10 minutes in all."
+                  : "",
+          ]
+              .filter(Boolean)
+              .join(" ");
     return {
         isError: true,
         // The x402 MCP transport reads the requirement from the first text block
