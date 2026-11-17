@@ -561,6 +561,30 @@ describe("bugnet_assess with the router's estimator", () => {
         expect(busy.text).toMatch(/^No package can start right now\. Try again in a minute\.$/m);
     });
 
+    it("says a GPU sandbox lacks the need rather than that none is free", async () => {
+        const { client } = await connect(
+            {
+                estimate: () => ({
+                    options: [
+                        {
+                            ...option("gpu-s", 66_734n, 1, 12288),
+                            available: false,
+                            unavailableReason: "feature_unavailable",
+                        },
+                    ],
+                }),
+            },
+            {},
+            { ...assessment, needs: { ...assessment.needs, gpu: true } },
+        );
+        const r = await callTool(client, "bugnet_assess", {
+            task: "Rent the cheapest GPU server",
+            needs: ["gpu", "ssh"],
+        });
+        expect(r.text).toMatch("No Bugnet GPU sandbox offers what it needs yet.");
+        expect(r.text).not.toMatch(/available right now|No capacity/);
+    });
+
     it("keeps the sandbox summary when open packages are only short on time", async () => {
         const short = (id: string) => ({
             ...option(id, 50_000n, 0, 4096),

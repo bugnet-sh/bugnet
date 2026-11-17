@@ -388,17 +388,21 @@ function listed(words: readonly string[]): string {
     return `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`;
 }
 
-// Every package is closed only because a need is not open yet
+// Every package with what the quote asks for is closed only because a need is not open yet
 export function needsNotOpen(views: readonly PackageView[]): boolean {
+    const usable = views.filter((v) => v.unavailable !== noGpuWords);
     return (
-        views.length > 0 &&
-        views.every((v) => v.unavailable === unavailableWords("feature_unavailable"))
+        usable.length > 0 &&
+        usable.every((v) => v.unavailable === unavailableWords("feature_unavailable"))
     );
 }
 
-function headline(available: number, views: PackageView[], wants: readonly NeedName[]): string {
+function headline(available: number, views: PackageView[], asked: readonly NeedName[]): string {
     if (available > 0) return "Bugnet packages, paid per run in USDC on Solana:";
     if (needsNotOpen(views)) {
+        // A GPU package in the quote means the GPU is not the need that is closed
+        const gpuSold = views.some((v) => v.gpuCount > 0);
+        const wants = gpuSold ? asked.filter((n) => n !== "gpu") : asked;
         if (wants.length === 0)
             return "No package can start with these needs, they are not open yet.";
         const one = wants.length === 1;
@@ -445,9 +449,14 @@ export async function buildQuote(
         );
     const byPrice = [...views].sort((a, b) => a.priceMicros - b.priceMicros);
     const available = byPrice.filter((v) => v.available);
+    const notOpen = available.length === 0 && needsNotOpen(views);
     const codes = new Set(est.warnings.map((w) => w.code));
-    const warnings = est.warnings.map((w) => sentenceOf(w.message)).filter(Boolean);
-    if (requirements.gpu && !codes.has(WarningCode.NEEDS_GPU)) {
+    const warnings = est.warnings
+        // The router calls fitting but closed packages busy, though here a need closes them
+        .filter((w) => !(notOpen && w.code === WarningCode.BUSY))
+        .map((w) => sentenceOf(w.message))
+        .filter(Boolean);
+    if (requirements.gpu && !notOpen && !codes.has(WarningCode.NEEDS_GPU)) {
         if (!available.some((p) => p.gpuCount > 0)) {
             warnings.push("No GPU package is available right now, GPU work cannot start");
         }

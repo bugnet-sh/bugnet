@@ -65,7 +65,8 @@ const assessInput = z.object({
         .max(8)
         .optional()
         .describe(
-            "What the sandbox must offer: ssh, preview for a web app, secrets for an API token, gpu",
+            "What the sandbox must offer: ssh only when the user asks for an SSH login (commands " +
+                "run through bugnet_exec), preview for a web app, secrets for an API token, gpu",
         ),
 });
 
@@ -218,10 +219,10 @@ function onlyShortOnTime(quote: BuiltQuote): boolean {
 // For work that fits a package Bugnet sells but none can start now, such as GPU work without a GPU class
 export function unavailableSummary(a: Assessment, notOpen = false): string {
     const fit = a.fit.level === "does_not_fit" ? sortFindings(a.fit.findings)[0] : undefined;
-    const tail = a.needs.gpu
-        ? "No Bugnet GPU sandbox is available right now, so Bugnet cannot run it yet."
-        : notOpen
-          ? "No Bugnet package offers what it needs yet."
+    const tail = notOpen
+        ? `No Bugnet ${a.needs.gpu ? "GPU sandbox" : "package"} offers what it needs yet.`
+        : a.needs.gpu
+          ? "No Bugnet GPU sandbox is available right now, so Bugnet cannot run it yet."
           : "No Bugnet package can start right now, try again in a minute.";
     if (fit && a.risk.level !== "high") return `${sentence(fit.title)} ${tail}`;
     return `${withoutSandboxClaim(a.summary)} ${tail}`;

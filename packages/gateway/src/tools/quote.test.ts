@@ -262,6 +262,36 @@ describe("bugnet_quote on a router without an estimator", () => {
         expect(r.text).not.toMatch(/busy now/);
     });
 
+    it("names the closed need, not capacity, when GPU packages only lack it", async () => {
+        const { client } = await setup(
+            answer({
+                options: [
+                    packageOption("small-10m", 0n, {
+                        available: false,
+                        unavailableReason: "no_candidate",
+                    }),
+                    packageOption("gpu-rtx3090-10m", 66734n, {
+                        resources: resources(4, 12288, 40, 1),
+                        available: false,
+                        unavailableReason: "feature_unavailable",
+                    }),
+                ],
+                warnings: [
+                    {
+                        code: WarningCode.BUSY,
+                        message: "No capacity for it right now, try again shortly",
+                    },
+                ],
+            }),
+        );
+        const r = await callTool<Quote>(client, "bugnet_quote", { needs: ["gpu", "ssh"] });
+        expect(r.text.split("\n")[0]).toBe(
+            "No package can start with the need ssh, which is not open yet. A quote without it " +
+                "may list packages that start.",
+        );
+        expect(r.text).not.toMatch(/No capacity|No GPU package is available|Try again/);
+    });
+
     it("adds the gateway's GPU and secrets warnings", async () => {
         const { client, deps } = await setup(answer({ options }));
         const r = await callTool<Quote>(client, "bugnet_quote", {
