@@ -19,6 +19,7 @@ import {
     packageOption,
     placement,
     routerError,
+    testConfig,
     testDeps,
     testHandle,
     testNow,
@@ -46,7 +47,13 @@ function recordingLog(lines: LogLine[]): Log {
 }
 
 function connect(impl: RouterImpl, log?: Log): Promise<Client> {
-    return connectTools(testDeps({ router: fakeRouter(impl), ...(log ? { log } : {}) }));
+    return connectTools(
+        testDeps({
+            config: testConfig("[tools]\nssh = true"),
+            router: fakeRouter(impl),
+            ...(log ? { log } : {}),
+        }),
+    );
 }
 
 function command(identity: string, knownHosts: string): string {
@@ -605,6 +612,16 @@ describe("bugnet_ssh_remove", () => {
 });
 
 describe("SSH tool listing", () => {
+    it("lists no SSH tool and names no ssh need until SSH is open", async () => {
+        const client = await connectTools(testDeps());
+        const { tools } = await client.listTools();
+        const names = tools.map((t) => t.name);
+        expect(names).not.toContain("bugnet_ssh");
+        expect(names).not.toContain("bugnet_ssh_remove");
+        const quote = tools.find((t) => t.name === "bugnet_quote");
+        expect(quote?.description).toMatch(/needs \(preview, secrets, gpu\)/);
+    });
+
     it("marks both tools idempotent, asks no approval and keeps descriptions short", async () => {
         const client = await connect({});
         const { tools } = await client.listTools();

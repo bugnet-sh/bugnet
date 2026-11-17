@@ -2332,7 +2332,11 @@ describe("bugnet_start on a router with PricePackage", () => {
 
     it("prices the package with the quote's needs and sends the estimate on", async () => {
         const seen = fresh();
-        const { client, deps, payments } = await setup(priced(seen));
+        const { client, deps, payments } = await setup(
+            priced(seen),
+            testPayments(),
+            testConfig("[tools]\nssh = true"),
+        );
         const requirements = { ssh: true, preview: false, gpu: false, secrets: true };
         const id = signed(deps, { requirements, github: true, estimateId });
         const r = await callTool<{
@@ -2937,18 +2941,22 @@ describe("bugnet_status shows why a sandbox ended, its repo and its SSH alias", 
     });
 
     it("shows the repo's state and path and the SSH alias of a ready sandbox", async () => {
-        const { client } = await setup({
-            getPlacement: () => ({
-                placement: placement(PlacementState.READY, {
-                    sshAlias: alias,
-                    bootstrap: create(BootstrapSchema, {
-                        state: BootstrapState.DONE,
-                        path: "~/src/app",
-                        revision: "0123456789abcdef0123456789abcdef01234567",
+        const { client } = await setup(
+            {
+                getPlacement: () => ({
+                    placement: placement(PlacementState.READY, {
+                        sshAlias: alias,
+                        bootstrap: create(BootstrapSchema, {
+                            state: BootstrapState.DONE,
+                            path: "~/src/app",
+                            revision: "0123456789abcdef0123456789abcdef01234567",
+                        }),
                     }),
                 }),
-            }),
-        });
+            },
+            testPayments(),
+            testConfig("[tools]\nssh = true"),
+        );
         const r = await callTool<{ source: unknown; sshAlias: string }>(client, "bugnet_status", {
             handle: testHandle,
         });

@@ -74,6 +74,8 @@ const settingsSchema = z
             .object({
                 require_user_approval: z.boolean().default(true),
                 confirm_transfers: z.boolean().default(true),
+                // The SSH tools and lines are shown only once the router opens SSH to sandboxes
+                ssh: z.boolean().default(false),
             })
             .strict()
             .prefault({}),

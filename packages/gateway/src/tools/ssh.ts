@@ -126,6 +126,8 @@ export function sshCommand(e: Endpoint, identityFile: string, knownHostsFile: st
 }
 
 export const registerSshTools: Register = (server, deps) => {
+    // A listed SSH tool makes agents offer SSH logins no sandbox has
+    if (!deps.config.tools.ssh) return;
     server.registerTool(
         "bugnet_ssh",
         {

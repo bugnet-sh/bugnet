@@ -673,7 +673,7 @@ export async function startPaid(
         paidStart,
         summary.line,
         view.source ? sentence(view.source.note) : "",
-        sshLine(view.sshAlias),
+        deps.config.tools.ssh ? sshLine(view.sshAlias) : "",
         ...(x402?.lines ?? []),
         "Keep the handle, it is the only key to this sandbox. Commands run as root " +
             "or as a user with passwordless sudo: use $HOME, prefix system changes with sudo.",
@@ -930,7 +930,8 @@ export const registerSandboxTools: Register = (server, deps) => {
             title: "Bugnet sandbox status",
             description:
                 "State, deadline, time left and extension prices of a sandbox, why it ended, " +
-                "its SSH alias and where its repo is. Everything is deleted at the deadline, " +
+                (deps.config.tools.ssh ? "its SSH alias " : "") +
+                "and where its repo is. Everything is deleted at the deadline, " +
                 "so download results first, or extend with bugnet_extend once the user agrees. " +
                 "waitSeconds waits for the state to change, for example while it is starting. " +
                 "When a start left the repo's fetch pending, it starts that fetch.",
@@ -999,7 +1000,7 @@ export const registerSandboxTools: Register = (server, deps) => {
                         ? `${part.view ? "Sandbox time paid" : "Paid"} so far: ${usd(paid)} USDC.`
                         : "",
                     view.source && !(p && ended(p.state)) ? sentence(view.source.note) : "",
-                    ready ? sshLine(view.sshAlias) : "",
+                    ready && deps.config.tools.ssh ? sshLine(view.sshAlias) : "",
                     offer.length > 0
                         ? "Extend with bugnet_extend: " +
                           offer

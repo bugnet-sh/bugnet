@@ -593,7 +593,9 @@ export function quoteDescription(deps: Deps): string {
         : "";
     return (
         "Free price quote for a Bugnet cloud sandbox. Bugnet sizes the work from source, " +
-        "workload, entryCommand, expectedMinutes and needs (ssh, preview, secrets, gpu), and " +
+        "workload, entryCommand, expectedMinutes and needs " +
+        (deps.config.tools.ssh ? "(ssh, preview, secrets, gpu)" : "(preview, secrets, gpu)") +
+        ", and " +
         "returns each package's price and fit, the recommended one with its reasons, warnings " +
         `and a quoteId for bugnet_start, valid ${ttl} minutes. ${x402}Tokens never go in source ` +
         "or entryCommand, bugnet_secret_link adds secrets once the sandbox runs. The user hears " +

@@ -10,7 +10,9 @@ const contributing = readFileSync(new URL("CONTRIBUTING.md", root), "utf8");
 const served = async () =>
     (
         await (
-            await connectTools(testDeps({ config: testConfig("[x402]\nenabled = true") }))
+            await connectTools(
+                testDeps({ config: testConfig("[x402]\nenabled = true\n[tools]\nssh = true") }),
+            )
         ).listTools()
     ).tools;
 

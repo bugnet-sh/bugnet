@@ -37,6 +37,7 @@ quote_v6_block_multiple = 4             # an IPv6 /48 gets this multiple of one 
 [tools]
 require_user_approval = true            # paid tools ask the client for a person's approval, off only for unattended test gateways
 confirm_transfers = true                # bugnet_transfer asks too, if require_user_approval is on
+ssh = false                             # lists bugnet_ssh and SSH lines, only once the router opens SSH to sandboxes
 
 [assess]
 github_api = "https://api.github.com"
