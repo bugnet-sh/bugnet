@@ -104,7 +104,11 @@ async function connect(
             return result;
         },
     };
-    const deps = testDeps({ router: fakeRouter(router), assessor, config: testConfig(toml) });
+    const deps = testDeps({
+        router: fakeRouter(router),
+        assessor,
+        config: testConfig(`[tools]\nssh = true\n${toml}`),
+    });
     const client = await connectTools(deps);
     return { client, deps };
 }
@@ -783,7 +787,7 @@ describe("bugnet_assess API keys and the secrets need", () => {
                 },
             }),
             assessor,
-            config: testConfig(toml),
+            config: testConfig(`[tools]\nssh = true\n${toml}`),
             ...(payments ? { payments } : {}),
         });
         const client = await connectTools(deps);

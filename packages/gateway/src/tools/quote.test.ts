@@ -58,7 +58,10 @@ async function setup(
             return impl.estimate(req, ctx);
         },
     };
-    const deps = testDeps({ config: testConfig(toml), router: fakeRouter(counted) });
+    const deps = testDeps({
+        config: testConfig(`[tools]\nssh = true\n${toml}`),
+        router: fakeRouter(counted),
+    });
     return { client: await connectTools(deps), deps, calls };
 }
 

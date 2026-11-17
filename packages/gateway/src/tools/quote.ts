@@ -23,6 +23,11 @@ import { failure, ok, usd, type Deps, type Register } from "./common.ts";
 
 export const workloads = ["tests", "build", "script", "serve", "inference", "other"] as const;
 export const needs = ["ssh", "preview", "secrets", "gpu"] as const;
+
+// The needs a tool lists, without ssh while SSH is closed
+export function listedNeeds(ssh: boolean) {
+    return ssh ? needs : (["preview", "secrets", "gpu"] as const);
+}
 export type WorkloadName = (typeof workloads)[number];
 export type NeedName = (typeof needs)[number];
 
@@ -567,7 +572,7 @@ export function quoteFailure(e: unknown, what: string) {
 
 const entryCommandBytes = 1000;
 
-export function quoteInput() {
+export function quoteInput(ssh = true) {
     return z.object({
         source: z
             .string()
@@ -582,7 +587,10 @@ export function quoteInput() {
             .optional()
             .describe("The command you plan to run, read for sizing, never run"),
         expectedMinutes: z.number().int().min(1).max(1440).optional(),
-        needs: z.array(z.enum(needs)).max(8).optional(),
+        needs: z
+            .array(z.enum(listedNeeds(ssh)))
+            .max(8)
+            .optional(),
     });
 }
 
@@ -609,7 +617,7 @@ export const registerQuoteTool: Register = (server, deps) => {
         {
             title: "Quote a Bugnet sandbox (free)",
             description: quoteDescription(deps),
-            inputSchema: quoteInput(),
+            inputSchema: quoteInput(deps.config.tools.ssh),
             annotations: { readOnlyHint: true, openWorldHint: false },
         },
         async (args, ctx) => {

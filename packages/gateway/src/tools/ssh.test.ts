@@ -620,6 +620,8 @@ describe("SSH tool listing", () => {
         expect(names).not.toContain("bugnet_ssh_remove");
         const quote = tools.find((t) => t.name === "bugnet_quote");
         expect(quote?.description).toMatch(/needs \(preview, secrets, gpu\)/);
+        const listed = JSON.stringify(tools.filter((t) => /assess|quote/.test(t.name)));
+        expect(listed).not.toMatch(/ssh/i);
     });
 
     it("marks both tools idempotent, asks no approval and keeps descriptions short", async () => {

@@ -9,6 +9,7 @@ import {
     buildQuote,
     describeSize,
     limitQuotes,
+    listedNeeds,
     needs,
     needsNotOpen,
     sizeText,
@@ -35,40 +36,46 @@ export const assessDescription =
     "as source, planned commands, and the user's os, arch, RAM and GPU when known. Fetched " +
     "files are never returned, only short findings. It charges nothing and starts nothing.";
 
-const assessInput = z.object({
-    task: z.string().max(2000).optional().describe("What the user wants, in their words"),
-    source: z
-        .string()
-        .max(500)
-        .optional()
-        .describe(
-            "GitHub repo URL, Hugging Face model id such as hexgrad/Kokoro-82M, or https script URL",
-        ),
-    commands: z
-        .array(z.string().max(2000))
-        .max(maxCommands)
-        .optional()
-        .describe("Commands you plan to run on the user's machine"),
-    local: z
-        .object({
-            os: z.string().max(40).optional(),
-            arch: z.string().max(40).optional(),
-            ramGiB: z.number().min(0).max(65536).optional(),
-            gpu: z.string().max(100).optional().describe("GPU model, or none"),
-        })
-        .optional()
-        .describe("The user's machine, when known"),
-    workload: z.enum(workloads).optional(),
-    expectedMinutes: z.number().int().min(1).max(1440).optional(),
-    needs: z
-        .array(z.enum(needs))
-        .max(8)
-        .optional()
-        .describe(
-            "What the sandbox must offer: ssh only when the user asks for an SSH login (commands " +
-                "run through bugnet_exec), preview for a web app, secrets for an API token, gpu",
-        ),
-});
+function assessInput(ssh: boolean) {
+    return z.object({
+        task: z.string().max(2000).optional().describe("What the user wants, in their words"),
+        source: z
+            .string()
+            .max(500)
+            .optional()
+            .describe(
+                "GitHub repo URL, Hugging Face model id such as hexgrad/Kokoro-82M, or https script URL",
+            ),
+        commands: z
+            .array(z.string().max(2000))
+            .max(maxCommands)
+            .optional()
+            .describe("Commands you plan to run on the user's machine"),
+        local: z
+            .object({
+                os: z.string().max(40).optional(),
+                arch: z.string().max(40).optional(),
+                ramGiB: z.number().min(0).max(65536).optional(),
+                gpu: z.string().max(100).optional().describe("GPU model, or none"),
+            })
+            .optional()
+            .describe("The user's machine, when known"),
+        workload: z.enum(workloads).optional(),
+        expectedMinutes: z.number().int().min(1).max(1440).optional(),
+        needs: z
+            .array(z.enum(listedNeeds(ssh)))
+            .max(8)
+            .optional()
+            .describe(
+                "What the sandbox must offer: " +
+                    (ssh
+                        ? "ssh only when the user asks for an SSH login (commands run through " +
+                          "bugnet_exec), "
+                        : "") +
+                    "preview for a web app, secrets for an API token, gpu",
+            ),
+    });
+}
 
 const entryCommandBytes = 1000;
 
@@ -286,7 +293,7 @@ export const registerAssessTool: Register = (server, deps) => {
         {
             title: "Check whether to use a Bugnet sandbox (free)",
             description: assessDescription,
-            inputSchema: assessInput,
+            inputSchema: assessInput(deps.config.tools.ssh),
             annotations: { readOnlyHint: true, openWorldHint: true },
             _meta: { "anthropic/alwaysLoad": true },
         },
