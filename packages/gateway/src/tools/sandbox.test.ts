@@ -297,14 +297,12 @@ describe("bugnet_start", () => {
         const id = await quoteId(client);
         const r = await callTool<Record<string, unknown>>(client, "bugnet_start", startArgs(id));
         const guide =
-            "Payment required for order ord_2. The user cannot see this result. Make no other " +
-            "call. End your turn now with a message that holds this line as text, unchanged: " +
-            '"Pay $0.05 USDC here: https://pay.bugnet.sh/o/ord_2". It opens in a ' +
-            "browser with a Solana wallet holding USDC. When the user says they paid, call " +
-            `bugnet_redeem with orderId and claim (orderId "ord_2", claim "${claim}", quoteId ` +
-            `"${id}"); it waits for the payment to land. Only if the user already asked you to ` +
-            "pay with a wallet tool, pay the link with it and call bugnet_redeem. Calling " +
-            "bugnet_start again without this " +
+            "Payment required for order ord_2. Next: show the user this link to pay in their " +
+            "browser with a Solana wallet holding USDC: https://pay.bugnet.sh/o/ord_2. Then, in " +
+            "the same turn and without waiting for the user, call bugnet_redeem with orderId and " +
+            `claim (orderId "ord_2", claim "${claim}", quoteId "${id}"). It waits for the ` +
+            "payment and goes on once it lands; if it answers that the order is not paid yet, " +
+            "call it again, for up to 10 minutes. Calling bugnet_start again without this " +
             "orderId opens a new order the user would pay again. The x402 maxTimeoutSeconds " +
             "limits a wallet's signed payment, not the user's time to pay.";
         expect(r.structured).toEqual({
@@ -748,11 +746,10 @@ describe("bugnet_start", () => {
         expect(r.isError).toBe(true);
         expect(r.text).toContain(
             `Order ${orderId} is not paid yet, and a payment can take a few seconds to confirm. ` +
-                "Make no other call.",
-        );
-        expect(r.text).toContain(
-            "When the user says they paid, call bugnet_redeem with orderId and claim " +
-                `(orderId "${orderId}", claim "${claim}", quoteId "${id}"); it waits`,
+                "Next: show the user this link to pay in their browser with a Solana wallet " +
+                `holding USDC: http://127.0.0.1:8787/o/${orderId}. Then, in the same turn and ` +
+                "without waiting for the user, call bugnet_redeem with orderId and claim " +
+                `(orderId "${orderId}", claim "${claim}", quoteId "${id}").`,
         );
         expect(r.structured).toEqual(expect.objectContaining({ orderId, claim, quoteId: id }));
     });

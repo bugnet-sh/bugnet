@@ -376,12 +376,10 @@ describe("bugnet_redeem while the order waits for its payment", () => {
             expect(r.isError).toBe(true);
             expect(r.text.split("\n")[1]).toBe(
                 `Order ${orderId} is not paid yet, and a payment can take a few seconds to ` +
-                    "confirm. If the user says they paid, call bugnet_redeem again with the same " +
-                    "arguments, for up to 10 minutes in all. If they have not seen its pay link, " +
-                    'end your turn with this line as text: "Pay ' +
-                    `${kind === "start" ? "$0.25" : "$0.04"} USDC here: ` +
-                    `http://127.0.0.1:8787/o/${orderId}". The x402 maxTimeoutSeconds limits a ` +
-                    "wallet's signed payment, not the user's time to pay.",
+                    "confirm. Show the user its pay link only if they have not seen it: " +
+                    `http://127.0.0.1:8787/o/${orderId}. The x402 maxTimeoutSeconds limits a ` +
+                    "wallet's signed payment, not the user's time to pay. Call bugnet_redeem " +
+                    "again with the same arguments to keep waiting, for up to 10 minutes in all.",
             );
             // A sandbox start keeps 12 s and an extension 20 s, each after a 5 s look
             expect(sleeps).toEqual(Array(pauses).fill(5_000));
