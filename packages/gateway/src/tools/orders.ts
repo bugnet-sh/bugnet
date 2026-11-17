@@ -9,6 +9,7 @@ import {
     type PaidAllowanceOrder,
     type RefusedOrder,
 } from "../payments/port.ts";
+import { usd } from "../money.ts";
 import { GatewayError } from "../router.ts";
 
 export type OrderTool = "bugnet_start" | "bugnet_extend" | "bugnet_redeem" | "bugnet_x402_budget";
@@ -67,6 +68,20 @@ export interface PaymentStepContext {
     withHandle?: boolean;
 }
 
+// The amount of the first x402 option, read without trusting the payload's shape
+function stepPrice(r: AwaitingPayment): string | null {
+    const first: unknown = r.paymentRequired.accepts[0];
+    if (typeof first !== "object" || first === null) return null;
+    const amount = (first as { amount?: unknown }).amount;
+    return typeof amount === "string" && /^[0-9]{1,15}$/.test(amount) ? usd(BigInt(amount)) : null;
+}
+
+// The line the user reads, since clients fold an error result out of sight
+export function payLine(r: AwaitingPayment): string {
+    const price = stepPrice(r);
+    return price ? `Pay ${price} USDC here: ${r.payUrl}` : `Pay here: ${r.payUrl}`;
+}
+
 // Claude Code shows the model only the text of an error result, other clients read the fields
 export function paymentRequiredResult(r: AwaitingPayment, c: PaymentStepContext): CallToolResult {
     const id = r.orderId;
@@ -78,31 +93,29 @@ export function paymentRequiredResult(r: AwaitingPayment, c: PaymentStepContext)
               ? ` (orderId "${id}", claim "${claim}" and this sandbox's handle)`
               : ` (orderId "${id}", claim "${claim}")`
         : ` (orderId "${id}" and the claim from its first payment step)`;
-    // A redeem that waited already follows a shown link, so it does not ask for the link again
+    // A redeem that waited follows a link the user was given, so it waits on unless they lack it
     const waited = c.tool === "bugnet_redeem" && c.sentOrderId === id;
+    const line = payLine(r);
+    // Live runs saw models chain into bugnet_redeem with no text, so the link never showed
     const guide = [
         c.sentOrderId === id
             ? `Order ${id} is not paid yet, and a payment can take a few seconds to confirm.`
-            : `Payment required for order ${id}.`,
+            : `Payment required for order ${id}. The user cannot see this result.`,
         waited
-            ? `Show the user its pay link only if they have not seen it: ${r.payUrl}.`
-            : "Next: show the user this link to pay in their browser with a Solana wallet " +
-              `holding USDC: ${r.payUrl}. Then, in the same turn and without waiting for the ` +
-              `user, call bugnet_redeem with orderId and claim${named}.`,
-        waited
-            ? ""
-            : "It waits for the payment and goes on once it lands; if it answers that the " +
-              "order is not paid yet, call it again, for up to 10 minutes.",
+            ? "If the user says they paid, call bugnet_redeem again with the same arguments, " +
+              "for up to 10 minutes in all. If they have not seen its pay link, end your turn " +
+              `with this line as text: "${line}".`
+            : "Make no other call. End your turn now with a message that holds this line as " +
+              `text, unchanged: "${line}". It opens in a browser with a Solana wallet holding ` +
+              "USDC. When the user says they paid, call bugnet_redeem with orderId and " +
+              `claim${named}; it waits for the payment to land. Only if the user already asked ` +
+              "you to pay with a wallet tool, pay the link with it and call bugnet_redeem.",
         c.tool === "bugnet_redeem"
             ? ""
             : `Calling ${c.tool} again without this orderId opens a new order the user would ` +
               "pay again.",
         // Live runs saw the model tell users they had 60 s to pay
         "The x402 maxTimeoutSeconds limits a wallet's signed payment, not the user's time to pay.",
-        c.tool === "bugnet_redeem"
-            ? "Call bugnet_redeem again with the same arguments to keep waiting, for up to " +
-              "10 minutes in all."
-            : "",
     ]
         .filter(Boolean)
         .join(" ");

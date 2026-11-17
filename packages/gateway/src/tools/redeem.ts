@@ -168,8 +168,8 @@ export const registerRedeemTool: Register = (server, deps) => {
                 "Finishes an order the user paid at its pay link, at no extra cost: starts the " +
                 "sandbox, or adds the time to one. Pass the orderId and claim from the payment " +
                 "step, plus the quoteId for a new sandbox or the handle for more time. Call it " +
-                "right after showing the pay link, without waiting for the user, since it " +
-                "waits for the payment.",
+                "once the user says they paid, or after paying the link yourself when the user " +
+                "asked you to; it waits for the payment to land.",
             inputSchema: redeemInput,
             annotations: {
                 readOnlyHint: false,

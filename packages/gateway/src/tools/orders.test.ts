@@ -51,15 +51,14 @@ const step = (over: Partial<AwaitingPayment> = {}): AwaitingPayment => ({
 });
 const limit =
     "The x402 maxTimeoutSeconds limits a wallet's signed payment, not the user's time to pay.";
+const line = `Pay $0.05 USDC here: ${payUrl}`;
 const next =
-    "Next: show the user this link to pay in their browser with a Solana wallet holding USDC: " +
-    `${payUrl}. Then, in the same turn and without waiting for the user, call bugnet_redeem ` +
-    "with orderId and claim";
-const waits =
-    "It waits for the payment and goes on once it lands; if it answers that the order is not " +
-    "paid yet, call it again, for up to 10 minutes.";
-const keepWaiting =
-    "Call bugnet_redeem again with the same arguments to keep waiting, for up to 10 minutes in all.";
+    "Make no other call. End your turn now with a message that holds this line as text, " +
+    `unchanged: "${line}". It opens in a browser with a Solana wallet holding USDC. When the ` +
+    "user says they paid, call bugnet_redeem with orderId and claim";
+const lands =
+    "it waits for the payment to land. Only if the user already asked you to pay with a wallet " +
+    "tool, pay the link with it and call bugnet_redeem.";
 
 describe("the order's kind on a payment step", () => {
     it("passes Payments' kind and allowance on, in their exact shape only", () => {
@@ -130,9 +129,8 @@ describe("paymentRequiredResult", () => {
     it("names the pay link, the claim and the quote for a new start order", () => {
         const r = paymentRequiredResult(step({ claim }), { tool: "bugnet_start", quoteId: "q3.x" });
         const guide = [
-            "Payment required for order ord_2.",
-            `${next} (orderId "ord_2", claim "${claim}", quoteId "q3.x").`,
-            waits,
+            "Payment required for order ord_2. The user cannot see this result.",
+            `${next} (orderId "ord_2", claim "${claim}", quoteId "q3.x"); ${lands}`,
             "Calling bugnet_start again without this orderId opens a new order the user would " +
                 "pay again.",
             limit,
@@ -163,9 +161,8 @@ describe("paymentRequiredResult", () => {
         expect(r.content?.[1]).toEqual({
             type: "text",
             text: [
-                "Payment required for order ord_2.",
-                `${next} (orderId "ord_2", claim "${claim}" and this sandbox's handle).`,
-                waits,
+                "Payment required for order ord_2. The user cannot see this result.",
+                `${next} (orderId "ord_2", claim "${claim}" and this sandbox's handle); ${lands}`,
                 "Calling bugnet_extend again without this orderId opens a new order the user " +
                     "would pay again.",
                 limit,
@@ -184,9 +181,10 @@ describe("paymentRequiredResult", () => {
             type: "text",
             text: [
                 "Order ord_2 is not paid yet, and a payment can take a few seconds to confirm.",
-                `Show the user its pay link only if they have not seen it: ${payUrl}.`,
+                "If the user says they paid, call bugnet_redeem again with the same arguments, " +
+                    "for up to 10 minutes in all. If they have not seen its pay link, end your " +
+                    `turn with this line as text: "${line}".`,
                 limit,
-                keepWaiting,
             ].join(" "),
         });
         expect(r.structuredContent).toEqual(expect.objectContaining({ claim }));
@@ -195,7 +193,7 @@ describe("paymentRequiredResult", () => {
     it("points at the first payment step when no claim is known", () => {
         const r = paymentRequiredResult(step(), { tool: "bugnet_start", sentOrderId: "ord_2" });
         expect((r.content?.[1] as { text: string }).text).toContain(
-            `${next} (orderId "ord_2" and the claim from its first payment step).`,
+            `${next} (orderId "ord_2" and the claim from its first payment step); ${lands}`,
         );
         expect(r.structuredContent).not.toHaveProperty("claim");
     });
@@ -203,7 +201,7 @@ describe("paymentRequiredResult", () => {
     it("names no quoteId it was not given", () => {
         const r = paymentRequiredResult(step({ claim }), { tool: "bugnet_start" });
         expect((r.content?.[1] as { text: string }).text).toContain(
-            `${next} (orderId "ord_2", claim "${claim}").`,
+            `${next} (orderId "ord_2", claim "${claim}"); ${lands}`,
         );
         expect(r.structuredContent).not.toHaveProperty("quoteId");
     });
