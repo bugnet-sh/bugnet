@@ -1,215 +1,150 @@
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
-import { createMcpHandler, type ServerContext } from "@modelcontextprotocol/server";
-import { describe, expect, it } from "vitest";
-import { PlacementState, type CreatePlacementRequest } from "../gen/bugnet/router/v1/router_pb.ts";
-import { buildMcpServer } from "../server.ts";
+import { afterEach, describe, expect, it } from "vitest";
+import { PlacementState } from "../gen/bugnet/router/v1/router_pb.ts";
+import { urlPromptClient } from "../request.ts";
+import { startHttp } from "../server.ts";
 import {
     callTool,
-    connectTools,
     fakeRouter,
     packageOption,
     placement,
+    testConfig,
     testDeps,
     testHandle,
     testNow,
     testPayments,
     type TestPayments,
 } from "../testing/harness.ts";
-import type { Deps } from "./common.ts";
-import { promptRounds, signPromptState, takesUrlPrompt, verifyPromptState } from "./payprompt.ts";
+import { promptId } from "./payprompt.ts";
 
-const key = Buffer.alloc(32, 7);
-const orderId = "ord_aaaaaaaaaaaaaaaaaaaaaaaaaa";
-const claim = "C".repeat(43);
+const claudeCode = "claude-code/2.1.326 (cli)";
 
-function withEnvelope(caps: unknown, client = "claude-code"): ServerContext {
-    return {
-        mcpReq: {
-            envelope: {
-                "io.modelcontextprotocol/clientCapabilities": caps,
-                "io.modelcontextprotocol/clientInfo": { name: client, version: "1" },
-            },
-        },
-    } as unknown as ServerContext;
-}
-
-describe("the pay prompt's state", () => {
-    it("comes back only signed by this key, unchanged and before it expires", () => {
-        const state = signPromptState(key, testNow, { orderId, claim, round: 2 });
-        expect(verifyPromptState(key, testNow, state)).toEqual({ orderId, claim, round: 2 });
-        expect(verifyPromptState(key, testNow, state.replace(".2.", ".1."))).toBeNull();
-        expect(verifyPromptState(Buffer.alloc(32, 8), testNow, state)).toBeNull();
-        const other = state.replace(orderId, "ord_bbbbbbbbbbbbbbbbbbbbbbbbbb");
-        expect(verifyPromptState(key, testNow, other)).toBeNull();
-        expect(verifyPromptState(key, testNow + 31 * 60_000, state)).toBeNull();
-        expect(verifyPromptState(key, testNow, "p1.x.y.z.1.s")).toBeNull();
+describe("urlPromptClient", () => {
+    it("holds only for Claude Code on protocol 2025-11-25 or later", () => {
+        expect(urlPromptClient(claudeCode, "2025-11-25")).toBe(true);
+        expect(urlPromptClient(claudeCode, "2025-06-18")).toBe(false);
+        expect(urlPromptClient(claudeCode, undefined)).toBe(false);
+        expect(urlPromptClient("node", "2025-11-25")).toBe(false);
+        expect(urlPromptClient(undefined, "2025-11-25")).toBe(false);
     });
 });
 
-describe("takesUrlPrompt", () => {
-    it("holds only for a request that declares URL elicitation", () => {
-        expect(takesUrlPrompt(withEnvelope({ elicitation: { form: {}, url: {} } }))).toBe(true);
-        expect(takesUrlPrompt(withEnvelope({ elicitation: { form: {} } }))).toBe(false);
-        expect(takesUrlPrompt(withEnvelope({ elicitation: {} }))).toBe(false);
-        expect(takesUrlPrompt(withEnvelope(undefined))).toBe(false);
-        expect(takesUrlPrompt({ mcpReq: {} } as unknown as ServerContext)).toBe(false);
-        const url = { elicitation: { url: {} } };
-        expect(takesUrlPrompt(withEnvelope(url, "bugnet-bridge"))).toBe(false);
-    });
-});
-
-type Answer = "accept" | "decline" | "cancel";
-
-interface Prompted {
+interface Run {
     client: Client;
-    deps: Deps;
     payments: TestPayments;
-    asked: { url: string; message: string }[];
+    asked: { url: string; message: string; elicitationId: string }[];
+    closed: string[];
 }
 
-// A client on the 2026-07-28 protocol that shows URL prompts, as Claude Code does
-async function promptingClient(
-    answer: (payments: TestPayments, url: string) => Answer,
-): Promise<Prompted> {
+const servers: Server[] = [];
+afterEach(async () => {
+    for (const s of servers.splice(0)) await new Promise((r) => s.close(r));
+});
+
+// The gateway on a local port, called as Claude Code or as another client
+async function run(
+    userAgent: string,
+    onPrompt: (payments: TestPayments, id: string) => void,
+): Promise<Run> {
     const payments = testPayments(undefined, { requirePayment: true });
+    const clock = { now: testNow };
     const deps = testDeps({
+        config: testConfig('listen_addr = "127.0.0.1:0"\npublic_url = "http://127.0.0.1"\n'),
         router: fakeRouter({
             estimate: () => ({ options: [packageOption("small-10m", 50_000n)] }),
-            createPlacement: (_req: CreatePlacementRequest) => ({
+            createPlacement: () => ({
                 handle: testHandle,
                 placement: placement(PlacementState.PLACING),
             }),
             getPlacement: () => ({ placement: placement(PlacementState.READY) }),
         }),
         payments,
-        sleep: async () => {},
+        now: () => clock.now,
+        // Each look moves the clock on, so the wait for a payment that never lands ends
+        sleep: async (ms) => {
+            clock.now += ms;
+            await new Promise((r) => setImmediate(r));
+        },
     });
-    // The gateway's own stateless HTTP handler, reached without a socket
-    const handler = createMcpHandler(() => buildMcpServer(deps), { legacy: "stateless" });
-    const transport = new StreamableHTTPClientTransport(new URL("http://gateway.test/mcp"), {
-        fetch: (url, init) => handler.fetch(new Request(url, init)),
+    const http = await startHttp(deps);
+    servers.push(http);
+    const port = (http.address() as AddressInfo).port;
+    const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), {
+        fetch: (url, init) => {
+            const headers = new Headers(init?.headers);
+            headers.set("user-agent", userAgent);
+            return fetch(url, { ...init, headers });
+        },
     });
     const client = new Client(
         { name: "test", version: "0" },
-        {
-            capabilities: { elicitation: { url: {} } },
-            versionNegotiation: { mode: { pin: "2026-07-28" } },
-        },
+        { capabilities: { elicitation: { url: {} } } },
     );
-    const asked: { url: string; message: string }[] = [];
+    const asked: Run["asked"] = [];
+    const closed: string[] = [];
     client.setRequestHandler("elicitation/create", async (req) => {
-        const p = req.params as { url: string; message: string };
-        asked.push({ url: p.url, message: p.message });
-        return { action: answer(payments, p.url) };
+        const p = req.params as { url: string; message: string; elicitationId: string };
+        asked.push({ url: p.url, message: p.message, elicitationId: p.elicitationId });
+        onPrompt(payments, p.url.split("/o/")[1] ?? "");
+        return { action: "accept" };
+    });
+    client.setNotificationHandler("notifications/elicitation/complete", (n) => {
+        closed.push((n.params as { elicitationId: string }).elicitationId);
     });
     await client.connect(transport);
-    return { client, deps, payments, asked };
+    return { client, payments, asked, closed };
 }
 
-async function start(c: Prompted) {
-    const q = await callTool<{ quoteId: string }>(c.client, "bugnet_quote", {
-        workload: "script",
-    });
-    const id = q.structured.quoteId;
-    return callTool<Record<string, unknown>>(c.client, "bugnet_start", {
-        quoteId: id,
+async function start(r: Run) {
+    const q = await callTool<{ quoteId: string }>(r.client, "bugnet_quote", { workload: "script" });
+    return callTool<Record<string, unknown>>(r.client, "bugnet_start", {
+        quoteId: q.structured.quoteId,
         packageId: "small-10m",
         confirmPriceUsd: "0.05",
     });
 }
 
-function lastOrder(p: TestPayments): string {
-    const id = (p.orders.at(-1) as { orderId?: string } | undefined)?.orderId;
-    if (id) return id;
-    throw new Error("no order with an id was asked for");
-}
+const startOrders = (p: TestPayments) => p.orders.filter((o) => "kind" in o && o.kind === "start");
 
-describe("bugnet_start on a client that shows URL prompts", () => {
-    it("shows the pay link as a prompt and starts the sandbox once it is paid", async () => {
-        let paid = "";
-        const c = await promptingClient((payments, url) => {
-            // The user pays in the browser, then goes on from the prompt
-            paid = url.split("/o/")[1] ?? "";
-            payments.dev.pay(paid);
-            return "accept";
-        });
-        const r = await start(c);
-        expect(c.asked).toEqual([
+describe("bugnet_start in Claude Code", () => {
+    it("shows the pay link as a prompt, closes it once paid and starts the sandbox", async () => {
+        const r = await run(claudeCode, (payments, id) => void payments.dev.pay(id));
+        const res = await start(r);
+        const id = r.asked[0]?.url.split("/o/")[1] ?? "";
+        expect(r.asked).toEqual([
             {
-                url: `http://127.0.0.1:8787/o/${paid}`,
+                url: `http://127.0.0.1:8787/o/${id}`,
                 message: "Pay $0.05 USDC to start your Bugnet sandbox",
+                elicitationId: promptId(id),
             },
         ]);
-        expect(r.isError).toBe(false);
-        expect(r.structured).toEqual(expect.objectContaining({ handle: testHandle }));
-        const kinds = c.payments.orders.map((o) => ("kind" in o ? o.kind : "claim"));
-        // One order is made, and the repeated call only reads it by its claim
-        expect(kinds.filter((k) => k === "start")).toHaveLength(1);
-        expect(lastOrder(c.payments)).toBe(paid);
+        expect(r.closed).toEqual([promptId(id)]);
+        expect(res.isError).toBe(false);
+        expect(res.structured).toEqual(expect.objectContaining({ handle: testHandle }));
+        expect(startOrders(r.payments)).toHaveLength(1);
     });
 
-    it("shows the prompt again until the payment lands", async () => {
-        let rounds = 0;
-        const c = await promptingClient((payments, url) => {
-            rounds += 1;
-            // The user goes on twice before paying, then pays and goes on
-            if (rounds === 3) payments.dev.pay(url.split("/o/")[1] ?? "");
-            return "accept";
-        });
-        const r = await start(c);
-        expect(r.isError).toBe(false);
-        expect(r.structured).toEqual(expect.objectContaining({ handle: testHandle }));
-        expect(c.asked.map((a) => a.message)).toEqual([
-            "Pay $0.05 USDC to start your Bugnet sandbox",
-            "The payment has not arrived yet. Pay $0.05 USDC to start your Bugnet sandbox",
-            "The payment has not arrived yet. Pay $0.05 USDC to start your Bugnet sandbox",
-        ]);
-        expect(new Set(c.asked.map((a) => a.url)).size).toBe(1);
-        expect(c.payments.orders.filter((o) => "kind" in o && o.kind === "start")).toHaveLength(1);
-    });
-
-    it("hands the order to the agent once the prompts run out", async () => {
-        const c = await promptingClient(() => "accept");
-        const r = await start(c);
-        expect(c.asked).toHaveLength(promptRounds);
-        expect(r.isError).toBe(true);
-        const id = c.asked[0]?.url.split("/o/")[1] ?? "";
-        expect(r.text).toContain(
+    it("closes the prompt and names the order when the wait runs out unpaid", async () => {
+        const r = await run(claudeCode, () => {});
+        const res = await start(r);
+        const id = r.asked[0]?.url.split("/o/")[1] ?? "";
+        expect(r.closed).toEqual([promptId(id)]);
+        expect(res.isError).toBe(true);
+        expect(res.text).toContain(
             `Order ${id} is not paid yet, and a payment can take a few seconds to confirm. The ` +
                 `user has its pay link from a prompt: http://127.0.0.1:8787/o/${id}. Call ` +
                 `bugnet_redeem with orderId and claim (orderId "${id}", claim "`,
         );
-        expect(c.payments.orders.filter((o) => "kind" in o && o.kind === "start")).toHaveLength(1);
+        expect(startOrders(r.payments)).toHaveLength(1);
     });
 
-    it("asks the agent to check with the user when the prompt is closed", async () => {
-        for (const answer of ["decline", "cancel"] as const) {
-            const c = await promptingClient(() => answer);
-            const r = await start(c);
-            expect(r.isError).toBe(true);
-            expect(r.text).toMatch(/Order ord_\w+ is not paid, and the user closed the pay prompt/);
-            expect(r.text).toMatch(/Ask whether they still want the sandbox/);
-        }
-    });
-
-    it("gives a client without URL prompts the payment step as before", async () => {
-        const payments = testPayments(undefined, { requirePayment: true });
-        const deps = testDeps({
-            router: fakeRouter({
-                estimate: () => ({ options: [packageOption("small-10m", 50_000n)] }),
-            }),
-            payments,
-        });
-        const client = await connectTools(deps);
-        const q = await callTool<{ quoteId: string }>(client, "bugnet_quote", {
-            workload: "script",
-        });
-        const r = await callTool(client, "bugnet_start", {
-            quoteId: q.structured.quoteId,
-            packageId: "small-10m",
-            confirmPriceUsd: "0.05",
-        });
-        expect(r.isError).toBe(true);
-        expect(r.text).toMatch(/Next: show the user this link to pay/);
+    it("gives any other client the payment step at once, with no prompt", async () => {
+        const r = await run("node", (payments, id) => void payments.dev.pay(id));
+        const res = await start(r);
+        expect(r.asked).toEqual([]);
+        expect(res.isError).toBe(true);
+        expect(res.text).toMatch(/Next: show the user this link to pay/);
     });
 });

@@ -1,44 +1,13 @@
-// The pay link as a client URL prompt, for clients on the 2026-07-28 protocol that take one
-import { createHmac, timingSafeEqual } from "node:crypto";
-import {
-    inputRequired,
-    inputResponse,
-    type InputRequiredResult,
-    type ServerContext,
-} from "@modelcontextprotocol/server";
+// The pay link as a URL prompt the client shows mid-call, held open until the payment lands
+import { setTimeout as sleep } from "node:timers/promises";
+import type { McpServer, ServerContext } from "@modelcontextprotocol/server";
 import { usd } from "../money.ts";
-import { claimPattern, orderIdPattern, type AwaitingPayment } from "../payments/port.ts";
-import { GatewayError } from "../router.ts";
+import type { AwaitingPayment, OrderResult } from "../payments/port.ts";
+import { extendToolCall, toolCallSignal } from "../request.ts";
+import { withProgress, type Deps } from "./common.ts";
 
-const capabilitiesKey = "io.modelcontextprotocol/clientCapabilities";
-const clientInfoKey = "io.modelcontextprotocol/clientInfo";
-// The bridge pays a payment step or shows its own prompt, so it must get the step itself
-const bridgeName = "bugnet-bridge";
-const promptKey = "pay";
-const stateVersion = "p1";
-// An unpaid order lapses after 15 minutes, so a prompt round never needs longer
-const stateTtlMs = 30 * 60_000;
-// Prompts per call, below the 10 input rounds the SDK client allows by default
-export const promptRounds = 8;
-
-// Whether this request's client shows URL prompts, which only 2026-07-28 requests declare
-export function takesUrlPrompt(ctx: ServerContext): boolean {
-    const envelope = ctx.mcpReq.envelope as Record<string, unknown> | undefined;
-    const info = envelope?.[clientInfoKey];
-    if (
-        typeof info === "object" &&
-        info !== null &&
-        (info as { name?: unknown }).name === bridgeName
-    ) {
-        return false;
-    }
-    const caps = envelope?.[capabilitiesKey];
-    if (typeof caps !== "object" || caps === null) return false;
-    const elicitation = (caps as { elicitation?: unknown }).elicitation;
-    if (typeof elicitation !== "object" || elicitation === null) return false;
-    const url = (elicitation as { url?: unknown }).url;
-    return typeof url === "object" && url !== null;
-}
+// The pause between two looks at an order the user is paying
+export const payLookMs = 3_000;
 
 // The amount of the first x402 option, read without trusting the payload's shape
 function stepPrice(r: AwaitingPayment): string | null {
@@ -54,85 +23,90 @@ export function payLine(r: AwaitingPayment): string {
     return price ? `Pay ${price} USDC here: ${r.payUrl}` : `Pay here: ${r.payUrl}`;
 }
 
-function mac(key: Buffer, body: string): Buffer {
-    return createHmac("sha256", key).update(`bugnet pay prompt\n${body}`).digest();
+export function promptId(orderId: string): string {
+    return `bugnet-pay-${orderId}`;
 }
 
-export interface PromptOrder {
-    orderId: string;
-    claim: string;
-    // The prompt this answers, 1 for the first
-    round: number;
+function awaitingPayment(order: OrderResult): boolean {
+    return (
+        order.status === "payment_required" ||
+        (order.status === "refused" && order.reason === "settling")
+    );
 }
 
-// The state round-trips through the client, so it carries a MAC and an expiry
-export function signPromptState(key: Buffer, now: number, p: PromptOrder): string {
-    const expires = Math.floor(now + stateTtlMs);
-    const body = `${stateVersion}.${p.orderId}.${p.claim}.${expires}.${p.round}`;
-    return `${body}.${mac(key, body).toString("base64url")}`;
+// A stateless call's server never saw initialize, where the client declared URL prompts
+function trustUrlPrompts(server: McpServer): void {
+    const s = server.server as unknown as { _clientCapabilities?: Record<string, unknown> };
+    s._clientCapabilities = { ...s._clientCapabilities, elicitation: { url: {} } };
 }
 
-export function verifyPromptState(key: Buffer, now: number, state: string): PromptOrder | null {
-    const parts = state.split(".");
-    if (parts.length !== 6 || parts[0] !== stateVersion) return null;
-    const [, orderId, claim, expires, round, sig] = parts as [
-        string,
-        string,
-        string,
-        string,
-        string,
-        string,
-    ];
-    const body = parts.slice(0, 5).join(".");
-    const want = mac(key, body);
-    const got = Buffer.from(sig, "base64url");
-    if (got.length !== want.length || !timingSafeEqual(got, want)) return null;
-    if (!orderIdPattern.test(orderId) || !claimPattern.test(claim)) return null;
-    const until = Number(expires);
-    if (!Number.isSafeInteger(until) || until < now) return null;
-    const n = Number(round);
-    if (!Number.isSafeInteger(n) || n < 1) return null;
-    return { orderId, claim, round: n };
-}
-
-// Asks the client to show the pay link; the client calls the tool again once the user answers
-export function payPrompt(
-    key: Buffer,
-    now: number,
-    order: AwaitingPayment,
-    claim: string,
-    round = 1,
-): InputRequiredResult {
+function showPrompt(ctx: ServerContext, order: AwaitingPayment): void {
     const price = stepPrice(order);
-    const ask = `Pay ${price ? `${price} USDC` : "in USDC"} to start your Bugnet sandbox`;
-    return inputRequired({
-        inputRequests: {
-            [promptKey]: inputRequired.elicitUrl({
+    // The answer goes to another stateless call, so only the payment itself is waited on
+    ctx.mcpReq
+        .send({
+            method: "elicitation/create",
+            params: {
+                mode: "url",
+                elicitationId: promptId(order.orderId),
                 url: order.payUrl,
-                message: round > 1 ? `The payment has not arrived yet. ${ask}` : ask,
-            }),
+                message: `Pay ${price ? `${price} USDC` : "in USDC"} to start your Bugnet sandbox`,
+            },
+        })
+        .catch(() => {});
+}
+
+// Closes the client's prompt, which otherwise waits for this word after the user opened the link
+async function closePrompt(server: McpServer, ctx: ServerContext, orderId: string): Promise<void> {
+    trustUrlPrompts(server);
+    await ctx.mcpReq
+        .notify({
+            method: "notifications/elicitation/complete",
+            params: { elicitationId: promptId(orderId) },
+        })
+        .catch(() => {});
+}
+
+// Shows the pay link as a prompt and looks at the order until it is paid, refused or out of time
+export async function waitWithPrompt(
+    deps: Deps,
+    server: McpServer,
+    ctx: ServerContext,
+    order: AwaitingPayment,
+    look: () => Promise<OrderResult>,
+): Promise<OrderResult> {
+    const wait = deps.config.limits.pay_wait;
+    extendToolCall(wait + deps.config.limits.tool_budget);
+    showPrompt(ctx, order);
+    const until = deps.now() + wait;
+    const pause =
+        deps.sleep ??
+        ((ms: number, signal: AbortSignal | undefined) =>
+            sleep(ms, undefined, signal ? { signal } : {}));
+    let current: OrderResult = order;
+    await withProgress(
+        ctx,
+        payLine(order),
+        async () => {
+            while (awaitingPayment(current) && deps.now() < until) {
+                const signal = toolCallSignal();
+                if (signal?.aborted) break;
+                try {
+                    await pause(payLookMs, signal);
+                } catch {
+                    break;
+                }
+                try {
+                    current = await look();
+                } catch {
+                    // Payments answering slowly is no answer, so the next look tries again
+                }
+            }
         },
-        requestState: signPromptState(key, now, { orderId: order.orderId, claim, round }),
-    });
-}
-
-export interface PromptAnswer extends PromptOrder {
-    // The user went on from the prompt rather than declining or closing it
-    accepted: boolean;
-}
-
-// The answer to a pay prompt this call carries, or null on a call that answers none
-export function promptAnswer(key: Buffer, now: number, ctx: ServerContext): PromptAnswer | null {
-    const view = inputResponse(ctx.mcpReq.inputResponses, promptKey);
-    if (view.kind === "missing") return null;
-    const state = ctx.mcpReq.requestState();
-    const order = typeof state === "string" ? verifyPromptState(key, now, state) : null;
-    if (!order) {
-        throw new GatewayError(
-            "invalid",
-            "start: the pay prompt's state is not valid or has expired. If the user paid, " +
-                "call bugnet_redeem with the orderId and claim; otherwise call bugnet_start again",
-        );
-    }
-    return { ...order, accepted: view.kind === "elicit" && view.action === "accept" };
+        { now: true },
+    );
+    await closePrompt(server, ctx, order.orderId);
+    // What follows the payment gets a whole tool budget of its own
+    extendToolCall(deps.config.limits.tool_budget);
+    return current;
 }

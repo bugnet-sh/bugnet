@@ -21,7 +21,6 @@ import {
 } from "../router.ts";
 import {
     paymentMemo,
-    type AwaitingPayment,
     type OrderRequest,
     type OrderResult,
     type PaidOrder,
@@ -96,7 +95,8 @@ import {
     retryCall,
     type PaidRetry,
 } from "./orders.ts";
-import { payPrompt, promptAnswer, promptRounds, takesUrlPrompt } from "./payprompt.ts";
+import { takesUrlPrompts } from "../request.ts";
+import { waitWithPrompt } from "./payprompt.ts";
 import { redeemOrder } from "./redeem.ts";
 import {
     endedAnswer,
@@ -724,27 +724,6 @@ export const registerSandboxTools: Register = (server, deps) => {
         },
         async (args, ctx) => {
             try {
-                // A call the client repeats after a pay prompt finishes that order by its claim
-                const answer = promptAnswer(deps.config.secrets.quoteKey, deps.now(), ctx);
-                if (answer) {
-                    const key = deps.config.secrets.quoteKey;
-                    // Until the payment lands the prompt is shown again, so the user stays on it
-                    const again =
-                        answer.accepted && answer.round < promptRounds
-                            ? (o: AwaitingPayment) =>
-                                  payPrompt(key, deps.now(), o, answer.claim, answer.round + 1)
-                            : undefined;
-                    return await redeemOrder(
-                        deps,
-                        ctx,
-                        { orderId: answer.orderId, claim: answer.claim, quoteId: args.quoteId },
-                        {
-                            wait: answer.accepted,
-                            prompt: answer.accepted ? "shown" : "closed",
-                            ...(again ? { again } : {}),
-                        },
-                    );
-                }
                 const payment = ctx.mcpReq._meta?.["x402/payment"] ?? args.payment;
                 const retried = memoRetry(args, payment, deps.config.x402.enabled);
                 const sentId = retried?.orderId ?? args.orderId;
@@ -859,10 +838,22 @@ export const registerSandboxTools: Register = (server, deps) => {
                     });
                 }
                 if (order.status === "payment_required") {
-                    // A client that shows URL prompts gets the link at once and calls again after
+                    // A client that shows a pushed URL prompt gets the link at once, and the call waits
                     const held = order.claim ?? args.claim;
-                    if (payment === undefined && held !== undefined && takesUrlPrompt(ctx)) {
-                        return payPrompt(deps.config.secrets.quoteKey, deps.now(), order, held);
+                    if (payment === undefined && held !== undefined && takesUrlPrompts()) {
+                        const id = order.orderId;
+                        await waitWithPrompt(deps, server, ctx, order, () =>
+                            deps.payments.order(
+                                { orderId: id, claim: held },
+                                AbortSignal.timeout(10_000),
+                            ),
+                        );
+                        return await redeemOrder(
+                            deps,
+                            ctx,
+                            { orderId: id, claim: held, quoteId: args.quoteId },
+                            { wait: false, prompt: "shown" },
+                        );
                     }
                     return paymentRequiredResult(order, {
                         tool: "bugnet_start",

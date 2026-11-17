@@ -65,28 +65,16 @@ export interface PaymentStepContext {
     sentClaim?: string;
     quoteId?: string;
     withHandle?: boolean;
-    // The client showed the pay link as a prompt, which the user went on from or closed
-    prompt?: "shown" | "closed";
+    // The client showed the pay link as a prompt while the call waited
+    prompt?: "shown";
 }
 
 // After a pay prompt the user has the link, so the guide only says how to go on
-function promptGuide(r: AwaitingPayment, prompt: "shown" | "closed", named: string): string {
-    const id = r.orderId;
-    const lines =
-        prompt === "shown"
-            ? [
-                  `Order ${id} is not paid yet, and a payment can take a few seconds to confirm.`,
-                  `The user has its pay link from a prompt: ${r.payUrl}. Call bugnet_redeem ` +
-                      `with orderId and claim${named} to keep waiting, for up to 10 minutes in all.`,
-              ]
-            : [
-                  `Order ${id} is not paid, and the user closed the pay prompt.`,
-                  "Ask whether they still want the sandbox. If so, show them its pay link " +
-                      `${r.payUrl} and call bugnet_redeem with orderId and claim${named}, which ` +
-                      "waits for the payment.",
-              ];
+function promptGuide(r: AwaitingPayment, named: string): string {
     return [
-        ...lines,
+        `Order ${r.orderId} is not paid yet, and a payment can take a few seconds to confirm.`,
+        `The user has its pay link from a prompt: ${r.payUrl}. Call bugnet_redeem with orderId ` +
+            `and claim${named} to keep waiting, for up to 10 minutes in all.`,
         "The x402 maxTimeoutSeconds limits a wallet's signed payment, not the user's time to pay.",
     ].join(" ");
 }
@@ -105,7 +93,7 @@ export function paymentRequiredResult(r: AwaitingPayment, c: PaymentStepContext)
     // A redeem that waited already follows a shown link, so it does not ask for the link again
     const waited = c.tool === "bugnet_redeem" && c.sentOrderId === id;
     const guide = c.prompt
-        ? promptGuide(r, c.prompt, named)
+        ? promptGuide(r, named)
         : [
               c.sentOrderId === id
                   ? `Order ${id} is not paid yet, and a payment can take a few seconds to confirm.`

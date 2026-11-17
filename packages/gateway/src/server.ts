@@ -4,14 +4,15 @@ import type { Duplex } from "node:stream";
 import { hostHeaderValidation, toNodeHandler } from "@modelcontextprotocol/node";
 import {
     McpServer,
-    createMcpHandler,
+    legacyStatelessFallback,
     type CallToolResult,
+    type McpHttpHandler,
     type ServerContext,
 } from "@modelcontextprotocol/server";
 import { allowedHosts } from "./config.ts";
 import { instructions } from "./instructions.ts";
 import { DevPayments } from "./payments/dev.ts";
-import { peerAddress, withClientAddress, withToolCall } from "./request.ts";
+import { peerAddress, urlPromptClient, withClientAddress, withToolCall } from "./request.ts";
 import { setProviderNames } from "./router.ts";
 import { recordToolCall } from "./sessionevents.ts";
 import { registerAssessTool } from "./tools/assess.ts";
@@ -64,14 +65,17 @@ function scopeToolCalls(server: McpServer, deps: Deps): void {
             const run = () => cb(...a);
             const traced = tracing ? () => tracing.tool(name, args, run) : run;
             const limit = new AbortController();
-            const timer = setTimeout(
-                () => limit.abort(new ConnectError("tool time limit", Code.DeadlineExceeded)),
-                deps.config.limits.tool_budget,
-            );
+            const stop = () =>
+                limit.abort(new ConnectError("tool time limit", Code.DeadlineExceeded));
+            let timer = setTimeout(stop, deps.config.limits.tool_budget);
+            const extend = (ms: number) => {
+                clearTimeout(timer);
+                timer = setTimeout(stop, ms);
+            };
             const signal = AbortSignal.any([ctx.mcpReq.signal, limit.signal]);
             const started = deps.now();
             // The executor turns a handler's synchronous throw into a rejection it can record
-            return new Promise((resolve) => resolve(withToolCall(signal, traced)))
+            return new Promise((resolve) => resolve(withToolCall(signal, traced, extend)))
                 .then(
                     (result) => {
                         recordToolCall(deps, name, args, started, result as CallToolResult);
@@ -130,12 +134,22 @@ function answerClientError(err: Error & { code?: string }, socket: Duplex): void
     );
 }
 
+// A header Node may hand over as a list, read as its first value
+function headerText(v: string | string[] | undefined): string | undefined {
+    return Array.isArray(v) ? v[0] : v;
+}
+
+// Only the 2025 protocol, whose stateless calls can push a pay prompt and say when it is paid
+export function mcpHandler(deps: Deps, extra: Register[] = []): McpHttpHandler {
+    const legacy = legacyStatelessFallback(
+        () => buildMcpServer(deps, extra),
+        (e) => deps.log.warn("mcp request failed", { err: e.message }),
+    );
+    return { fetch: legacy, close: async () => {} } as unknown as McpHttpHandler;
+}
+
 export function startHttp(deps: Deps, extra: Register[] = []): Promise<Server> {
-    const handler = createMcpHandler(() => buildMcpServer(deps, extra), {
-        legacy: "stateless",
-        onerror: (e) => deps.log.warn("mcp request failed", { err: e.message }),
-    });
-    const mcp = toNodeHandler(handler);
+    const mcp = toNodeHandler(mcpHandler(deps, extra));
     const devPay =
         deps.payments instanceof DevPayments && deps.payments.requiresPayment
             ? deps.payments
@@ -179,10 +193,16 @@ export function startHttp(deps: Deps, extra: Register[] = []): Promise<Server> {
             res.writeHead(403, { "content-type": "text/plain" }).end("forbidden origin\n");
             return;
         }
-        withClientAddress(peerAddress(req.socket), () => mcp(req, res)).catch((e: Error) => {
-            deps.log.error("mcp handler crashed", { err: e.message });
-            if (!res.headersSent) res.writeHead(500).end();
-        });
+        const prompts = urlPromptClient(
+            req.headers["user-agent"],
+            headerText(req.headers["mcp-protocol-version"]),
+        );
+        withClientAddress(peerAddress(req.socket), () => mcp(req, res), prompts).catch(
+            (e: Error) => {
+                deps.log.error("mcp handler crashed", { err: e.message });
+                if (!res.headersSent) res.writeHead(500).end();
+            },
+        );
     });
     // A preview can set bugnet.sh cookies past any header limit, so the answer says how to clear them
     http.on("clientError", answerClientError);

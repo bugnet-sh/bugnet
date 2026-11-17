@@ -55,6 +55,8 @@ const settingsSchema = z
         limits: z
             .object({
                 tool_budget: duration.prefault("44s"),
+                // How long bugnet_start holds a client's pay prompt open while it waits for the payment
+                pay_wait: duration.prefault("5m"),
                 max_wait_seconds: z.int().min(1).max(45).default(38),
                 default_wait_seconds: z.int().min(0).max(45).default(25),
                 output_tail_bytes: z.int().min(256).max(65536).default(8192),
@@ -447,6 +449,10 @@ export function checkSettings(s: Settings): void {
     // A wait plus the 5 s stall margin and a second of slack must end inside the tool budget
     if (s.limits.max_wait_seconds * 1000 + 6000 > s.limits.tool_budget) {
         throw new ConfigError("limits.max_wait_seconds plus 6 s is over limits.tool_budget");
+    }
+    // An unpaid order lapses after 15 minutes
+    if (s.limits.pay_wait < 30_000 || s.limits.pay_wait > 14 * 60_000) {
+        throw new ConfigError("limits.pay_wait must be 30s to 14m, inside an unpaid order's life");
     }
     if (s.limits.default_wait_seconds > s.limits.max_wait_seconds) {
         throw new ConfigError("limits.default_wait_seconds is over limits.max_wait_seconds");
