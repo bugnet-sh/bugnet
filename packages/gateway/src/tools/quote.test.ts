@@ -226,6 +226,42 @@ describe("bugnet_quote on a router without an estimator", () => {
         expect(r.text).not.toMatch(/go-ahead|quoteId|bridge/);
     });
 
+    it("leaves GPU packages out of a quote that asks for no GPU", async () => {
+        const { client } = await setup(
+            answer({
+                options: [
+                    packageOption("small-10m", 3355n),
+                    packageOption("gpu-rtx3090-10m", 66734n, {
+                        resources: resources(4, 12288, 40, 1),
+                    }),
+                ],
+            }),
+        );
+        const r = await callTool<Quote>(client, "bugnet_quote", { workload: "tests" });
+        expect(r.structured.packages.map((p) => p.id)).toEqual(["small-10m"]);
+        expect(r.text).not.toMatch(/gpu-rtx3090-10m|does not fit/);
+    });
+
+    it("says a package without a GPU has none in a quote that needs one", async () => {
+        const { client } = await setup(
+            answer({
+                options: [
+                    packageOption("small-10m", 0n, {
+                        available: false,
+                        unavailableReason: "no_candidate",
+                    }),
+                    packageOption("gpu-rtx3090-10m", 66734n, {
+                        resources: resources(4, 12288, 40, 1),
+                    }),
+                ],
+            }),
+        );
+        const r = await callTool<Quote>(client, "bugnet_quote", { needs: ["gpu"] });
+        expect(r.text).toMatch("- gpu-rtx3090-10m: ");
+        expect(r.text).toMatch("Unavailable now: small-10m (has no GPU).");
+        expect(r.text).not.toMatch(/busy now/);
+    });
+
     it("adds the gateway's GPU and secrets warnings", async () => {
         const { client, deps } = await setup(answer({ options }));
         const r = await callTool<Quote>(client, "bugnet_quote", {

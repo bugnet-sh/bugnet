@@ -104,6 +104,9 @@ export function quoted(o: PackageOption): QuotedPackage {
     };
 }
 
+// A package without a GPU in a quote that needs one, which no_candidate alone would call busy
+export const noGpuWords = "has no GPU";
+
 // The router's fixed unavailable_reason codes in plain words
 export function unavailableWords(code: string): string {
     if (code === "no_candidate") return "busy now, try again soon";
@@ -430,7 +433,16 @@ export async function buildQuote(
     const est = await estimate(deps, args, signal);
     const requirements = requirementsOf(args.needs);
     const floor = floorView(est);
-    const views = est.options.map((o) => packageView(o, floor !== null));
+    const gpuAsked = requirements.gpu || floor?.gpu === "recommended" || floor?.gpu === "required";
+    const views = est.options
+        .map((o) => packageView(o, floor !== null))
+        // GPU packages only crowd a quote that asks for no GPU
+        .filter((v) => gpuAsked || v.gpuCount === 0)
+        .map((v) =>
+            requirements.gpu && !v.available && v.gpuCount === 0
+                ? { ...v, unavailable: noGpuWords }
+                : v,
+        );
     const byPrice = [...views].sort((a, b) => a.priceMicros - b.priceMicros);
     const available = byPrice.filter((v) => v.available);
     const codes = new Set(est.warnings.map((w) => w.code));
